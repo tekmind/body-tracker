@@ -1,11 +1,11 @@
-import React, { useState, useMemo, useEffect, useCallback } from "react";
+import React, { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import {
   ComposedChart, LineChart, BarChart, Line, Bar, Area, AreaChart, XAxis, YAxis,
   CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, ReferenceArea, Cell
 } from "recharts";
 import {
   TrendingDown, TrendingUp, Minus, Flame, Footprints, Scale, Percent,
-  Plus, Pencil, Trash2, X, Save, Loader2, AlertCircle, Settings, Target, LayoutDashboard, AlertTriangle, Check, Circle, StickyNote, Dumbbell, Activity, Heart, CalendarDays
+  Plus, Pencil, Trash2, X, Save, Loader2, AlertCircle, Settings, Target, LayoutDashboard, AlertTriangle, Check, Circle, StickyNote, Dumbbell, Activity, Heart, CalendarDays, RefreshCw
 } from "lucide-react";
 
 const STORAGE_KEY = "entries";
@@ -562,6 +562,41 @@ export default function Dashboard() {
 
   // Note popup: { title, text } of the note being viewed, or null.
   const [noteOpen, setNoteOpen] = useState(null);
+
+  // Pull-to-refresh: standalone (home-screen) mode has no browser chrome, so
+  // iOS won't give this for free — dragging down from the very top of the
+  // page reveals a spinner and reloads once past the threshold.
+  const [pullY, setPullY] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
+  const pullStartY = useRef(null);
+  const PULL_THRESHOLD = 64;
+  const PULL_MAX = 90;
+  function handlePullStart(e) {
+    if (refreshing) return;
+    if (window.scrollY <= 0) pullStartY.current = e.touches[0].clientY;
+  }
+  function handlePullMove(e) {
+    if (pullStartY.current == null || refreshing) return;
+    const delta = e.touches[0].clientY - pullStartY.current;
+    if (delta > 0 && window.scrollY <= 0) {
+      setPullY(Math.min(PULL_MAX, delta * 0.5));
+      e.preventDefault();
+    } else {
+      pullStartY.current = null;
+      setPullY(0);
+    }
+  }
+  function handlePullEnd() {
+    if (pullStartY.current == null) return;
+    pullStartY.current = null;
+    if (pullY >= PULL_THRESHOLD) {
+      setRefreshing(true);
+      setPullY(56);
+      setTimeout(() => window.location.reload(), 350);
+    } else {
+      setPullY(0);
+    }
+  }
 
   // Which weekly-log phase groups are collapsed, keyed by group id. Persisted
   // to storage so the expand/collapse state survives reloads.
@@ -1397,8 +1432,12 @@ export default function Dashboard() {
   });
 
   return (
-    <div className="dash">
+    <div className="dash" onTouchStart={handlePullStart} onTouchMove={handlePullMove} onTouchEnd={handlePullEnd}>
       <style>{BASE_STYLES}</style>
+
+      <div className="pull-refresh" style={{ height: pullY, opacity: Math.min(1, pullY / PULL_THRESHOLD) }}>
+        <RefreshCw size={20} className={refreshing ? "spin" : ""} style={refreshing ? undefined : { transform: `rotate(${pullY * 3}deg)` }} />
+      </div>
 
       {errMsg && <div className="banner-error"><AlertCircle size={13} /> {errMsg}</div>}
 
@@ -2235,6 +2274,7 @@ const BASE_STYLES = `
   }
   .dash * { box-sizing: border-box; }
   .dash-loading { display: flex; align-items: center; justify-content: center; gap: 10px; height: 240px; color: var(--text-dim); font-family: 'JetBrains Mono', monospace; font-size: 14.9px; }
+  .pull-refresh { display: flex; align-items: center; justify-content: center; overflow: hidden; color: var(--good); }
   .spin { animation: spin 0.9s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
 
