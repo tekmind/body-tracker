@@ -89,6 +89,23 @@ function formatMDY(date) {
   return `${date.getMonth() + 1}/${date.getDate()}/${String(date.getFullYear()).slice(2)}`;
 }
 
+// Conversions for <input type="date">, which speaks ISO (YYYY-MM-DD) — the
+// rest of the app stores dates as "M/D/YY" strings, so form state stays
+// unchanged and only the date-picker input itself converts at the edges.
+function mdyToISO(str) {
+  const d = parseDate(str);
+  if (!d) return "";
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${mm}-${dd}`;
+}
+function isoToMDY(iso) {
+  if (!iso) return "";
+  const [y, m, d] = iso.split("-").map(Number);
+  if (!y || !m || !d) return "";
+  return formatMDY(new Date(y, m - 1, d));
+}
+
 const DAY_MS = 24 * 3600 * 1000;
 
 function blockStartFor(date) {
@@ -454,16 +471,16 @@ function GoalForm({ form, setForm, onSave, onCancel, isEdit, error }) {
   return (
     <div className="entry-form">
       <div className="form-grid goal-grid">
-        <label>Effective date<input value={form.date} onChange={set("date")} placeholder="7/10/26" /></label>
+        <label>Effective date<input type="date" value={mdyToISO(form.date)} onChange={(e) => setForm({ ...form, date: isoToMDY(e.target.value) })} /></label>
         <label>Phase
           <select value={form.phase} onChange={set("phase")}>
             {GOAL_PHASES.map(p => <option key={p} value={p}>{PHASE_LABEL[p]}</option>)}
           </select>
         </label>
-        <label>Muscle rate (lb/wk)<input value={form.muscleRate} onChange={set("muscleRate")} placeholder="e.g. 0.25 or -0.1" /></label>
-        <label>Fat rate (lb/wk)<input value={form.fatRate} onChange={set("fatRate")} placeholder="e.g. -0.5 or 2.5" /></label>
-        <label>Step goal (avg/day)<input value={form.stepGoal} onChange={set("stepGoal")} placeholder="e.g. 10000" /></label>
-        <label>Calorie goal (kcal/day)<input value={form.calGoal} onChange={set("calGoal")} placeholder="e.g. 1600" /></label>
+        <label>Muscle rate (lb/wk)<input value={form.muscleRate} onChange={set("muscleRate")} placeholder="blank = same as last goal" /></label>
+        <label>Fat rate (lb/wk)<input value={form.fatRate} onChange={set("fatRate")} placeholder="blank = same as last goal" /></label>
+        <label>Step goal (avg/day)<input value={form.stepGoal} onChange={set("stepGoal")} placeholder="blank = same as last goal" /></label>
+        <label>Calorie goal (kcal/day)<input value={form.calGoal} onChange={set("calGoal")} placeholder="blank = same as last goal" /></label>
         <label>Duration (weeks)<input value={form.durationWeeks} onChange={set("durationWeeks")} placeholder="e.g. 12 — generates the weeks" /></label>
         <label className="notes-field">Notes<input value={form.notes} onChange={set("notes")} placeholder="optional — why the change" /></label>
       </div>
@@ -1167,13 +1184,24 @@ export default function Dashboard() {
     persist(entries.filter((_, i) => i !== idx));
   }
 
+  // Blank rate/goal fields inherit from the goal that was active for this
+  // phase right before this one, so you only have to type what's changing.
+  // (durationWeeks and notes aren't "carry forward" values, so they're left
+  // as typed — blank duration just means no roadmap weeks get generated.)
   function buildGoal(f) {
+    const others = goalEditIndex != null ? goals.filter((_, i) => i !== goalEditIndex) : goals;
+    const prev = activeGoalFor(others, f.phase, parseDate(f.date));
+    const inherit = (v, key, fallback) => {
+      const n = num(v);
+      if (n != null) return n;
+      return prev && prev[key] != null ? prev[key] : fallback;
+    };
     return {
       date: f.date, phase: f.phase,
-      muscleRate: num(f.muscleRate) ?? 0,
-      fatRate: num(f.fatRate) ?? 0,
-      stepGoal: num(f.stepGoal),
-      calGoal: num(f.calGoal),
+      muscleRate: inherit(f.muscleRate, "muscleRate", 0),
+      fatRate: inherit(f.fatRate, "fatRate", 0),
+      stepGoal: inherit(f.stepGoal, "stepGoal", null),
+      calGoal: inherit(f.calGoal, "calGoal", null),
       durationWeeks: num(f.durationWeeks),
       notes: f.notes || "",
     };
