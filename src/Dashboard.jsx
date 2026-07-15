@@ -57,7 +57,7 @@ const SEED = [
 ];
 
 const PHASE_COLOR = { Off: "#6b7280", Cut: "#5b8dee", Derailed: "#c4534a", Maintain: "#dba236", Gain: "#4caf7d" };
-const PHASE_LABEL = { Off: "OFF-SEASON", Cut: "CUT", Derailed: "DERAILED", Maintain: "MAINTAIN", Gain: "GAIN" };
+const PHASE_LABEL = { Off: "OFF", Cut: "CUT", Derailed: "DERAILED", Maintain: "MAINTAIN", Gain: "GAIN" };
 const PHASES = ["Off", "Cut", "Maintain", "Gain"];
 
 const PHASE_RENAMES = { Crashed: "Derailed", Derailed: "Cut" };
@@ -1446,10 +1446,9 @@ export default function Dashboard() {
           <h1 className="title">Body Tracker</h1>
           <div className="header-meta">
             <div className="header-meta-row">
-              <span>{latest.date}</span>
+              <span>{formatMDY(new Date())}</span>
               <span className="phase-pill" style={{ background: phaseColor(todayPhase) + "22", color: phaseColor(todayPhase) }}>{phaseLabel(todayPhase)}</span>
             </div>
-            <div className="header-sub">{ACTUAL.length} weeks tracked</div>
           </div>
         </div>
         <div className="hero-card">
@@ -2586,7 +2585,7 @@ const BASE_STYLES = `
     .tab-label-full { display: none; }
     .tab-label-short { display: inline; }
     div.dash .tab-bar { gap: 10px; }
-    div.dash .tab-btn { font-size: 13.5px; }
+    div.dash .tab-btn { font-size: 13.5px; flex: 1; justify-content: center; }
   }
 
   /* ---------- Clean brokerage-app styling ---------- */
