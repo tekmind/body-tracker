@@ -1918,7 +1918,7 @@ export default function Dashboard() {
           <div className="pacing-mini-row">
             {pacing.calGoal != null && pacing.recCal != null && (
               <span className="pacing-mini-item">
-                Calories: <strong className={pacing.calStatus === "over" ? "cell-bad" : pacing.calStatus === "ahead" ? "cell-good" : ""}>{pacing.recCal.toLocaleString()}/day</strong>
+                Calories: <strong className={pacing.calStatus === "over" || pacing.calStatus === "behind" ? "cell-bad" : "cell-good"}>{pacing.recCal.toLocaleString()}/day</strong>
               </span>
             )}
             {pacing.stepGoal != null && pacing.recSteps != null && (
@@ -2386,6 +2386,8 @@ const BASE_STYLES = `
   .pacing-mini-link:hover { text-decoration: underline; }
   .pacing-mini-row { display: flex; gap: 24px; margin-top: 8px; font-size: 14.9px; color: var(--text-dim); }
   .pacing-mini-item strong { font-family: 'Space Grotesk', sans-serif; color: var(--text); }
+  .pacing-mini-item strong.cell-good { color: var(--good); }
+  .pacing-mini-item strong.cell-bad { color: var(--bad); }
   .goal-card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 14px 15px; }
   .goal-card-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
   .goal-card-date { font-family: 'JetBrains Mono', monospace; font-size: 11.5px; color: var(--text-faint); }
