@@ -1073,8 +1073,15 @@ export default function Dashboard() {
     const calDaysRemaining = daysRemaining - (todayEntry && todayEntry.cal != null ? 1 : 0);
     const stepDaysRemaining = daysRemaining - (todayEntry && todayEntry.steps != null ? 1 : 0);
 
-    const recCal = calGoal != null && calDaysRemaining > 0 ? Math.round((calGoal * 7 - calLogged) / calDaysRemaining) : null;
-    const recSteps = stepGoal != null && stepDaysRemaining > 0 ? Math.round((stepGoal * 7 - stepsLogged) / stepDaysRemaining) : null;
+    // Weekly target is scaled to (logged days + remaining days), not a flat 7 —
+    // a day that was never logged (forgot to enter it, not zero intake) is
+    // excluded entirely rather than silently counted as 0 consumed, which
+    // used to inflate the remaining budget. Only days that were actually
+    // logged, plus days still ahead of you, factor into the pace.
+    const recCal = calGoal != null && calDaysRemaining > 0
+      ? Math.round((calGoal * (calDaysLogged + calDaysRemaining) - calLogged) / calDaysRemaining) : null;
+    const recSteps = stepGoal != null && stepDaysRemaining > 0
+      ? Math.round((stepGoal * (stepDaysLogged + stepDaysRemaining) - stepsLogged) / stepDaysRemaining) : null;
 
     const blockDays = Array.from({ length: 7 }, (_, i) => {
       const date = new Date(blockStart.getTime() + i * DAY_MS);
