@@ -5,8 +5,9 @@ import {
 } from "recharts";
 import {
   TrendingDown, TrendingUp, Minus, Flame, Footprints, Scale, Percent,
-  Plus, Pencil, Trash2, X, Save, Loader2, AlertCircle, Settings, Target, LayoutDashboard, AlertTriangle, Check, Circle, StickyNote, Dumbbell, Activity, Heart, CalendarDays, RefreshCw
+  Plus, Pencil, Trash2, X, Save, Loader2, AlertCircle, Settings, Target, LayoutDashboard, AlertTriangle, Check, Circle, StickyNote, Dumbbell, Activity, Heart, CalendarDays, RefreshCw, Watch
 } from "lucide-react";
+import { supabase } from "./supabaseClient.js";
 
 const STORAGE_KEY = "entries";
 const GOALS_KEY = "phase_goals";
@@ -501,6 +502,9 @@ function DailyEntryForm({ form, setForm, onSave, onCancel, isEdit, error }) {
         <label>Date<input value={form.date} onChange={set("date")} placeholder="7/10/26" /></label>
         <label>Calories<input value={form.cal} onChange={set("cal")} placeholder="kcal" /></label>
         <label>Steps<input value={form.steps} onChange={set("steps")} placeholder="steps" /></label>
+        <label>Weight<input value={form.weight} onChange={set("weight")} placeholder="lb" /></label>
+        <label>Fat Mass<input value={form.fatMass} onChange={set("fatMass")} placeholder="lb" /></label>
+        <label>Muscle Mass<input value={form.muscleMass} onChange={set("muscleMass")} placeholder="lb" /></label>
       </div>
       {error && <div className="form-error"><AlertCircle size={12} /> {error}</div>}
       <div className="form-actions">
@@ -532,9 +536,14 @@ export default function Dashboard() {
   const [goalErrMsg, setGoalErrMsg] = useState("");
 
   const [dailyEntries, setDailyEntries] = useState([]);
+  // Day rows written by the HealthKit->Supabase Shortcut. Kept separate from
+  // dailyEntries (manual) and merged at read time — see mergedDailyEntries —
+  // so a manual edit never gets silently clobbered by the next sync, and a
+  // sync never has to read-modify-write the daily_log blob.
+  const [healthkitDaily, setHealthkitDaily] = useState([]);
   const [dailyFormOpen, setDailyFormOpen] = useState(false);
   const [dailyEditIndex, setDailyEditIndex] = useState(null);
-  const [dailyForm, setDailyForm] = useState({ date: "", cal: "", steps: "" });
+  const [dailyForm, setDailyForm] = useState({ date: "", cal: "", steps: "", weight: "", fatMass: "", muscleMass: "" });
   const [dailySaving, setDailySaving] = useState(false);
   const [dailyErrMsg, setDailyErrMsg] = useState("");
 
@@ -705,6 +714,16 @@ export default function Dashboard() {
           setDailyEntries([]);
           setDailyErrMsg("Couldn’t reach storage for daily log. (Normal in the unpublished preview: data only loads in the published app.)");
         }
+      }
+      try {
+        const { data, error } = await supabase.from("daily_metrics").select("date,cal,steps,weight,fat_mass,muscle_mass");
+        if (error) throw error;
+        setHealthkitDaily((data || []).map(d => ({
+          date: d.date, cal: d.cal, steps: d.steps,
+          weight: d.weight, fatMass: d.fat_mass, muscleMass: d.muscle_mass,
+        })));
+      } catch (e) {
+        // Table may not exist yet if the Shortcut sync hasn't been set up — fine, just no synced days.
       }
       try {
         const res = await window.storage.get("collapsed_groups");
@@ -1033,6 +1052,16 @@ export default function Dashboard() {
     }).reverse();
   }, [habitLog]);
 
+  // Manual entries always win. A HealthKit-synced day only shows up if you
+  // haven't already logged that date by hand.
+  const mergedDailyEntries = useMemo(() => {
+    const manualDates = new Set(dailyEntries.map(d => d.date));
+    const synced = healthkitDaily
+      .filter(d => !manualDates.has(d.date))
+      .map(d => ({ date: d.date, cal: d.cal, steps: d.steps, weight: d.weight, fatMass: d.fatMass, muscleMass: d.muscleMass, _synced: true }));
+    return [...dailyEntries, ...synced];
+  }, [dailyEntries, healthkitDaily]);
+
   const pacing = useMemo(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -1058,7 +1087,7 @@ export default function Dashboard() {
     // toward the totals, and a metric already logged for today no longer
     // counts as a "remaining" day for that metric — the old version ignored
     // today's log entirely, which skewed the recommendation.
-    const daysSoFar = dailyEntries.filter(d => {
+    const daysSoFar = mergedDailyEntries.filter(d => {
       const dd = parseDate(d.date);
       return dd && dd >= blockStart && dd <= today;
     });
@@ -1086,7 +1115,7 @@ export default function Dashboard() {
     const blockDays = Array.from({ length: 7 }, (_, i) => {
       const date = new Date(blockStart.getTime() + i * DAY_MS);
       const dateStr = formatMDY(date);
-      const entry = dailyEntries.find(d => {
+      const entry = mergedDailyEntries.find(d => {
         const dd = parseDate(d.date);
         return dd && dd.getTime() === date.getTime();
       });
@@ -1106,7 +1135,7 @@ export default function Dashboard() {
       calStatus: recCal == null ? null : recCal < 0 ? "over" : recCal > calGoal ? "ahead" : "behind",
       stepStatus: recSteps == null ? null : recSteps <= stepGoal ? "ahead" : "behind",
     };
-  }, [entries, goals, dailyEntries]);
+  }, [entries, goals, mergedDailyEntries]);
 
   if (status === "loading") {
     return (
@@ -1298,18 +1327,27 @@ export default function Dashboard() {
   }
 
   function buildDaily(f) {
-    return { date: f.date, cal: num(f.cal), steps: num(f.steps) };
+    return {
+      date: f.date, cal: num(f.cal), steps: num(f.steps),
+      weight: num(f.weight), fatMass: num(f.fatMass), muscleMass: num(f.muscleMass),
+    };
   }
   function openAddDaily(presetDate) {
     const d = presetDate || formatMDY(new Date());
-    setDailyForm({ date: d, cal: "", steps: "" });
+    setDailyForm({ date: d, cal: "", steps: "", weight: "", fatMass: "", muscleMass: "" });
     setDailyEditIndex(null);
     setDailyFormOpen(true);
   }
   function openEditDaily(entry) {
+    // A synced-only row (not in dailyEntries) isn't found here, so idx is -1 —
+    // treat that as null (add), which upserts a new manual entry by date and
+    // makes it take precedence over the synced value from then on.
     const idx = dailyEntries.indexOf(entry);
-    setDailyForm({ date: entry.date, cal: entry.cal ?? "", steps: entry.steps ?? "" });
-    setDailyEditIndex(idx);
+    setDailyForm({
+      date: entry.date, cal: entry.cal ?? "", steps: entry.steps ?? "",
+      weight: entry.weight ?? "", fatMass: entry.fatMass ?? "", muscleMass: entry.muscleMass ?? "",
+    });
+    setDailyEditIndex(idx >= 0 ? idx : null);
     setDailyFormOpen(true);
   }
   function handleSaveDaily() {
@@ -1328,7 +1366,11 @@ export default function Dashboard() {
       });
       if (existingIdx >= 0) {
         persistDaily(dailyEntries.map((r, i) => (i === existingIdx
-          ? { ...r, cal: d.cal ?? r.cal, steps: d.steps ?? r.steps }
+          ? {
+              ...r,
+              cal: d.cal ?? r.cal, steps: d.steps ?? r.steps,
+              weight: d.weight ?? r.weight, fatMass: d.fatMass ?? r.fatMass, muscleMass: d.muscleMass ?? r.muscleMass,
+            }
           : r)));
       } else {
         persistDaily([...dailyEntries, d]);
@@ -1859,7 +1901,7 @@ export default function Dashboard() {
 
           <div className="panel">
             <div className="panel-head">
-              <div className="panel-title">Daily Log<span className="dim">{dailyEntries.length} days logged</span></div>
+              <div className="panel-title">Daily Log<span className="dim">{mergedDailyEntries.length} days logged</span></div>
               <button className="btn-primary sm" onClick={() => openAddDaily()} disabled={dailySaving}>
                 {dailySaving ? <Loader2 size={13} className="spin" /> : <Plus size={13} />} Log today
               </button>
@@ -1876,25 +1918,32 @@ export default function Dashboard() {
             <div className="table-wrap">
               <table>
                 <thead>
-                  <tr><th>Date</th><th>Calories</th><th>Steps</th><th></th></tr>
+                  <tr><th>Date</th><th>Calories</th><th>Steps</th><th>Weight</th><th>Fat Mass</th><th>Muscle Mass</th><th></th></tr>
                 </thead>
                 <tbody>
-                  {dailyEntries.length === 0 && (
-                    <tr><td colSpan={4} className="empty-row">No days logged yet — click "Log today" to start.</td></tr>
+                  {mergedDailyEntries.length === 0 && (
+                    <tr><td colSpan={7} className="empty-row">No days logged yet — click "Log today" to start.</td></tr>
                   )}
-                  {[...dailyEntries]
+                  {[...mergedDailyEntries]
                     .map((d, i) => ({ ...d, _i: i, _d: parseDate(d.date) }))
                     .sort((a, b) => (b._d?.getTime() ?? 0) - (a._d?.getTime() ?? 0))
                     .map((d) => {
                       const inBlock = d._d && d._d >= pacing.blockStart && d._d <= pacing.blockEnd;
                       return (
-                        <tr key={d._i}>
-                          <td>{d.date}{inBlock && <span className="this-block-tag">this block</span>}</td>
+                        <tr key={d._i} className={d._synced ? "row-synced" : ""}>
+                          <td>
+                            {d.date}
+                            {inBlock && <span className="this-block-tag">this block</span>}
+                            {d._synced && <span className="synced-tag" title="Synced from HealthKit"><Watch size={10} /> synced</span>}
+                          </td>
                           <td>{d.cal ?? "–"}</td>
                           <td>{d.steps ? d.steps.toLocaleString() : "–"}</td>
+                          <td>{d.weight ?? "–"}</td>
+                          <td>{d.fatMass ?? "–"}</td>
+                          <td>{d.muscleMass ?? "–"}</td>
                           <td className="row-actions">
-                            <button className="icon-btn" onClick={() => openEditDaily(dailyEntries[d._i])} title="Edit"><Pencil size={12} /></button>
-                            <DeleteBtn id={`daily-${d._i}`} onDelete={() => handleDeleteDaily(dailyEntries[d._i])} />
+                            <button className="icon-btn" onClick={() => openEditDaily(d)} title="Edit"><Pencil size={12} /></button>
+                            {!d._synced && <DeleteBtn id={`daily-${d._i}`} onDelete={() => handleDeleteDaily(d)} />}
                           </td>
                         </tr>
                       );
@@ -1916,16 +1965,22 @@ export default function Dashboard() {
             <span><Flame size={12} /> This week's pacing · {pacing.daysRemaining}d left</span>
           </div>
           <div className="pacing-mini-row">
-            {pacing.calGoal != null && pacing.recCal != null && (
-              <span className="pacing-mini-item">
-                Calories: <strong className={pacing.calStatus === "over" || pacing.calStatus === "behind" ? "cell-bad" : "cell-good"}>{pacing.recCal.toLocaleString()}/day</strong>
-              </span>
-            )}
-            {pacing.stepGoal != null && pacing.recSteps != null && (
-              <span className="pacing-mini-item">
-                Steps: <strong className={pacing.stepStatus === "behind" ? "cell-bad" : "cell-good"}>{pacing.recSteps.toLocaleString()}/day</strong>
-              </span>
-            )}
+            {pacing.calGoal != null && pacing.recCal != null && (() => {
+              const bad = pacing.calStatus === "over" || pacing.calStatus === "behind";
+              return (
+                <span className={"pacing-mini-item " + (bad ? "pacing-status-bad" : "pacing-status-good")}>
+                  Calories: <strong className={bad ? "cell-bad" : "cell-good"}>{pacing.recCal.toLocaleString()}/day</strong>
+                </span>
+              );
+            })()}
+            {pacing.stepGoal != null && pacing.recSteps != null && (() => {
+              const bad = pacing.stepStatus === "behind";
+              return (
+                <span className={"pacing-mini-item " + (bad ? "pacing-status-bad" : "pacing-status-good")}>
+                  Steps: <strong className={bad ? "cell-bad" : "cell-good"}>{pacing.recSteps.toLocaleString()}/day</strong>
+                </span>
+              );
+            })()}
           </div>
         </div>
       )}
@@ -2377,6 +2432,8 @@ const BASE_STYLES = `
   .check-day-label { text-transform: uppercase; }
   .block-checklist-hint { font-family: 'JetBrains Mono', monospace; font-size: 11.5px; color: var(--text-faint); margin-top: 10px; line-height: 1.5; }
   .this-block-tag { display: inline-block; margin-left: 8px; font-family: 'JetBrains Mono', monospace; font-size: 9.8px; letter-spacing: 0.05em; color: var(--cut); background: #5b8dee22; padding: 1px 6px; border-radius: 10px; vertical-align: middle; }
+  .synced-tag { display: inline-flex; align-items: center; gap: 3px; margin-left: 8px; font-family: 'JetBrains Mono', monospace; font-size: 9.8px; letter-spacing: 0.05em; color: var(--good); background: rgba(54, 135, 39, 0.13); padding: 1px 6px; border-radius: 10px; vertical-align: middle; }
+  .row-synced td { opacity: 0.85; }
   .daily-grid { grid-template-columns: repeat(3, 1fr) !important; }
 
   .pacing-mini { background: var(--panel); border-radius: 10px; padding: 10px 14px; margin-bottom: 14px; }
@@ -2388,6 +2445,8 @@ const BASE_STYLES = `
   .pacing-mini-item strong { font-family: 'Space Grotesk', sans-serif; color: var(--text); }
   .pacing-mini-item strong.cell-good { color: var(--good); }
   .pacing-mini-item strong.cell-bad { color: var(--bad); }
+  .pacing-mini-item.pacing-status-good { color: var(--good); }
+  .pacing-mini-item.pacing-status-bad { color: var(--bad); }
   .goal-card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 14px 15px; }
   .goal-card-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
   .goal-card-date { font-family: 'JetBrains Mono', monospace; font-size: 11.5px; color: var(--text-faint); }
