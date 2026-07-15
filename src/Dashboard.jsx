@@ -2318,7 +2318,7 @@ const BASE_STYLES = `
   .header-top { display: flex; justify-content: space-between; align-items: flex-start; width: 100%; gap: 12px; }
   .header-meta { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; margin-top: 4px; font-family: 'JetBrains Mono', monospace; font-size: 13.8px; color: var(--text-dim); }
   .header-meta-row { display: flex; align-items: center; gap: 8px; }
-  .header-meta .phase-pill { padding: 2px 9px; border-radius: 20px; font-size: 11.5px; letter-spacing: 0.08em; font-weight: 600; }
+  .header-meta .phase-pill { padding: 6px 14px; border-radius: 8px; font-size: 13px; letter-spacing: 0.08em; font-weight: 600; }
   .header-sub { font-size: 11.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-faint); }
 
   .hero-card { display: none; align-items: stretch; gap: 8px; margin-left: auto; background: var(--panel); border-radius: 16px; padding: 8px; }
@@ -2588,7 +2588,6 @@ const BASE_STYLES = `
     div.dash .tab-btn { font-size: 16px; flex: 1; justify-content: center; gap: 6px; min-width: 0; padding-left: 4px; padding-right: 4px; }
     div.dash .tab-btn svg { width: 18px; height: 18px; flex-shrink: 0; }
     div.dash .header-top { align-items: center; }
-    div.dash .header-meta .phase-pill { padding: 6px 14px; border-radius: 8px; font-size: 13px; }
     div.dash .stat-sub .cell-good, div.dash .stat-sub .cell-bad { white-space: nowrap; }
   }
 
