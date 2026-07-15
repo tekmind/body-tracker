@@ -1379,9 +1379,23 @@ export default function Dashboard() {
     setDailyFormOpen(false);
     setDailyEditIndex(null);
   }
+  // Match by date, not object identity — the table renders copies of the
+  // entries (merged/sorted), so indexOf against dailyEntries would miss.
   function handleDeleteDaily(entry) {
-    const idx = dailyEntries.indexOf(entry);
-    persistDaily(dailyEntries.filter((_, i) => i !== idx));
+    persistDaily(dailyEntries.filter(r => r.date !== entry.date));
+  }
+  // Synced rows live in the daily_metrics table (written by the HealthKit
+  // Shortcut), not the daily_log blob — deleting one removes the DB row.
+  // Note: a sync run later the same day can legitimately re-create it.
+  async function handleDeleteSynced(entry) {
+    try {
+      const { error } = await supabase.from("daily_metrics").delete().eq("date", entry.date);
+      if (error) throw error;
+      setHealthkitDaily(prev => prev.filter(r => r.date !== entry.date));
+      setDailyErrMsg("");
+    } catch (e) {
+      setDailyErrMsg("Couldn't delete that synced day — try again.");
+    }
   }
 
   // Delete buttons arm on the first click (turn red, "Sure?") and only delete
@@ -1943,7 +1957,7 @@ export default function Dashboard() {
                           <td>{d.muscleMass ?? "–"}</td>
                           <td className="row-actions">
                             <button className="icon-btn" onClick={() => openEditDaily(d)} title="Edit"><Pencil size={12} /></button>
-                            {!d._synced && <DeleteBtn id={`daily-${d._i}`} onDelete={() => handleDeleteDaily(d)} />}
+                            <DeleteBtn id={`daily-${d._i}`} onDelete={() => (d._synced ? handleDeleteSynced(d) : handleDeleteDaily(d))} />
                           </td>
                         </tr>
                       );
