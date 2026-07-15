@@ -1436,7 +1436,7 @@ export default function Dashboard() {
           <Dumbbell size={13} /> Habits
         </button>
         <button className={"tab-btn " + (tab === "settings" ? "active" : "")} onClick={() => setTab("settings")}>
-          <Settings size={13} /> Goal Settings
+          <Settings size={13} /> <span className="tab-label-full">Goal Settings</span><span className="tab-label-short">Goals</span>
         </button>
       </div>
 
@@ -1869,7 +1869,6 @@ export default function Dashboard() {
         <div className="pacing-mini">
           <div className="pacing-mini-head">
             <span><Flame size={12} /> This week's pacing · {pacing.daysRemaining}d left</span>
-            <button className="pacing-mini-link" onClick={() => setTab("daily")}>View Daily Log →</button>
           </div>
           <div className="pacing-mini-row">
             {pacing.calGoal != null && pacing.recCal != null && (
@@ -1942,9 +1941,9 @@ export default function Dashboard() {
           </ComposedChart>
         </ResponsiveContainer>
         <ChartLegend items={[
-          { label: "Weight (actual)", color: chartTheme.ink, swatch: "line" },
+          { label: "Weight (actual)", color: chartTheme.ink, swatch: "box" },
           { label: "Weight (target)", color: "#5b8dee", swatch: "dash" },
-          { label: "BF% (actual)", color: "#c4534a", swatch: "line" },
+          { label: "BF% (actual)", color: "#c4534a", swatch: "box" },
           { label: "BF% (target)", color: "#dba236", swatch: "dash" },
           ...(derailedSegments.length > 0 ? [{ label: "derailed weeks", swatch: "shade" }] : []),
         ]} />
@@ -2024,9 +2023,9 @@ export default function Dashboard() {
           </ComposedChart>
         </ResponsiveContainer>
         <ChartLegend items={[
-          { label: "Muscle (actual)", color: "#4caf7d", swatch: "line" },
+          { label: "Muscle (actual)", color: "#4caf7d", swatch: "box" },
           { label: "Muscle (target)", color: "#dba236", swatch: "dash" },
-          { label: "Fat (actual)", color: "#c4534a", swatch: "line" },
+          { label: "Fat (actual)", color: "#c4534a", swatch: "box" },
           { label: "Fat (target)", color: "#5b8dee", swatch: "dash" },
           ...(derailedSegments.length > 0 ? [{ label: "derailed weeks", swatch: "shade" }] : []),
         ]} />
@@ -2283,7 +2282,7 @@ const BASE_STYLES = `
   .header-meta .phase-pill { padding: 2px 9px; border-radius: 20px; font-size: 11.5px; letter-spacing: 0.08em; font-weight: 600; }
   .header-sub { font-size: 11.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-faint); }
 
-  .hero-card { display: none; align-items: stretch; gap: 8px; margin-left: auto; background: var(--panel); border: 1px solid var(--border); border-radius: 16px; padding: 8px; }
+  .hero-card { display: none; align-items: stretch; gap: 8px; margin-left: auto; background: var(--panel); border-radius: 16px; padding: 8px; }
   .hero-w { display: flex; flex-direction: column; align-items: flex-end; justify-content: center; padding: 6px 10px; }
   .hero-bf { display: flex; flex-direction: column; align-items: flex-end; justify-content: center; padding: 8px 14px; border-radius: 11px; background: var(--panel-2); }
   .hero-bf.good { background: rgba(76, 175, 125, 0.16); }
@@ -2299,6 +2298,7 @@ const BASE_STYLES = `
   .tab-btn { display: inline-flex; align-items: center; gap: 6px; background: transparent; border: 1px solid var(--border); color: var(--text-dim); border-radius: 8px; padding: 7px 13px; font-family: 'JetBrains Mono', monospace; font-size: 12.6px; letter-spacing: 0.03em; cursor: pointer; }
   .tab-btn.active { background: var(--panel); color: var(--text); border-color: var(--text-dim); }
   .tab-btn:hover { color: var(--text); }
+  .tab-label-short { display: none; }
 
   .goal-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 14px; }
   .settings-note { font-family: 'JetBrains Mono', monospace; font-size: 12.6px; color: var(--text-faint); margin-bottom: 14px; line-height: 1.5; }
@@ -2333,7 +2333,7 @@ const BASE_STYLES = `
   .this-block-tag { display: inline-block; margin-left: 8px; font-family: 'JetBrains Mono', monospace; font-size: 9.8px; letter-spacing: 0.05em; color: var(--cut); background: #5b8dee22; padding: 1px 6px; border-radius: 10px; vertical-align: middle; }
   .daily-grid { grid-template-columns: repeat(3, 1fr) !important; }
 
-  .pacing-mini { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; margin-bottom: 14px; }
+  .pacing-mini { background: var(--panel); border-radius: 10px; padding: 10px 14px; margin-bottom: 14px; }
   .pacing-mini-head { display: flex; justify-content: space-between; align-items: center; font-family: 'JetBrains Mono', monospace; font-size: 12.1px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.04em; }
   .pacing-mini-head span { display: flex; align-items: center; gap: 6px; }
   .pacing-mini-link { background: transparent; border: none; color: var(--cut); font-family: 'JetBrains Mono', monospace; font-size: 12.1px; cursor: pointer; text-transform: none; letter-spacing: 0; }
@@ -2372,7 +2372,7 @@ const BASE_STYLES = `
   .tl-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
 
   .stat-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 14px; margin-bottom: 14px; }
-  .stat-card { position: relative; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 14px 15px; }
+  .stat-card { position: relative; background: var(--panel); border-radius: 12px; padding: 14px 15px; }
   .stat-alert-badge { position: absolute; top: -7px; right: 10px; display: inline-flex; align-items: center; gap: 3px; background: var(--bad); color: #1a0f0f; font-family: 'JetBrains Mono', monospace; font-size: 10.3px; font-weight: 700; letter-spacing: 0.03em; padding: 2px 6px; border-radius: 20px; box-shadow: 0 0 0 3px var(--bg); }
   .stat-top { display: flex; align-items: center; gap: 7px; margin-bottom: 10px; }
   .stat-icon { width: 22px; height: 22px; border-radius: 6px; display: flex; align-items: center; justify-content: center; }
@@ -2382,7 +2382,7 @@ const BASE_STYLES = `
   .stat-sub { font-family: 'JetBrains Mono', monospace; font-size: 12.6px; color: var(--text-dim); margin-top: 6px; display: flex; align-items: center; gap: 4px; }
   .stat-sub.down { color: var(--cut); } .stat-sub.up { color: var(--gain); } .stat-sub.flat { color: var(--text-dim); }
 
-  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 18px 18px 8px; margin-bottom: 14px; }
+  .panel { background: var(--panel); border-radius: 12px; padding: 18px 18px 8px; margin-bottom: 14px; }
   .chart-legend-note { display: flex; align-items: center; gap: 6px; font-family: 'JetBrains Mono', monospace; font-size: 11.5px; color: var(--text-faint); padding: 0 0 12px 4px; }
   .derailed-swatch { width: 10px; height: 10px; border-radius: 2px; background: var(--bad); opacity: 0.35; display: inline-block; }
 
@@ -2524,6 +2524,7 @@ const BASE_STYLES = `
     .hero-card { display: flex; }
     .stat-grid { grid-template-columns: repeat(3, 1fr); }
     .row-2 { grid-template-columns: 1fr; }
+    .row-2 .panel:not(:last-child) { margin-bottom: 0; }
     .form-grid { grid-template-columns: repeat(2, 1fr); }
     .notes-field { grid-column: span 2; }
     .goal-cards { grid-template-columns: 1fr; }
@@ -2533,14 +2534,21 @@ const BASE_STYLES = `
   }
 
   @media (max-width: 640px) {
-    .dash { padding: 12px 10px 28px; border-radius: 0; }
+    .dash { padding: 12px 10px 28px; padding-top: calc(12px + env(safe-area-inset-top)); border-radius: 0; }
     .header { margin-bottom: 12px; gap: 8px; }
     .title { font-size: 32.2px; }
     .hero-card { width: 100%; }
     .hero-w, .hero-bf { flex: 1; align-items: center; }
     .panel { padding: 14px 12px 6px; }
     .banner-alert { padding: 14px 12px; min-height: 0; font-size: 15.5px; }
+    .banner-alert, .banner-ontrack { position: relative; padding-right: 54px; }
+    .banner-alert .notif-weeks, .banner-ontrack .notif-weeks { position: absolute; top: 12px; right: 12px; }
     .stat-value { font-size: 29.9px; }
+    .stat-grid { grid-template-columns: repeat(2, 1fr); }
+    .tab-label-full { display: none; }
+    .tab-label-short { display: inline; }
+    div.dash .tab-bar { gap: 10px; }
+    div.dash .tab-btn { font-size: 13.5px; }
   }
 
   /* ---------- Clean brokerage-app styling ---------- */
