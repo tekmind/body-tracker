@@ -1465,7 +1465,7 @@ export default function Dashboard() {
 
       <div className="tab-bar">
         <button className={"tab-btn " + (tab === "dashboard" ? "active" : "")} onClick={() => setTab("dashboard")}>
-          <LayoutDashboard size={13} /> Dashboard
+          <LayoutDashboard size={13} /> <span className="tab-label-full">Dashboard</span><span className="tab-label-short">Home</span>
         </button>
         <button className={"tab-btn " + (tab === "daily" ? "active" : "")} onClick={() => setTab("daily")}>
           <Flame size={13} /> Daily
@@ -2584,8 +2584,12 @@ const BASE_STYLES = `
     .stat-grid { grid-template-columns: repeat(2, 1fr); }
     .tab-label-full { display: none; }
     .tab-label-short { display: inline; }
-    div.dash .tab-bar { gap: 10px; }
-    div.dash .tab-btn { font-size: 13.5px; flex: 1; justify-content: center; }
+    div.dash .tab-bar { gap: 8px; }
+    div.dash .tab-btn { font-size: 16px; flex: 1; justify-content: center; gap: 6px; min-width: 0; padding-left: 4px; padding-right: 4px; }
+    div.dash .tab-btn svg { width: 18px; height: 18px; flex-shrink: 0; }
+    div.dash .header-top { align-items: center; }
+    div.dash .header-meta .phase-pill { padding: 6px 14px; border-radius: 8px; font-size: 13px; }
+    div.dash .stat-sub .cell-good, div.dash .stat-sub .cell-bad { white-space: nowrap; }
   }
 
   /* ---------- Clean brokerage-app styling ---------- */
