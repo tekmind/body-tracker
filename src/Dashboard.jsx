@@ -2561,7 +2561,6 @@ const BASE_STYLES = `
   .form-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
 
   @media (max-width: 860px) {
-    .hero-card { display: flex; }
     .stat-grid { grid-template-columns: repeat(3, 1fr); }
     .row-2 { grid-template-columns: 1fr; }
     .row-2 .panel:not(:last-child) { margin-bottom: 0; }
@@ -2577,12 +2576,11 @@ const BASE_STYLES = `
     .dash { padding: 12px 10px 28px; padding-top: calc(12px + env(safe-area-inset-top)); border-radius: 0; }
     .header { margin-bottom: 12px; gap: 8px; }
     .title { font-size: 32.2px; }
-    .hero-card { width: 100%; }
-    .hero-w, .hero-bf { flex: 1; align-items: center; }
     .panel { padding: 14px 12px 6px; }
     .banner-alert { padding: 14px 12px; min-height: 0; font-size: 15.5px; }
     .banner-alert, .banner-ontrack { position: relative; padding-right: 54px; }
     .banner-alert .notif-weeks, .banner-ontrack .notif-weeks { position: absolute; top: 12px; right: 12px; }
+    .notif-row .notif-weeks { margin-left: auto; }
     .stat-value { font-size: 29.9px; }
     .stat-grid { grid-template-columns: repeat(2, 1fr); }
     .tab-label-full { display: none; }
