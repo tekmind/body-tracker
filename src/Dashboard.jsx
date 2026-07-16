@@ -547,6 +547,10 @@ export default function Dashboard() {
   const [dailySaving, setDailySaving] = useState(false);
   const [dailyErrMsg, setDailyErrMsg] = useState("");
 
+  const [withingsSyncing, setWithingsSyncing] = useState(false);
+  const [withingsMsg, setWithingsMsg] = useState("");
+  const [withingsBanner, setWithingsBanner] = useState("");
+
   const [habitLog, setHabitLog] = useState([]);
   const [habitTargets, setHabitTargets] = useState(DEFAULT_HABIT_TARGETS);
   const persistHabits = useCallback(async (next) => {
@@ -554,6 +558,19 @@ export default function Dashboard() {
   }, []);
   const persistHabitTargets = useCallback(async (next) => {
     try { await window.storage.set(HABITS_TARGETS_KEY, JSON.stringify(next)); setHabitTargets(next); } catch (e) {}
+  }, []);
+
+  const fetchHealthkitDaily = useCallback(async () => {
+    try {
+      const { data, error } = await supabase.from("daily_metrics").select("date,cal,steps,weight,fat_mass,muscle_mass");
+      if (error) throw error;
+      setHealthkitDaily((data || []).map(d => ({
+        date: d.date, cal: d.cal, steps: d.steps,
+        weight: d.weight, fatMass: d.fat_mass, muscleMass: d.muscle_mass,
+      })));
+    } catch (e) {
+      // Table may not exist yet if the Shortcut sync hasn't been set up — fine, just no synced days.
+    }
   }, []);
 
   const [formErr, setFormErr] = useState("");
@@ -715,16 +732,7 @@ export default function Dashboard() {
           setDailyErrMsg("Couldn’t reach storage for daily log. (Normal in the unpublished preview: data only loads in the published app.)");
         }
       }
-      try {
-        const { data, error } = await supabase.from("daily_metrics").select("date,cal,steps,weight,fat_mass,muscle_mass");
-        if (error) throw error;
-        setHealthkitDaily((data || []).map(d => ({
-          date: d.date, cal: d.cal, steps: d.steps,
-          weight: d.weight, fatMass: d.fat_mass, muscleMass: d.muscle_mass,
-        })));
-      } catch (e) {
-        // Table may not exist yet if the Shortcut sync hasn't been set up — fine, just no synced days.
-      }
+      await fetchHealthkitDaily();
       try {
         const res = await window.storage.get("collapsed_groups");
         const parsed = JSON.parse(res.value);
@@ -744,6 +752,41 @@ export default function Dashboard() {
       } catch (e) { /* use defaults */ }
     })();
   }, []);
+
+  // One-time banner after the Withings OAuth callback redirects back here.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const withings = params.get("withings");
+    if (!withings) return;
+    setWithingsBanner(
+      withings === "connected"
+        ? "Withings account linked."
+        : "Withings connection failed — check the Vercel env vars and try /api/withings-auth again."
+    );
+    params.delete("withings");
+    const rest = params.toString();
+    window.history.replaceState({}, "", window.location.pathname + (rest ? `?${rest}` : ""));
+  }, []);
+
+  async function handleSyncWithings() {
+    setWithingsSyncing(true);
+    setWithingsMsg("");
+    try {
+      const res = await fetch("/api/withings-sync", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Sync failed.");
+      if (data.message) {
+        setWithingsMsg(data.message);
+      } else {
+        await fetchHealthkitDaily();
+        setWithingsMsg(`Synced ${data.date} — ${data.weight ?? "–"} lb`);
+      }
+    } catch (e) {
+      setWithingsMsg(e.message || "Sync failed.");
+    } finally {
+      setWithingsSyncing(false);
+    }
+  }
 
   // Build the full schedule: real logged weeks + auto-generated Friday weeks
   // from each goal's duration. Real weeks always win; generation only fills
@@ -1505,6 +1548,7 @@ export default function Dashboard() {
       </div>
 
       {errMsg && <div className="banner-error"><AlertCircle size={13} /> {errMsg}</div>}
+      {withingsBanner && <div className="banner-error"><AlertCircle size={13} /> {withingsBanner}</div>}
 
       <div className="header">
         <div className="header-top">
@@ -1918,12 +1962,16 @@ export default function Dashboard() {
           <div className="panel">
             <div className="panel-head">
               <div className="panel-title">Daily Log<span className="dim">{mergedDailyEntries.length} days logged</span></div>
+              <button className="btn-primary sm" onClick={handleSyncWithings} disabled={withingsSyncing}>
+                <RefreshCw size={13} className={withingsSyncing ? "spin" : ""} /> Sync Withings
+              </button>
               <button className="btn-primary sm" onClick={() => openAddDaily()} disabled={dailySaving}>
                 {dailySaving ? <Loader2 size={13} className="spin" /> : <Plus size={13} />} Log today
               </button>
             </div>
 
             {dailyErrMsg && <div className="banner-error"><AlertCircle size={13} /> {dailyErrMsg}</div>}
+            {withingsMsg && <div className="banner-error"><AlertCircle size={13} /> {withingsMsg}</div>}
 
             {dailyFormOpen && (
               <DailyEntryForm form={dailyForm} setForm={setDailyForm} isEdit={dailyEditIndex != null} error={dailyFormErr}
