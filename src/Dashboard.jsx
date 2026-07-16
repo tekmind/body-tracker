@@ -14,6 +14,7 @@ const GOALS_KEY = "phase_goals";
 const DAILY_KEY = "daily_log";
 const HABITS_KEY = "habits_log";
 const HABITS_TARGETS_KEY = "habits_targets";
+const TAB_ORDER = ["dashboard", "daily", "habits", "settings"];
 const DEFAULT_HABIT_TARGETS = { walking: 5, conditioning: 3, weightLifting: 3, cardio: 3 };
 
 const HABITS = [
@@ -626,6 +627,42 @@ export default function Dashboard() {
       setPullY(0);
     }
   }
+
+  // Swipe left/right anywhere to move between tabs (mobile). Ignored when the
+  // touch starts inside a horizontally-scrollable table (.table-wrap), so
+  // scrolling a wide table sideways still works instead of changing tabs.
+  const swipeStart = useRef(null);
+  const SWIPE_THRESHOLD = 60;
+  function handleSwipeStart(e) {
+    const scrollable = e.target.closest && e.target.closest(".table-wrap");
+    if (scrollable && scrollable.scrollWidth > scrollable.clientWidth) {
+      swipeStart.current = null;
+      return;
+    }
+    const t = e.touches[0];
+    swipeStart.current = { x: t.clientX, y: t.clientY };
+  }
+  function handleSwipeMove(e) {
+    if (!swipeStart.current) return;
+    const t = e.touches[0];
+    const dx = t.clientX - swipeStart.current.x;
+    const dy = t.clientY - swipeStart.current.y;
+    if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 10) e.preventDefault();
+  }
+  function handleSwipeEnd(e) {
+    if (!swipeStart.current) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - swipeStart.current.x;
+    const dy = t.clientY - swipeStart.current.y;
+    swipeStart.current = null;
+    if (Math.abs(dx) < SWIPE_THRESHOLD || Math.abs(dx) < Math.abs(dy)) return;
+    const idx = TAB_ORDER.indexOf(tab);
+    if (dx < 0 && idx < TAB_ORDER.length - 1) setTab(TAB_ORDER[idx + 1]);
+    else if (dx > 0 && idx > 0) setTab(TAB_ORDER[idx - 1]);
+  }
+  function handleTouchStart(e) { handlePullStart(e); handleSwipeStart(e); }
+  function handleTouchMove(e) { handlePullMove(e); handleSwipeMove(e); }
+  function handleTouchEnd(e) { handlePullEnd(); handleSwipeEnd(e); }
 
   // Which weekly-log phase groups are collapsed, keyed by group id. Persisted
   // to storage so the expand/collapse state survives reloads.
@@ -1543,7 +1580,7 @@ export default function Dashboard() {
   });
 
   return (
-    <div className="dash" onTouchStart={handlePullStart} onTouchMove={handlePullMove} onTouchEnd={handlePullEnd}>
+    <div className="dash" onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}>
       <style>{BASE_STYLES}</style>
 
       <div className="pull-refresh" style={{ height: pullY, opacity: Math.min(1, pullY / PULL_THRESHOLD) }}>
