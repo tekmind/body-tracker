@@ -526,7 +526,10 @@ export default function Dashboard() {
   const [editIndex, setEditIndex] = useState(null);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
-  const [tab, setTab] = useState("dashboard"); // dashboard | settings
+  // Persisted in localStorage (not Supabase) so the last-open tab survives a
+  // refresh without a network round-trip or a flash of the wrong tab.
+  const [tab, setTab] = useState(() => localStorage.getItem("bt_tab") || "dashboard"); // dashboard | daily | habits | settings
+  useEffect(() => { localStorage.setItem("bt_tab", tab); }, [tab]);
 
   const [goals, setGoals] = useState([]);
   const [goalFormOpen, setGoalFormOpen] = useState(false);
