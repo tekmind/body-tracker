@@ -1083,15 +1083,17 @@ export default function Dashboard() {
     const calGoal = goal?.calGoal ?? null;
     const stepGoal = goal?.stepGoal ?? null;
 
-    // Block days up to and including today. Today's log (if it exists) counts
-    // toward the totals, and a metric already logged for today no longer
-    // counts as a "remaining" day for that metric — the old version ignored
-    // today's log entirely, which skewed the recommendation.
+    // Today is never counted as "logged," no matter what's in the database
+    // for it — only days strictly before today count toward what's been
+    // logged so far, and today always counts as a remaining day to plan
+    // for. This matters now that automated syncs can write partial or
+    // zero values for today at any hour (e.g. before any meals are
+    // logged) — those shouldn't get treated as "today's already
+    // accounted for" and drop out of the remaining-days math.
     const daysSoFar = mergedDailyEntries.filter(d => {
       const dd = parseDate(d.date);
-      return dd && dd >= blockStart && dd <= today;
+      return dd && dd >= blockStart && dd < today;
     });
-    const todayEntry = daysSoFar.find(d => parseDate(d.date)?.getTime() === today.getTime());
     const daysRemaining = daysBetween(today, blockEnd) + 1; // calendar days left, includes today
 
     const calLogged = daysSoFar.filter(d => d.cal != null).reduce((a, d) => a + d.cal, 0);
@@ -1099,8 +1101,8 @@ export default function Dashboard() {
     const stepsLogged = daysSoFar.filter(d => d.steps != null).reduce((a, d) => a + d.steps, 0);
     const stepDaysLogged = daysSoFar.filter(d => d.steps != null).length;
 
-    const calDaysRemaining = daysRemaining - (todayEntry && todayEntry.cal != null ? 1 : 0);
-    const stepDaysRemaining = daysRemaining - (todayEntry && todayEntry.steps != null ? 1 : 0);
+    const calDaysRemaining = daysRemaining;
+    const stepDaysRemaining = daysRemaining;
 
     // Weekly target is scaled to (logged days + remaining days), not a flat 7 —
     // a day that was never logged (forgot to enter it, not zero intake) is
