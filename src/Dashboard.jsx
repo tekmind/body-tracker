@@ -2869,6 +2869,13 @@ const BASE_STYLES = `
   /* Hides Recharts' hover tooltip whenever no finger is actively touching
      the screen (see the touchstart/touchend listeners in Dashboard). */
   body.touch-tooltip-hidden .recharts-tooltip-wrapper { display: none !important; }
+  /* A long-press-to-see-the-tooltip gesture reads as a long-press-to-select
+     to the OS, popping up the native text-selection/copy callout mid-tap.
+     Charts have no selectable text worth keeping, so opt them out. */
+  .recharts-wrapper, .recharts-wrapper * {
+    -webkit-user-select: none; user-select: none;
+    -webkit-touch-callout: none;
+  }
   .chart-legend-note { display: flex; align-items: center; gap: 6px; font-family: 'JetBrains Mono', monospace; font-size: 11.5px; color: var(--text-faint); padding: 0 0 12px 4px; }
   .derailed-swatch { width: 10px; height: 10px; border-radius: 2px; background: var(--bad); opacity: 0.35; display: inline-block; }
 
@@ -2881,6 +2888,8 @@ const BASE_STYLES = `
   .panel-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; gap: 10px; flex-wrap: wrap; }
   .panel-head-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
   .range-targets-group { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .range-targets-group .series-toggle { order: 1; }
+  .range-targets-group .toggle-group:not(.series-toggle) { order: 2; }
   .panel-head-actions-stack .range-targets-group { order: 2; }
   .panel-head-actions-stack > .series-toggle { order: 1; }
   .panel-title { font-family: 'Space Grotesk', sans-serif; font-size: 16.1px; font-weight: 600; }
@@ -3046,6 +3055,8 @@ const BASE_STYLES = `
     .panel-head-actions-stack { flex-direction: column; align-items: flex-start; gap: 6px; }
     .panel-head-actions-stack .range-targets-group { order: 1; }
     .panel-head-actions-stack > .series-toggle { order: 2; }
+    .range-targets-group .toggle-group:not(.series-toggle) { order: 1; }
+    .range-targets-group .series-toggle { order: 2; }
   }
 
   /* ---------- Clean brokerage-app styling ---------- */
