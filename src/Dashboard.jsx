@@ -327,6 +327,18 @@ function missStreak(actualRows, actualKey, targetKey, isMiss) {
   return streak;
 }
 
+function mostRecentWeeklyRow(rows, key) {
+  for (let i = rows.length - 1; i >= 0; i--) {
+    if (rows[i][key] != null) return rows[i];
+  }
+  return null;
+}
+
+function weekdayDateLabel(d) {
+  if (!d) return null;
+  return `${d.toLocaleDateString(undefined, { weekday: "short" })} ${d.getMonth() + 1}/${d.getDate()}`;
+}
+
 function mkBadge(weeks, level) { return weeks > 0 ? { weeks, level } : null; }
 
 function formatDailyTag(label) {
@@ -1054,13 +1066,72 @@ export default function Dashboard() {
     };
   }, [alertLevel, ACTUAL, goals]);
 
+  // Manual entries always win. A HealthKit-synced day only shows up if you
+  // haven't already logged that date by hand.
+  const mergedDailyEntries = useMemo(() => {
+    const manualDates = new Set(dailyEntries.map(d => d.date));
+    const synced = healthkitDaily
+      .filter(d => !manualDates.has(d.date))
+      .map(d => ({ date: d.date, cal: d.cal, steps: d.steps, weight: d.weight, fatMass: d.fatMass, muscleMass: d.muscleMass, _synced: true }));
+    return [...dailyEntries, ...synced];
+  }, [dailyEntries, healthkitDaily]);
+
+  // Calories/Steps stat cards use a daily-log weekly average as their main
+  // number. "This week" is the same Fri–Thu block the Daily tab's pacing
+  // uses. Today is always excluded (it's still in progress), and days with
+  // no logged value simply don't count toward the average — they don't
+  // drag it down as zeros. If this week has no data yet (e.g. it just
+  // started), each metric independently falls back to its own most
+  // recently completed week with data, so the card keeps showing that
+  // average instead of resetting until new entries come in.
+  const weekAvgStats = useMemo(() => {
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const todayStr = formatMDY(today);
+    const sorted = mergedDailyEntries
+      .map(d => ({ ...d, _d: parseDate(d.date) }))
+      .filter(d => d._d)
+      .sort((a, b) => b._d.getTime() - a._d.getTime());
+
+    function avgForMetric(key) {
+      const mostRecent = sorted.find(d => d.date !== todayStr && d[key] != null);
+      if (!mostRecent) return null;
+      const blockStart = blockStartFor(mostRecent._d);
+      const blockEnd = blockEndFor(blockStart);
+      const vals = sorted
+        .filter(d => d.date !== todayStr && d._d >= blockStart && d._d <= blockEnd)
+        .map(d => d[key])
+        .filter(v => v != null);
+      return vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) : null;
+    }
+
+    return { cal: avgForMetric("cal"), steps: avgForMetric("steps") };
+  }, [mergedDailyEntries]);
+
+  // Calories/steps stopped being logged weekly once the daily log took
+  // over, so the newest weekly row's aCal/steps are routinely still blank
+  // right after a new week starts. Patch just that latest row with this
+  // week's daily-log average (when available) so streaks and alerts below
+  // don't reset to zero just because the weekly actual hasn't been typed in.
+  const effectiveActual = useMemo(() => {
+    if (ACTUAL.length === 0) return ACTUAL;
+    const lastIdx = ACTUAL.length - 1;
+    const last = ACTUAL[lastIdx];
+    const needsCal = last.aCal == null && weekAvgStats.cal != null;
+    const needsSteps = last.steps == null && weekAvgStats.steps != null;
+    if (!needsCal && !needsSteps) return ACTUAL;
+    const patched = { ...last };
+    if (needsCal) patched.aCal = weekAvgStats.cal;
+    if (needsSteps) patched.steps = weekAvgStats.steps;
+    return [...ACTUAL.slice(0, lastIdx), patched];
+  }, [ACTUAL, weekAvgStats]);
+
   // Metric watchlist: flags a tracked metric that's off target on the latest
   // logged week, and counts how many consecutive weeks it's been off. Severity
   // escalates from a warning (orange) to an alert (red) past two weeks running.
   // Adding a metric later is just another entry in `rules`. (Body fat has its
   // own streak-based banner above, so it's not duplicated here.)
   const notifications = useMemo(() => {
-    if (ACTUAL.length === 0) return [];
+    if (effectiveActual.length === 0) return [];
     const rules = [
       { id: "cal", metric: "Calories", isOff: r => r.aCal != null && r.tCal != null && r.aCal - r.tCal > 100,
         word: "over target",
@@ -1074,12 +1145,12 @@ export default function Dashboard() {
     ];
     const out = [];
     rules.forEach(rule => {
-      const last = ACTUAL[ACTUAL.length - 1];
+      const last = effectiveActual[effectiveActual.length - 1];
       if (!rule.isOff(last)) return; // only flag if off on the most recent week
       // Count consecutive off-target weeks ending at the latest.
       let streak = 0;
-      for (let i = ACTUAL.length - 1; i >= 0; i--) {
-        if (rule.isOff(ACTUAL[i])) streak++; else break;
+      for (let i = effectiveActual.length - 1; i >= 0; i--) {
+        if (rule.isOff(effectiveActual[i])) streak++; else break;
       }
       const severity = streak >= 3 ? "alert" : "warn";
       out.push({
@@ -1088,13 +1159,15 @@ export default function Dashboard() {
       });
     });
     return out;
-  }, [ACTUAL]);
+  }, [effectiveActual]);
 
   // Per-metric streaks for the stat-card badges — 1-2 weeks off target is a
   // "warn" badge, 3+ is "bad".
   const muscleStreak = useMemo(() => missStreak(ACTUAL, "aM", "tM", (a, t) => a < t), [ACTUAL]);
-  const calStreak = useMemo(() => missStreak(ACTUAL, "aCal", "tCal", (a, t) => a > t), [ACTUAL]);
-  const stepsStreak = useMemo(() => missStreak(ACTUAL, "steps", "tSteps", (a, t) => a < t), [ACTUAL]);
+  // Positive counterpart for muscle — consecutive weeks at or above target.
+  const muscleOnTrackStreak = useMemo(() => missStreak(ACTUAL, "aM", "tM", (a, t) => a >= t), [ACTUAL]);
+  const calStreak = useMemo(() => missStreak(effectiveActual, "aCal", "tCal", (a, t) => a > t), [effectiveActual]);
+  const stepsStreak = useMemo(() => missStreak(effectiveActual, "steps", "tSteps", (a, t) => a < t), [effectiveActual]);
 
   // Derail = a run of 3+ consecutive weeks with fat over target. Once a run
   // reaches 3, the WHOLE run is marked — including its first two weeks — so
@@ -1184,16 +1257,6 @@ export default function Dashboard() {
     }).reverse();
   }, [habitLog]);
 
-  // Manual entries always win. A HealthKit-synced day only shows up if you
-  // haven't already logged that date by hand.
-  const mergedDailyEntries = useMemo(() => {
-    const manualDates = new Set(dailyEntries.map(d => d.date));
-    const synced = healthkitDaily
-      .filter(d => !manualDates.has(d.date))
-      .map(d => ({ date: d.date, cal: d.cal, steps: d.steps, weight: d.weight, fatMass: d.fatMass, muscleMass: d.muscleMass, _synced: true }));
-    return [...dailyEntries, ...synced];
-  }, [dailyEntries, healthkitDaily]);
-
   // Body-composition stat cards prefer today's daily-log entry over the
   // weekly log. Falls back to yesterday, then the most recently recorded
   // day, so the card never goes blank just because today hasn't been
@@ -1220,37 +1283,6 @@ export default function Dashboard() {
     }
 
     return { weight: pick("weight"), fatMass: pick("fatMass"), muscleMass: pick("muscleMass"), bodyFat: pick("bodyFat") };
-  }, [mergedDailyEntries]);
-
-  // Calories/Steps stat cards use a daily-log weekly average as their main
-  // number. "This week" is the same Fri–Thu block the Daily tab's pacing
-  // uses. Today is always excluded (it's still in progress), and days with
-  // no logged value simply don't count toward the average — they don't
-  // drag it down as zeros. If this week has no data yet (e.g. it just
-  // started), each metric independently falls back to its own most
-  // recently completed week with data, so the card keeps showing that
-  // average instead of resetting until new entries come in.
-  const weekAvgStats = useMemo(() => {
-    const today = new Date(); today.setHours(0, 0, 0, 0);
-    const todayStr = formatMDY(today);
-    const sorted = mergedDailyEntries
-      .map(d => ({ ...d, _d: parseDate(d.date) }))
-      .filter(d => d._d)
-      .sort((a, b) => b._d.getTime() - a._d.getTime());
-
-    function avgForMetric(key) {
-      const mostRecent = sorted.find(d => d.date !== todayStr && d[key] != null);
-      if (!mostRecent) return null;
-      const blockStart = blockStartFor(mostRecent._d);
-      const blockEnd = blockEndFor(blockStart);
-      const vals = sorted
-        .filter(d => d.date !== todayStr && d._d >= blockStart && d._d <= blockEnd)
-        .map(d => d[key])
-        .filter(v => v != null);
-      return vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) : null;
-    }
-
-    return { cal: avgForMetric("cal"), steps: avgForMetric("steps") };
   }, [mergedDailyEntries]);
 
   const pacing = useMemo(() => {
@@ -1370,18 +1402,14 @@ export default function Dashboard() {
   // Short "Fri 7/11" label for the latest weekly log entry, shown next to
   // the daily-log-driven stat card numbers so it's clear which week the
   // smaller reference number came from.
-  const latestWeekLabel = (() => {
-    const d = parseDate(latest?.date);
-    if (!d) return "last wk";
-    return `${d.toLocaleDateString(undefined, { weekday: "short" })} ${d.getMonth() + 1}/${d.getDate()}`;
-  })();
+  const latestWeekLabel = weekdayDateLabel(parseDate(latest?.date)) || "last wk";
   // Pairs a daily-log-driven stat card's main number with its "as of"
   // tag, and the smaller last-week reference number shown beside it. If
   // there's no daily data at all, falls back to showing just the weekly
   // number as the main value (no redundant week block).
-  function dailyCardStat(daily, weeklyValue) {
+  function dailyCardStat(daily, weeklyValue, weekLabel = latestWeekLabel) {
     if (daily.value != null) {
-      return { main: daily.value, tag: formatDailyTag(daily.label), week: weeklyValue, weekLabel: latestWeekLabel };
+      return { main: daily.value, tag: formatDailyTag(daily.label), week: weeklyValue, weekLabel };
     }
     return { main: weeklyValue, tag: null, week: null, weekLabel: null };
   }
@@ -1389,14 +1417,22 @@ export default function Dashboard() {
   const bodyFatCard = dailyCardStat(todayStats.bodyFat, latest.aBF);
   const fatMassCard = dailyCardStat(todayStats.fatMass, latest.aF);
   const muscleMassCard = dailyCardStat(todayStats.muscleMass, latest.aM);
-  const calCard = dailyCardStat({ value: weekAvgStats.cal, label: "wk avg" }, latest.aCal);
-  const stepsCard = dailyCardStat({ value: weekAvgStats.steps, label: "wk avg" }, latest.steps);
+  // Calories/Steps weekly actuals routinely go blank once the daily log
+  // takes over each new week, so the week-value box falls back to the most
+  // recent weekly row that actually has a number, with that row's own date
+  // — the "previous week" reference, not the still-blank current one.
+  const calWeekRow = mostRecentWeeklyRow(ACTUAL, "aCal");
+  const stepsWeekRow = mostRecentWeeklyRow(ACTUAL, "steps");
+  const calCard = dailyCardStat({ value: weekAvgStats.cal, label: "wk avg" }, calWeekRow?.aCal ?? null, weekdayDateLabel(parseDate(calWeekRow?.date)));
+  const stepsCard = dailyCardStat({ value: weekAvgStats.steps, label: "wk avg" }, stepsWeekRow?.steps ?? null, weekdayDateLabel(parseDate(stepsWeekRow?.date)));
   // Fat Mass and Body Fat % share the same on-track streak — the app has
   // always treated them as one "fat" trend line (see the top banner, which
   // is also fat-mass-driven despite being labeled "Body Fat").
   const fatMassBadge = mkBadge(onTrackStreak, "good");
   const bodyFatBadge = fatMassBadge;
-  const muscleBadge = mkBadge(muscleStreak, muscleStreak >= 3 ? "bad" : "warn");
+  const muscleBadge = muscleStreak > 0
+    ? mkBadge(muscleStreak, muscleStreak >= 3 ? "bad" : "warn")
+    : mkBadge(muscleOnTrackStreak, "good");
   const calBadge = mkBadge(calStreak, calStreak >= 3 ? "bad" : "warn");
   const stepsBadge = mkBadge(stepsStreak, stepsStreak >= 3 ? "bad" : "warn");
   // Every non-Weight card always resolves to one of good/warn/bad so its
@@ -2644,16 +2680,17 @@ const BASE_STYLES = `
 
   .banner-error { display: flex; align-items: center; gap: 8px; background: #3a2418; border: 1px solid #6b4526; color: #f0c199; padding: 8px 12px; border-radius: 8px; font-size: 13.8px; font-family: 'JetBrains Mono', monospace; margin-bottom: 14px; }
 
-  .banner-alert { display: flex; align-items: center; gap: 12px; padding: 24px 20px; min-height: 88px; border-radius: 10px; margin-bottom: 14px; font-family: 'Inter', sans-serif; font-size: 17.8px; line-height: 1.5; }
+  .banner-alert { display: flex; align-items: center; gap: 12px; padding: 24px 50px 24px 20px; min-height: 88px; border-radius: 10px; margin-bottom: 14px; font-family: 'Inter', sans-serif; font-size: 17.8px; line-height: 1.5; position: relative; }
   .banner-alert strong { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 19.5px; }
   .banner-alert.slipping { background: #341616; border: 1px solid #7a2e2e; color: #f0b0ac; }
   .banner-alert.slipping svg { color: var(--bad); flex-shrink: 0; }
   .banner-alert.derailed { background: #341616; border: 1px solid #7a2e2e; color: #f0b0ac; }
   .banner-alert.derailed svg { color: var(--bad); flex-shrink: 0; }
   .banner-alert-text { flex: 1; }
-  .banner-ontrack { display: flex; align-items: center; gap: 9px; padding: 10px 14px; border-radius: 12px; margin-bottom: 14px; font-family: 'Inter', sans-serif; font-size: 13px; background: #eef6ea; border: 1px solid #cfe6c4; color: #3a6b2c; }
+  .banner-ontrack { display: flex; align-items: center; gap: 9px; padding: 10px 40px 10px 14px; border-radius: 12px; margin-bottom: 14px; font-family: 'Inter', sans-serif; font-size: 13px; background: #eef6ea; border: 1px solid #cfe6c4; color: #3a6b2c; position: relative; }
   .banner-ontrack svg { flex-shrink: 0; color: #4a8a35; }
   .banner-ontrack-text { flex: 1; }
+  .banner-alert .alert-close-btn, .banner-ontrack .alert-close-btn { position: absolute; top: 50%; right: 12px; transform: translateY(-50%); margin-left: 0; }
   .notif-stack { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
   .notif-row { display: flex; align-items: center; gap: 9px; padding: 8px 13px; border-radius: 10px; font-family: 'Inter', sans-serif; font-size: 12.5px; }
   .notif-row.notif-warn { background: #fdf1dd; border: 1px solid #ecd3a4; color: #8a5b13; }
