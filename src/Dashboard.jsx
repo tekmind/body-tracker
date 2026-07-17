@@ -568,6 +568,11 @@ export default function Dashboard() {
   const [status, setStatus] = useState("loading"); // loading | ready | error
   const [errMsg, setErrMsg] = useState("");
   const [range, setRange] = useState("tracked");
+  // Dismissed top alerts, keyed by a stable id per banner. Session-only —
+  // intentionally not persisted, so a dismissed alert reappears next visit
+  // if the underlying condition is still true.
+  const [dismissedAlerts, setDismissedAlerts] = useState(() => new Set());
+  const dismissAlert = (id) => setDismissedAlerts(prev => new Set(prev).add(id));
   const [wbfVisible, setWbfVisible] = useState({ targets: true, weight: true, bodyFat: true });
   const [mvfVisible, setMvfVisible] = useState({ targets: true, muscle: true, fat: true });
   const [formOpen, setFormOpen] = useState(false);
@@ -1773,47 +1778,51 @@ export default function Dashboard() {
 
       {tab === "dashboard" && (
         <>
-          {alertLevel === "slipping" && (
+          {alertLevel === "slipping" && !dismissedAlerts.has("bodyfat-slipping") && (
             <div className="banner-alert slipping">
               <AlertTriangle size={22} />
               <div className="banner-alert-text">
                 <strong>Body Fat — you're slipping.</strong> <span className="notif-weeks">{fatStreak}w</span> Actual fat has been above target for {fatStreak} weeks straight. <strong style={{ textDecoration: "underline" }}>Tighten up now, before it turns into a full derail.</strong>
                 {recovery && <RecoveryFooter r={recovery} />}
               </div>
+              <button className="alert-close-btn" onClick={() => dismissAlert("bodyfat-slipping")} aria-label="Dismiss"><X size={16} /></button>
             </div>
           )}
-          {alertLevel === "derailed" && (
+          {alertLevel === "derailed" && !dismissedAlerts.has("bodyfat-derailed") && (
             <div className="banner-alert derailed">
               <AlertCircle size={30} />
               <div className="banner-alert-text">
                 <strong>Body Fat — you've derailed.</strong> <span className="notif-weeks">{fatStreak}w</span> Fat's been above target for {fatStreak} weeks in a row — this isn't a rough week, it's a pattern.
                 {recovery && <RecoveryFooter r={recovery} />}
               </div>
+              <button className="alert-close-btn" onClick={() => dismissAlert("bodyfat-derailed")} aria-label="Dismiss"><X size={16} /></button>
             </div>
           )}
-          {!alertLevel && ACTUAL.length > 0 && (() => {
+          {!alertLevel && ACTUAL.length > 0 && !dismissedAlerts.has("bodyfat-ontrack") && (() => {
             const last = ACTUAL[ACTUAL.length - 1];
             const overTarget = last.aF != null && last.tF != null && last.aF > last.tF;
             return (
               <div className="banner-ontrack">
                 <Check size={15} />
-                <span>
+                <span className="banner-ontrack-text">
                   <strong>Body Fat — </strong>
                   {fatStreak === 1 || overTarget
                     ? "over target this week. One more over-target week triggers a slipping alert."
                     : <>on track — at or under target for {onTrackStreak} week{onTrackStreak === 1 ? "" : "s"}. <span className="notif-weeks ontrack-pill">{onTrackStreak}w</span></>}
                 </span>
+                <button className="alert-close-btn" onClick={() => dismissAlert("bodyfat-ontrack")} aria-label="Dismiss"><X size={14} /></button>
               </div>
             );
           })()}
           {notifications.length > 0 && (
             <div className="notif-stack">
-              {notifications.map(n => (
+              {notifications.filter(n => !dismissedAlerts.has(n.id)).map(n => (
                 <div key={n.id} className={"notif-row notif-" + n.severity}>
                   <span className="notif-icon"><AlertTriangle size={13} /></span>
                   <span className="notif-metric">{n.metric}</span>
                   <span className="notif-msg">{n.message}</span>
                   {n.streak >= 1 && <span className="notif-weeks">{n.streak}w</span>}
+                  <button className="alert-close-btn" onClick={() => dismissAlert(n.id)} aria-label="Dismiss"><X size={13} /></button>
                 </div>
               ))}
             </div>
@@ -2644,6 +2653,7 @@ const BASE_STYLES = `
   .banner-alert-text { flex: 1; }
   .banner-ontrack { display: flex; align-items: center; gap: 9px; padding: 10px 14px; border-radius: 12px; margin-bottom: 14px; font-family: 'Inter', sans-serif; font-size: 13px; background: #eef6ea; border: 1px solid #cfe6c4; color: #3a6b2c; }
   .banner-ontrack svg { flex-shrink: 0; color: #4a8a35; }
+  .banner-ontrack-text { flex: 1; }
   .notif-stack { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
   .notif-row { display: flex; align-items: center; gap: 9px; padding: 8px 13px; border-radius: 10px; font-family: 'Inter', sans-serif; font-size: 12.5px; }
   .notif-row.notif-warn { background: #fdf1dd; border: 1px solid #ecd3a4; color: #8a5b13; }
@@ -2654,6 +2664,9 @@ const BASE_STYLES = `
   .notif-row.notif-alert .notif-msg { color: #b1483c; }
   .notif-icon { display: inline-flex; flex-shrink: 0; }
   .notif-metric { font-weight: 700; }
+  .notif-msg { flex: 1; }
+  .alert-close-btn { flex-shrink: 0; display: flex; align-items: center; justify-content: center; margin-left: auto; padding: 4px; border: none; background: transparent; border-radius: 6px; color: inherit; opacity: 0.55; cursor: pointer; }
+  .alert-close-btn:hover { opacity: 1; background: rgba(0, 0, 0, 0.07); }
   .notif-weeks { display: inline-flex; align-items: center; vertical-align: middle; flex-shrink: 0; background: var(--bad); color: #ffffff; font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 700; letter-spacing: 0.02em; padding: 2px 9px; border-radius: 999px; }
   .notif-row.notif-warn .notif-weeks { background: #b07d17; }
   .notif-weeks.ontrack-pill { background: #368727; }
@@ -2953,7 +2966,8 @@ const BASE_STYLES = `
     .panel { padding: 14px 12px 6px; }
     .banner-alert { padding: 14px 12px; min-height: 0; font-size: 15.5px; }
     .banner-alert, .banner-ontrack { position: relative; padding-right: 54px; }
-    .banner-alert .notif-weeks, .banner-ontrack .notif-weeks { position: absolute; top: 12px; right: 12px; }
+    .banner-alert .notif-weeks, .banner-ontrack .notif-weeks { position: absolute; top: 12px; right: 38px; }
+    .banner-alert .alert-close-btn, .banner-ontrack .alert-close-btn { position: absolute; top: 8px; right: 8px; margin-left: 0; }
     .notif-row .notif-weeks { margin-left: auto; }
     .stat-value { font-size: 29.9px; }
     .stat-value-line { height: 30px; }
