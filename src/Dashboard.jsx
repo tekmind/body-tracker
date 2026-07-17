@@ -1924,7 +1924,7 @@ export default function Dashboard() {
               <div className="panel-title">Goal Log</div>
               <div style={{ display: "flex", gap: 8 }}>
                 <button className="btn-primary sm" onClick={openAddGoal} disabled={goalSaving}>
-                  {goalSaving ? <Loader2 size={13} className="spin" /> : <Plus size={13} />} New
+                  {goalSaving ? <Loader2 size={13} className="spin" /> : <Plus size={13} />} Goal
                 </button>
               </div>
             </div>
@@ -1944,7 +1944,7 @@ export default function Dashboard() {
                 </thead>
                 <tbody>
                   {goals.length === 0 && (
-                    <tr><td colSpan={10} className="empty-row">No goals set yet — click "New" to add one.</td></tr>
+                    <tr><td colSpan={10} className="empty-row">No goals set yet — click "Goal" to add one.</td></tr>
                   )}
                   {taggedGoals
                     .map((g, i) => ({ ...g, _origIndex: i }))
