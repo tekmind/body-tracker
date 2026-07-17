@@ -1434,7 +1434,7 @@ export default function Dashboard() {
     return {
       blockStart, blockEnd, daysRemaining, calGoal, stepGoal, recCal, recSteps,
       calDaysLogged, stepDaysLogged, blockDays,
-      calStatus: recCal == null ? null : recCal < 0 ? "over" : recCal > calGoal ? "ahead" : "behind",
+      calStatus: recCal == null ? null : recCal < 0 ? "over" : recCal >= calGoal ? "ahead" : "behind",
       stepStatus: recSteps == null ? null : recSteps <= stepGoal ? "ahead" : "behind",
     };
   }, [entries, goals, mergedDailyEntries]);
@@ -1919,14 +1919,12 @@ export default function Dashboard() {
 
       {tab === "settings" ? (
         <div className="settings-view">
-          <div className="settings-note">Maintain's target still auto-locks to your last actual regardless of what's set here — these rate fields are just for your own reference on that card.</div>
-
           <div className="panel">
             <div className="panel-head">
-              <div className="panel-title">Goal Log<span className="dim">{goals.length} entries · sorted by effective date, so future roadmap goals sort correctly</span></div>
+              <div className="panel-title">Goal Log</div>
               <div style={{ display: "flex", gap: 8 }}>
                 <button className="btn-primary sm" onClick={openAddGoal} disabled={goalSaving}>
-                  {goalSaving ? <Loader2 size={13} className="spin" /> : <Target size={13} />} Set new goal
+                  {goalSaving ? <Loader2 size={13} className="spin" /> : <Plus size={13} />} New goal
                 </button>
               </div>
             </div>
@@ -1946,7 +1944,7 @@ export default function Dashboard() {
                 </thead>
                 <tbody>
                   {goals.length === 0 && (
-                    <tr><td colSpan={10} className="empty-row">No goals set yet — click "Set new goal" to add one.</td></tr>
+                    <tr><td colSpan={10} className="empty-row">No goals set yet — click "New goal" to add one.</td></tr>
                   )}
                   {taggedGoals
                     .map((g, i) => ({ ...g, _origIndex: i }))
