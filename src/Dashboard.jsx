@@ -2654,7 +2654,8 @@ const BASE_STYLES = `
   .cl-shade { width: 12px; height: 10px; border-radius: 2px; background: var(--bad); opacity: 0.3; border: 1px solid var(--bad); display: inline-block; }
   .panel-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; gap: 10px; flex-wrap: wrap; }
   .panel-head-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
-  .panel-head-actions-stack { flex-direction: column; align-items: flex-end; gap: 6px; }
+  .panel-head-actions-stack .toggle-group { order: 2; }
+  .panel-head-actions-stack .series-toggle { order: 1; }
   .panel-title { font-family: 'Space Grotesk', sans-serif; font-size: 16.1px; font-weight: 600; }
   .panel-title .dim { color: var(--text-dim); font-weight: 400; margin-left: 6px; font-size: 13.8px; }
   .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
@@ -2812,7 +2813,9 @@ const BASE_STYLES = `
     div.dash .tab-btn svg { width: 18px; height: 18px; flex-shrink: 0; }
     div.dash .header-top { align-items: center; }
     div.dash .stat-sub .cell-good, div.dash .stat-sub .cell-bad { white-space: nowrap; }
-    .panel-head-actions-stack { align-items: flex-start; }
+    .panel-head-actions-stack { flex-direction: column; align-items: flex-start; gap: 6px; }
+    .panel-head-actions-stack .toggle-group { order: 1; }
+    .panel-head-actions-stack .series-toggle { order: 2; }
   }
 
   /* ---------- Clean brokerage-app styling ---------- */
