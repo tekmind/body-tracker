@@ -2277,7 +2277,7 @@ export default function Dashboard() {
           weekValue={stepsCard.week != null ? fmtNum(stepsCard.week) : null} weekLabel={stepsCard.weekLabel}
           weekBg={STATUS_COLOR[stepsStatus] + "22"}
           sub={latest.tSteps != null && stepsCard.main != null
-            ? <>goal {fmtNum(latest.tSteps)} · <span className={stepsCard.main >= latest.tSteps ? "cell-good" : "cell-bad"}>{stepsCard.main - latest.tSteps > 0 ? "+" : ""}{fmtNum(stepsCard.main - latest.tSteps)}</span></>
+            ? <>target {fmtNum(latest.tSteps)} · <span className={stepsCard.main >= latest.tSteps ? "cell-good" : "cell-bad"}>{stepsCard.main - latest.tSteps > 0 ? "+" : ""}{fmtNum(stepsCard.main - latest.tSteps)}</span></>
             : (avgSteps != null ? `${stepsData.length}wk avg ${fmtNum(avgSteps)}` : null)}
           statusLevel={stepsStatus}
           accent={STATUS_COLOR[stepsStatus]} badge={stepsBadge} />
