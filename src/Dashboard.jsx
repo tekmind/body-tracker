@@ -326,12 +326,14 @@ function missStreak(actualRows, actualKey, targetKey, isMiss) {
   return streak;
 }
 
-function StatCard({ icon: Icon, label, value, unit, sub, trend, accent, alertWeeks }) {
+function mkBadge(weeks, level) { return weeks > 0 ? { weeks, level } : null; }
+
+function StatCard({ icon: Icon, label, value, unit, sub, trend, accent, badge }) {
   return (
     <div className="stat-card">
-      {alertWeeks > 0 && (
-        <span className="stat-alert-badge" title={`Missed target ${alertWeeks} weeks in a row`}>
-          <AlertTriangle size={10} /> {alertWeeks}w
+      {badge && (
+        <span className={"stat-alert-badge " + badge.level} title={(badge.level === "good" ? "On track " : "Missed target ") + badge.weeks + " weeks in a row"}>
+          {badge.level === "good" ? <Check size={10} /> : <AlertTriangle size={10} />} {badge.weeks}w
         </span>
       )}
       <div className="stat-top">
@@ -2120,29 +2122,29 @@ export default function Dashboard() {
         <StatCard icon={Scale} label="Weight" value={fmtNum(latest.aW)} unit="lb"
           sub={weightChange != null ? `${weightChange > 0 ? "+" : ""}${fmtNum(weightChange, 1)} lb since start` : null}
           trend={weightChange == null ? null : weightChange < 0 ? "down" : weightChange > 0 ? "up" : "flat"}
-          accent={PHASE_COLOR.Cut} alertWeeks={bucketAlert(weightStreak)} />
+          accent={PHASE_COLOR.Cut} badge={mkBadge(bucketAlert(weightStreak), "bad")} />
         <StatCard icon={Percent} label="Body Fat" value={fmtNum(latest.aBF)} unit="%"
           sub={bestBF?.aBF != null ? `best ${fmtNum(bestBF.aBF)}% (wk ${bestBF.wk})` : null}
           trend={bestBF && latest.aBF > bestBF.aBF ? "up" : "flat"}
-          accent={PHASE_COLOR.Derailed} alertWeeks={bucketAlert(fatStreak)} />
+          accent={PHASE_COLOR.Derailed} badge={mkBadge(bucketAlert(fatStreak), "bad")} />
         <StatCard icon={TrendingDown} label="Fat Mass" value={fmtNum(latest.aF)} unit="lb"
           sub={fatMassChange != null ? `${fatMassChange > 0 ? "+" : ""}${fmtNum(fatMassChange, 1)} lb since start` : null}
           trend={fatMassChange == null ? null : fatMassChange < 0 ? "down" : fatMassChange > 0 ? "up" : "flat"}
-          accent={PHASE_COLOR.Derailed} alertWeeks={0} />
+          accent={PHASE_COLOR.Derailed} badge={mkBadge(onTrackStreak, "good")} />
         <StatCard icon={TrendingUp} label="Muscle Mass" value={fmtNum(latest.aM)} unit="lb"
           sub={muscleChange != null ? `${muscleChange > 0 ? "+" : ""}${fmtNum(muscleChange, 1)} lb since start` : null}
           trend={muscleChange == null ? null : muscleChange > 0 ? "up" : muscleChange < 0 ? "down" : "flat"}
-          accent={PHASE_COLOR.Maintain} alertWeeks={bucketAlert(muscleStreak)} />
-        <StatCard icon={Flame} label="Calories" value={fmtNum(latest.aCal)} unit="kcal"
+          accent={PHASE_COLOR.Maintain} badge={mkBadge(muscleStreak, muscleStreak >= 3 ? "bad" : "warn")} />
+        <StatCard icon={Flame} label="Calories" value={fmtNum(latest.aCal)} unit=""
           sub={latest.tCal != null && latest.aCal != null
             ? <>target {fmtNum(latest.tCal)} · <span className={latest.aCal <= latest.tCal ? "cell-good" : "cell-bad"}>{latest.aCal - latest.tCal > 0 ? "+" : ""}{fmtNum(latest.aCal - latest.tCal)} kcal</span></>
             : (avgCal != null ? `${calData.length}wk avg ${fmtNum(avgCal)}` : null)}
-          accent={PHASE_COLOR.Gain} alertWeeks={bucketAlert(calStreak)} />
+          accent={PHASE_COLOR.Gain} badge={mkBadge(bucketAlert(calStreak), "bad")} />
         <StatCard icon={Footprints} label="Steps" value={fmtNum(latest.steps)} unit=""
           sub={latest.tSteps != null && latest.steps != null
             ? <>goal {fmtNum(latest.tSteps)} · <span className={latest.steps >= latest.tSteps ? "cell-good" : "cell-bad"}>{latest.steps - latest.tSteps > 0 ? "+" : ""}{fmtNum(latest.steps - latest.tSteps)}</span></>
             : (avgSteps != null ? `${stepsData.length}wk avg ${fmtNum(avgSteps)}` : null)}
-          accent="#8b8f9c" alertWeeks={bucketAlert(stepsStreak)} />
+          accent="#8b8f9c" badge={mkBadge(bucketAlert(stepsStreak), "bad")} />
       </div>
 
       <div className="panel">
@@ -2633,7 +2635,10 @@ const BASE_STYLES = `
 
   .stat-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 14px; margin-bottom: 14px; }
   .stat-card { position: relative; background: var(--panel); border-radius: 12px; padding: 14px 15px; }
-  .stat-alert-badge { position: absolute; top: -7px; right: 10px; display: inline-flex; align-items: center; gap: 3px; background: var(--bad); color: #1a0f0f; font-family: 'JetBrains Mono', monospace; font-size: 10.3px; font-weight: 700; letter-spacing: 0.03em; padding: 2px 6px; border-radius: 20px; box-shadow: 0 0 0 3px var(--bg); }
+  .stat-alert-badge { position: absolute; top: -7px; right: 10px; display: inline-flex; align-items: center; gap: 3px; color: #1a0f0f; font-family: 'JetBrains Mono', monospace; font-size: 10.3px; font-weight: 700; letter-spacing: 0.03em; padding: 2px 6px; border-radius: 20px; box-shadow: 0 0 0 3px var(--bg); }
+  .stat-alert-badge.bad { background: var(--bad); }
+  .stat-alert-badge.warn { background: var(--gain); }
+  .stat-alert-badge.good { background: var(--good); color: #ffffff; }
   .stat-top { display: flex; align-items: center; gap: 7px; margin-bottom: 10px; }
   .stat-icon { width: 22px; height: 22px; border-radius: 6px; display: flex; align-items: center; justify-content: center; }
   .stat-label { font-family: 'JetBrains Mono', monospace; font-size: 11.5px; letter-spacing: 0.07em; color: var(--text-dim); text-transform: uppercase; }
