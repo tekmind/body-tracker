@@ -2002,12 +2002,14 @@ export default function Dashboard() {
           <div className="panel">
             <div className="panel-head">
               <div className="panel-title">Daily Log<span className="dim">{mergedDailyEntries.length} days logged</span></div>
-              <button className="btn-primary sm" onClick={handleSyncWithings} disabled={withingsSyncing}>
-                <RefreshCw size={13} className={withingsSyncing ? "spin" : ""} /> Sync Withings
-              </button>
-              <button className="btn-primary sm" onClick={() => openAddDaily()} disabled={dailySaving}>
-                {dailySaving ? <Loader2 size={13} className="spin" /> : <Plus size={13} />} Log today
-              </button>
+              <div className="panel-head-actions">
+                <button className="btn-primary sm" onClick={handleSyncWithings} disabled={withingsSyncing}>
+                  <RefreshCw size={13} className={withingsSyncing ? "spin" : ""} /> Withings
+                </button>
+                <button className="btn-primary sm" onClick={() => openAddDaily()} disabled={dailySaving}>
+                  {dailySaving ? <Loader2 size={13} className="spin" /> : <Plus size={13} />} Log
+                </button>
+              </div>
             </div>
 
             {dailyErrMsg && <div className="banner-error"><AlertCircle size={13} /> {dailyErrMsg}</div>}
@@ -2026,7 +2028,7 @@ export default function Dashboard() {
                 </thead>
                 <tbody>
                   {mergedDailyEntries.length === 0 && (
-                    <tr><td colSpan={7} className="empty-row">No days logged yet — click "Log today" to start.</td></tr>
+                    <tr><td colSpan={7} className="empty-row">No days logged yet — click "Log" to start.</td></tr>
                   )}
                   {[...mergedDailyEntries]
                     .map((d, i) => ({ ...d, _i: i, _d: parseDate(d.date) }))
@@ -2604,6 +2606,7 @@ const BASE_STYLES = `
   .cl-box { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
   .cl-shade { width: 12px; height: 10px; border-radius: 2px; background: var(--bad); opacity: 0.3; border: 1px solid var(--bad); display: inline-block; }
   .panel-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; gap: 10px; flex-wrap: wrap; }
+  .panel-head-actions { display: flex; align-items: center; gap: 8px; }
   .panel-title { font-family: 'Space Grotesk', sans-serif; font-size: 16.1px; font-weight: 600; }
   .panel-title .dim { color: var(--text-dim); font-weight: 400; margin-left: 6px; font-size: 13.8px; }
   .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
