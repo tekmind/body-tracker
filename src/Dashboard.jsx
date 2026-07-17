@@ -581,11 +581,24 @@ export default function Dashboard() {
   const [errMsg, setErrMsg] = useState("");
   const [range, setRange] = useState("tracked"); // tracked | full
   const [dateWindow, setDateWindow] = useState("sixMonths"); // month | sixMonths | phase | all
-  // Dismissed top alerts, keyed by a stable id per banner. Session-only —
-  // intentionally not persisted, so a dismissed alert reappears next visit
-  // if the underlying condition is still true.
-  const [dismissedAlerts, setDismissedAlerts] = useState(() => new Set());
-  const dismissAlert = (id) => setDismissedAlerts(prev => new Set(prev).add(id));
+  // Dismissed top alerts, keyed by a stable id per banner, mapped to the
+  // data "signature" that was showing when dismissed. Persisted, so closing
+  // one stays closed across visits — but the moment the weekly log changes
+  // enough to shift that signature (new week logged, or the latest week's
+  // numbers edited), the dismissal no longer matches and the alert can
+  // reappear on its own next evaluation.
+  const [dismissedAlerts, setDismissedAlerts] = useState(() => {
+    try {
+      const raw = localStorage.getItem("bt_dismissed_alerts");
+      return raw ? JSON.parse(raw) : {};
+    } catch { return {}; }
+  });
+  const dismissAlert = (id, signature) => setDismissedAlerts(prev => {
+    const next = { ...prev, [id]: signature };
+    try { localStorage.setItem("bt_dismissed_alerts", JSON.stringify(next)); } catch {}
+    return next;
+  });
+  const isAlertDismissed = (id, signature) => dismissedAlerts[id] === signature;
   // Up to 2 metrics plotted at once, in selection order (oldest drops first).
   const [wbfSelected, setWbfSelected] = useState(["bodyFat", "muscle"]);
   const [wbfTargetsOn, setWbfTargetsOn] = useState(true);
@@ -988,6 +1001,14 @@ export default function Dashboard() {
     });
   }, [enrichedEntries]);
   const ACTUAL = useMemo(() => enrichedEntries.filter(r => r.aW != null), [enrichedEntries]);
+  // Changes whenever a new week is logged or the latest week's numbers are
+  // edited — used to invalidate dismissed-alert signatures so a dismissal
+  // only lasts until the next weekly log update, not forever.
+  const latestDataVersion = useMemo(() => {
+    const last = ACTUAL[ACTUAL.length - 1];
+    if (!last) return "none";
+    return [last.date, last.aCal, last.steps, last.aF, last.aBF, last.aM].join("|");
+  }, [ACTUAL]);
 
   // Weekly-log rows grouped into consecutive phase segments, newest first. Each
   // group gets a stable id and a count of logged vs total weeks, for the
@@ -1610,25 +1631,6 @@ export default function Dashboard() {
     setGoalEditIndex(null);
     setGoalFormOpen(true);
   }
-  // Adjust the current phase mid-stream: creates a NEW goal dated today for the
-  // phase in effect now, pre-filled with that phase's current numbers so you
-  // just change what's different (e.g. drop calories). Because it's a new dated
-  // goal in the same phase, targets re-anchor from today forward and the weekly
-  // log stays one phase section — no new phase is started.
-  function openAdjustPhase() {
-    const today = new Date(); today.setHours(0, 0, 0, 0);
-    const mm = today.getMonth() + 1, dd = today.getDate(), yy = String(today.getFullYear()).slice(2);
-    const phase = phaseOnDate(goals, today) || "Cut";
-    const cur = activeGoalFor(goals, phase, today);
-    setGoalForm({
-      date: `${mm}/${dd}/${yy}`, phase,
-      muscleRate: cur?.muscleRate ?? "", fatRate: cur?.fatRate ?? "",
-      stepGoal: cur?.stepGoal ?? "", calGoal: cur?.calGoal ?? "",
-      durationWeeks: "", notes: "Mid-phase adjustment",
-    });
-    setGoalEditIndex(null);
-    setGoalFormOpen(true);
-  }
   function openEditGoal(g) {
     const idx = goals.indexOf(g);
     setGoalForm({ date: g.date, phase: g.phase, muscleRate: g.muscleRate, fatRate: g.fatRate, stepGoal: g.stepGoal ?? "", calGoal: g.calGoal ?? "", durationWeeks: g.durationWeeks ?? "", notes: g.notes || "" });
@@ -1809,16 +1811,6 @@ export default function Dashboard() {
     }
   }
   const taggedGoals = tagGoalStatuses(goals);
-  const currentGoals = GOAL_PHASES.map(phase => {
-    const forPhase = taggedGoals.filter(g => g.phase === phase);
-    return forPhase.find(g => g.status === "active") || null;
-  });
-  const nextGoals = GOAL_PHASES.map(phase => {
-    const upcoming = taggedGoals
-      .filter(g => g.phase === phase && g.status === "upcoming")
-      .sort((a, b) => (parseDate(a.date)?.getTime() ?? 0) - (parseDate(b.date)?.getTime() ?? 0));
-    return upcoming[0] || null;
-  });
 
   return (
     <div className="dash" onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}>
@@ -1870,27 +1862,27 @@ export default function Dashboard() {
 
       {tab === "dashboard" && (
         <>
-          {alertLevel === "slipping" && !dismissedAlerts.has("bodyfat-slipping") && (
+          {alertLevel === "slipping" && !isAlertDismissed("bodyfat-slipping", `${latestDataVersion}::${fatStreak}`) && (
             <div className="banner-alert slipping">
               <AlertTriangle size={22} />
               <div className="banner-alert-text">
                 <strong>Body Fat — you're slipping.</strong> <span className="notif-weeks">{fatStreak}w</span> Actual fat has been above target for {fatStreak} weeks straight. <strong style={{ textDecoration: "underline" }}>Tighten up now, before it turns into a full derail.</strong>
                 {recovery && <RecoveryFooter r={recovery} />}
               </div>
-              <button className="alert-close-btn" onClick={() => dismissAlert("bodyfat-slipping")} aria-label="Dismiss"><X size={16} /></button>
+              <button className="alert-close-btn" onClick={() => dismissAlert("bodyfat-slipping", `${latestDataVersion}::${fatStreak}`)} aria-label="Dismiss"><X size={16} /></button>
             </div>
           )}
-          {alertLevel === "derailed" && !dismissedAlerts.has("bodyfat-derailed") && (
+          {alertLevel === "derailed" && !isAlertDismissed("bodyfat-derailed", `${latestDataVersion}::${fatStreak}`) && (
             <div className="banner-alert derailed">
               <AlertCircle size={30} />
               <div className="banner-alert-text">
                 <strong>Body Fat — you've derailed.</strong> <span className="notif-weeks">{fatStreak}w</span> Fat's been above target for {fatStreak} weeks in a row — this isn't a rough week, it's a pattern.
                 {recovery && <RecoveryFooter r={recovery} />}
               </div>
-              <button className="alert-close-btn" onClick={() => dismissAlert("bodyfat-derailed")} aria-label="Dismiss"><X size={16} /></button>
+              <button className="alert-close-btn" onClick={() => dismissAlert("bodyfat-derailed", `${latestDataVersion}::${fatStreak}`)} aria-label="Dismiss"><X size={16} /></button>
             </div>
           )}
-          {!alertLevel && ACTUAL.length > 0 && !dismissedAlerts.has("bodyfat-ontrack") && (() => {
+          {!alertLevel && ACTUAL.length > 0 && !isAlertDismissed("bodyfat-ontrack", `${latestDataVersion}::${onTrackStreak}`) && (() => {
             const last = ACTUAL[ACTUAL.length - 1];
             const overTarget = last.aF != null && last.tF != null && last.aF > last.tF;
             return (
@@ -1902,86 +1894,37 @@ export default function Dashboard() {
                     ? "over target this week. One more over-target week triggers a slipping alert."
                     : <>on track — at or under target for {onTrackStreak} week{onTrackStreak === 1 ? "" : "s"}. <span className="notif-weeks ontrack-pill">{onTrackStreak}w</span></>}
                 </span>
-                <button className="alert-close-btn" onClick={() => dismissAlert("bodyfat-ontrack")} aria-label="Dismiss"><X size={14} /></button>
+                <button className="alert-close-btn" onClick={() => dismissAlert("bodyfat-ontrack", `${latestDataVersion}::${onTrackStreak}`)} aria-label="Dismiss"><X size={14} /></button>
               </div>
             );
           })()}
-          {notifications.length > 0 && (
-            <div className="notif-stack">
-              {notifications.filter(n => !dismissedAlerts.has(n.id)).map(n => (
-                <div key={n.id} className={"notif-row notif-" + n.severity}>
-                  <span className="notif-icon"><AlertTriangle size={13} /></span>
-                  <span className="notif-metric">{n.metric}</span>
-                  <span className="notif-msg">{n.message}</span>
-                  {n.streak >= 1 && <span className="notif-weeks">{n.streak}w</span>}
-                  <button className="alert-close-btn" onClick={() => dismissAlert(n.id)} aria-label="Dismiss"><X size={13} /></button>
-                </div>
-              ))}
-            </div>
-          )}
+          {(() => {
+            const visibleNotifs = notifications.filter(n => !isAlertDismissed(n.id, `${latestDataVersion}::${n.message}::${n.streak}`));
+            return visibleNotifs.length > 0 && (
+              <div className="notif-stack">
+                {visibleNotifs.map(n => (
+                  <div key={n.id} className={"notif-row notif-" + n.severity}>
+                    <span className="notif-icon"><AlertTriangle size={13} /></span>
+                    <span className="notif-metric">{n.metric}</span>
+                    <span className="notif-msg">{n.message}</span>
+                    {n.streak >= 1 && <span className="notif-weeks">{n.streak}w</span>}
+                    <button className="alert-close-btn" onClick={() => dismissAlert(n.id, `${latestDataVersion}::${n.message}::${n.streak}`)} aria-label="Dismiss"><X size={13} /></button>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
         </>
       )}
 
       {tab === "settings" ? (
         <div className="settings-view">
           <div className="settings-note">Maintain's target still auto-locks to your last actual regardless of what's set here — these rate fields are just for your own reference on that card.</div>
-          <div className="goal-cards">
-            {GOAL_PHASES.map((phase, i) => {
-              const g = currentGoals[i];
-              const next = nextGoals[i];
-              return (
-                <div key={phase} className="goal-card" style={{ borderColor: phaseColor(phase) + "55" }}>
-                  <div className="goal-card-head">
-                    <span className="phase-tag" style={{ background: phaseColor(phase) + "22", color: phaseColor(phase) }}>{phaseLabel(phase)}</span>
-                    {g && <span className="goal-card-date">active since {g.date}</span>}
-                  </div>
-                  {g ? (
-                    <div className="goal-card-body">
-                      <div className="goal-metric">
-                        <span className="goal-metric-label">Muscle</span>
-                        <span className="goal-metric-val">{g.muscleRate > 0 ? "+" : ""}{g.muscleRate} lb/wk</span>
-                      </div>
-                      <div className="goal-metric">
-                        <span className="goal-metric-label">Fat</span>
-                        <span className="goal-metric-val">{g.fatRate > 0 ? "+" : ""}{g.fatRate} lb/wk</span>
-                      </div>
-                      {g.stepGoal != null && (
-                        <div className="goal-metric">
-                          <span className="goal-metric-label">Steps</span>
-                          <span className="goal-metric-val">{g.stepGoal.toLocaleString()}/day</span>
-                        </div>
-                      )}
-                      {g.calGoal != null && (
-                        <div className="goal-metric">
-                          <span className="goal-metric-label">Calories</span>
-                          <span className="goal-metric-val">{g.calGoal.toLocaleString()}/day</span>
-                        </div>
-                      )}
-                      {g.notes && <div className="goal-card-notes">{g.notes}</div>}
-                    </div>
-                  ) : next ? (
-                    <div className="goal-card-empty">Nothing active yet</div>
-                  ) : (
-                    <div className="goal-card-empty">No goal set yet</div>
-                  )}
-                  {next && (
-                    <div className="goal-card-upcoming">
-                      <span className="upcoming-badge">UPCOMING · {next.date}</span>
-                      <span className="upcoming-vals">{next.muscleRate > 0 ? "+" : ""}{next.muscleRate} muscle · {next.fatRate > 0 ? "+" : ""}{next.fatRate} fat lb/wk</span>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
 
           <div className="panel">
             <div className="panel-head">
-              <div className="panel-title">Goal History<span className="dim">{goals.length} entries · sorted by effective date, so future roadmap goals sort correctly</span></div>
+              <div className="panel-title">Goal Log<span className="dim">{goals.length} entries · sorted by effective date, so future roadmap goals sort correctly</span></div>
               <div style={{ display: "flex", gap: 8 }}>
-                <button className="btn-ghost sm" onClick={openAdjustPhase} disabled={goalSaving}>
-                  <Pencil size={13} /> Adjust current phase
-                </button>
                 <button className="btn-primary sm" onClick={openAddGoal} disabled={goalSaving}>
                   {goalSaving ? <Loader2 size={13} className="spin" /> : <Target size={13} />} Set new goal
                 </button>
@@ -2187,6 +2130,12 @@ export default function Dashboard() {
             </div>
             <div className="pacing-grid">
               <div className={"pacing-card" + (pacing.calStatus === "behind" || pacing.calStatus === "over" ? " pacing-card-bad" : pacing.calStatus === "ahead" ? " pacing-card-good" : "")}>
+                {pacing.calGoal != null && pacing.recCal != null && (
+                  <div className="pacing-days-badge">
+                    <div className="pacing-days-num">{pacing.calDaysLogged}</div>
+                    <div className="pacing-days-label">day{pacing.calDaysLogged === 1 ? "" : "s"} logged</div>
+                  </div>
+                )}
                 <div className="pacing-card-label"><Flame size={13} /> Calories</div>
                 {pacing.calGoal == null ? (
                   <div className="pacing-empty">No calorie goal set for this phase yet.</div>
@@ -2202,11 +2151,16 @@ export default function Dashboard() {
                       {pacing.calStatus === "ahead" && `You're under pace — you can eat more than your usual ${pacing.calGoal}/day and still hit the weekly average.`}
                       {pacing.calStatus === "behind" && `Tighter than usual: eat less than your normal ${pacing.calGoal}/day to bring the week back to target.`}
                     </div>
-                    <div className="pacing-footnote">{pacing.calDaysLogged} day{pacing.calDaysLogged === 1 ? "" : "s"} logged so far this block</div>
                   </>
                 )}
               </div>
               <div className={"pacing-card" + (pacing.stepStatus === "ahead" ? " pacing-card-good" : pacing.stepStatus === "behind" ? " pacing-card-bad" : "")}>
+                {pacing.stepGoal != null && pacing.recSteps != null && (
+                  <div className="pacing-days-badge">
+                    <div className="pacing-days-num">{pacing.stepDaysLogged}</div>
+                    <div className="pacing-days-label">day{pacing.stepDaysLogged === 1 ? "" : "s"} logged</div>
+                  </div>
+                )}
                 <div className="pacing-card-label"><Footprints size={13} /> Steps</div>
                 {pacing.stepGoal == null ? (
                   <div className="pacing-empty">No step goal set for this phase yet.</div>
@@ -2222,7 +2176,6 @@ export default function Dashboard() {
                         ? `Behind pace: walk more than your usual ${pacing.stepGoal.toLocaleString()}/day for the rest of the block.`
                         : `Ahead of pace — ${pacing.stepGoal.toLocaleString()}/day or less gets you there.`}
                     </div>
-                    <div className="pacing-footnote">{pacing.stepDaysLogged} day{pacing.stepDaysLogged === 1 ? "" : "s"} logged so far this block</div>
                   </>
                 )}
               </div>
@@ -2803,18 +2756,20 @@ const BASE_STYLES = `
 
   .pacing-panel { padding-bottom: 18px; }
   .pacing-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; margin-top: 6px; }
-  .pacing-card { background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+  .pacing-card { position: relative; background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
   .pacing-card.pacing-card-bad { background: #fcebe9; border-color: #eec4be; }
-  .pacing-card.pacing-card-bad .pacing-card-label, .pacing-card.pacing-card-bad .pacing-sub, .pacing-card.pacing-card-bad .pacing-footnote { color: #a03d33; }
+  .pacing-card.pacing-card-bad .pacing-card-label, .pacing-card.pacing-card-bad .pacing-sub { color: #a03d33; }
   .pacing-card.pacing-card-bad .pacing-value { color: #c73a2f; }
   .pacing-card.pacing-card-good { background: #eef6ea; border-color: #cfe6c4; }
-  .pacing-card.pacing-card-good .pacing-card-label, .pacing-card.pacing-card-good .pacing-sub, .pacing-card.pacing-card-good .pacing-footnote { color: #3a6b2c; }
+  .pacing-card.pacing-card-good .pacing-card-label, .pacing-card.pacing-card-good .pacing-sub { color: #3a6b2c; }
   .pacing-card.pacing-card-good .pacing-value { color: #368727; }
   .pacing-card-label { display: flex; align-items: center; gap: 6px; font-family: 'JetBrains Mono', monospace; font-size: 12.1px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 10px; }
   .pacing-value { font-family: 'Space Grotesk', sans-serif; font-size: 32.2px; font-weight: 700; color: var(--text); }
   .pacing-unit { font-size: 14.9px; font-weight: 500; opacity: 0.75; margin-left: 1px; }
   .pacing-sub { font-size: 13.8px; color: var(--text-dim); margin-top: 8px; line-height: 1.5; }
-  .pacing-footnote { font-family: 'JetBrains Mono', monospace; font-size: 11.5px; color: var(--text-faint); margin-top: 10px; }
+  .pacing-days-badge { position: absolute; top: 12px; right: 12px; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 4px 8px; text-align: right; line-height: 1.25; }
+  .pacing-days-num { font-family: 'Space Grotesk', sans-serif; font-size: 13.8px; font-weight: 700; color: var(--text); }
+  .pacing-days-label { font-family: 'JetBrains Mono', monospace; font-size: 9.5px; color: var(--text-faint); white-space: nowrap; }
   .pacing-empty { font-family: 'JetBrains Mono', monospace; font-size: 13.2px; color: var(--text-faint); padding: 8px 0; }
 
   .block-checklist { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border); }
@@ -2845,7 +2800,7 @@ const BASE_STYLES = `
   .pacing-mini-item.pacing-status-good { color: var(--good); }
   .pacing-mini-item.pacing-status-bad { color: var(--bad); }
   .pacing-mini-item { display: inline-flex; align-items: center; gap: 7px; }
-  .pacing-pill { display: inline-flex; align-items: center; padding: 2px 9px; border-radius: 999px; font-family: 'Inter', sans-serif; font-weight: 700; font-size: 11px; letter-spacing: 0.02em; color: #ffffff; }
+  .pacing-pill { display: inline-flex; align-items: center; padding: 2px 9px; border-radius: 6px; font-family: 'Inter', sans-serif; font-weight: 700; font-size: 11px; letter-spacing: 0.02em; color: #ffffff; }
   .pacing-pill-good { background: var(--good); }
   .pacing-pill-bad { background: var(--bad); }
   .goal-card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 14px 15px; }
@@ -3169,7 +3124,7 @@ const BASE_STYLES = `
   .dash .form-grid label { font-family: 'Inter', sans-serif; text-transform: none; font-size: 12.6px; font-weight: 600; letter-spacing: 0; }
   .dash .form-grid input, .dash .form-grid select { border-radius: 10px; }
   .dash .form-grid input:focus, .dash .form-grid select:focus { outline-color: var(--good); }
-  .dash .form-note, .dash .block-checklist-hint, .dash .pacing-footnote, .dash .settings-note, .dash .footer-note, .dash .chart-legend-note, .dash .goal-card-notes, .dash .goal-card-empty, .dash .pacing-empty, .dash .form-error, .dash .backup-ta { font-family: 'Inter', sans-serif; }
+  .dash .form-note, .dash .block-checklist-hint, .dash .pacing-days-label, .dash .settings-note, .dash .footer-note, .dash .chart-legend-note, .dash .goal-card-notes, .dash .goal-card-empty, .dash .pacing-empty, .dash .form-error, .dash .backup-ta { font-family: 'Inter', sans-serif; }
   .dash .eyebrow, .dash .pacing-card-label, .dash .block-checklist-label, .dash .goal-metric-label, .dash .stat-sub, .dash .goal-card-date, .dash .upcoming-vals, .dash .pacing-mini-head, .dash .pacing-mini-link, .dash .tl-item, .dash .status-badge, .dash .upcoming-badge, .dash .phase-tag, .dash .check-day, .dash .this-block-tag { font-family: 'Inter', sans-serif; }
   .dash .pacing-value, .dash .goal-metric-val, .dash .pacing-mini-item strong { font-family: 'Inter', sans-serif; font-weight: 700; }
   .dash .banner-alert strong { font-family: 'Inter', sans-serif; }
