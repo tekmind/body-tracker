@@ -417,10 +417,10 @@ function CustomTooltip({ active, payload }) {
 
 function RecoveryFooter({ r }) {
   const dirText = r.dir === "improving"
-    ? `Closing the gap — fat is ${Math.abs(r.gap)} lb over target, down from ${Math.abs(r.prevGap)} last week. Keep going.`
+    ? `Closing the gap — calories are ${Math.abs(r.gap).toLocaleString()} over target, down from ${Math.abs(r.prevGap).toLocaleString()} last week. Keep going.`
     : r.dir === "worsening"
-    ? `Drifting further — fat is ${r.gap} lb over target, up from ${r.prevGap ?? "?"} last week.`
-    : `Holding — fat is ${r.gap} lb over target, flat vs last week.`;
+    ? `Drifting further — calories are ${r.gap.toLocaleString()} over target, up from ${r.prevGap != null ? r.prevGap.toLocaleString() : "?"} last week.`
+    : `Holding — calories are ${r.gap.toLocaleString()} over target, flat vs last week.`;
   const dirClass = r.dir === "improving" ? "rec-good" : r.dir === "worsening" ? "rec-bad" : "rec-flat";
   return (
     <div className="recovery">
@@ -1109,19 +1109,9 @@ export default function Dashboard() {
     return src.map(r => ({ ...r, label: r.date }));
   }, [range, dateWindow, ACTUAL, enrichedEntries]);
 
-  // Current streak of consecutive tracked weeks where actual fat came in above target fat.
-  const fatStreak = useMemo(() => {
-    let streak = 0;
-    for (let i = ACTUAL.length - 1; i >= 0; i--) {
-      const r = ACTUAL[i];
-      if (r.aF != null && r.tF != null && r.aF > r.tF) streak++;
-      else break;
-    }
-    return streak;
-  }, [ACTUAL]);
-  const alertLevel = fatStreak >= 3 ? "derailed" : fatStreak >= 2 ? "slipping" : null;
   // Positive counterpart: consecutive weeks (newest first) with fat AT or UNDER
-  // target — the on-track streak shown as a green pill.
+  // target — feeds the Fat Mass / Body Fat stat-card badges (unrelated to the
+  // derail banner below, which is calorie-triggered).
   const onTrackStreak = useMemo(() => {
     let s = 0;
     for (let i = ACTUAL.length - 1; i >= 0; i--) {
@@ -1131,33 +1121,6 @@ export default function Dashboard() {
     }
     return s;
   }, [ACTUAL]);
-
-  // Recovery read for the derail/slip banner: how far over target fat is now,
-  // and whether the gap is widening (drifting further off) or shrinking
-  // (already climbing back) vs the prior week. Also surfaces the active Cut
-  // goal so we can show a concrete "get back to this" number.
-  const recovery = useMemo(() => {
-    if (!alertLevel || ACTUAL.length === 0) return null;
-    const last = ACTUAL[ACTUAL.length - 1];
-    const prev = ACTUAL.length >= 2 ? ACTUAL[ACTUAL.length - 2] : null;
-    if (last.aF == null || last.tF == null) return null;
-    const gap = round1(last.aF - last.tF); // lb over target (positive = over)
-    let dir = "flat", prevGap = null;
-    if (prev && prev.aF != null && prev.tF != null) {
-      prevGap = round1(prev.aF - prev.tF);
-      const change = round1(gap - prevGap);
-      dir = change < -0.05 ? "improving" : change > 0.05 ? "worsening" : "flat";
-    }
-    // The Cut goal in effect today — what to steer back toward.
-    const today = new Date(); today.setHours(0, 0, 0, 0);
-    const cutGoal = activeGoalFor(goals, "Cut", today);
-    return {
-      gap, dir, prevGap,
-      bfActual: last.aBF, bfTarget: last.tBF,
-      calGoal: cutGoal?.calGoal ?? null,
-      stepGoal: cutGoal?.stepGoal ?? null,
-    };
-  }, [alertLevel, ACTUAL, goals]);
 
   // Manual entries always win. A HealthKit-synced day only shows up if you
   // haven't already logged that date by hand.
@@ -1221,14 +1184,11 @@ export default function Dashboard() {
   // Metric watchlist: flags a tracked metric that's off target on the latest
   // logged week, and counts how many consecutive weeks it's been off. Severity
   // escalates from a warning (orange) to an alert (red) past two weeks running.
-  // Adding a metric later is just another entry in `rules`. (Body fat has its
-  // own streak-based banner above, so it's not duplicated here.)
+  // Adding a metric later is just another entry in `rules`. (Calories has its
+  // own streak-based derail banner above, so it's not duplicated here.)
   const notifications = useMemo(() => {
     if (effectiveActual.length === 0) return [];
     const rules = [
-      { id: "cal", metric: "Calories", isOff: r => r.aCal != null && r.tCal != null && r.aCal - r.tCal > 100,
-        word: "over target",
-        detail: r => `${(r.aCal - r.tCal).toLocaleString()} over (${r.aCal.toLocaleString()} vs ${r.tCal.toLocaleString()})` },
       { id: "steps", metric: "Steps", isOff: r => r.steps != null && r.tSteps != null && r.tSteps - r.steps > 300,
         word: "under goal",
         detail: r => `${(r.tSteps - r.steps).toLocaleString()} under (${r.steps.toLocaleString()} vs ${r.tSteps.toLocaleString()})` },
@@ -1262,11 +1222,47 @@ export default function Dashboard() {
   const calStreak = useMemo(() => missStreak(effectiveActual, "aCal", "tCal", (a, t) => a > t), [effectiveActual]);
   const stepsStreak = useMemo(() => missStreak(effectiveActual, "steps", "tSteps", (a, t) => a < t), [effectiveActual]);
 
-  // Derail = a run of 3+ consecutive weeks with fat over target. Once a run
-  // reaches 3, the WHOLE run is marked — including its first two weeks — so
-  // historical highlights show the full off-track stretch, not just week 3+.
+  // Derail trigger: the trailing streak of weeks with calories over target
+  // (calStreak, above) — 3+ running is a full derail, 2 is an early
+  // "slipping" warning.
+  const alertLevel = calStreak >= 3 ? "derailed" : calStreak >= 2 ? "slipping" : null;
+  // Positive counterpart: consecutive weeks (newest first) with calories AT
+  // or UNDER target — the on-track streak shown as a green pill.
+  const calOnTrackStreak = useMemo(() => missStreak(effectiveActual, "aCal", "tCal", (a, t) => a <= t), [effectiveActual]);
+
+  // Recovery read for the derail/slip banner: how far over target calories
+  // are now, and whether the gap is widening (drifting further off) or
+  // shrinking (already climbing back) vs the prior week. Also surfaces the
+  // active Cut goal so we can show a concrete "get back to this" number.
+  const recovery = useMemo(() => {
+    if (!alertLevel || effectiveActual.length === 0) return null;
+    const last = effectiveActual[effectiveActual.length - 1];
+    const prev = effectiveActual.length >= 2 ? effectiveActual[effectiveActual.length - 2] : null;
+    if (last.aCal == null || last.tCal == null) return null;
+    const gap = Math.round(last.aCal - last.tCal); // kcal over target (positive = over)
+    let dir = "flat", prevGap = null;
+    if (prev && prev.aCal != null && prev.tCal != null) {
+      prevGap = Math.round(prev.aCal - prev.tCal);
+      const change = gap - prevGap;
+      dir = change < -5 ? "improving" : change > 5 ? "worsening" : "flat";
+    }
+    // The Cut goal in effect today — what to steer back toward.
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const cutGoal = activeGoalFor(goals, "Cut", today);
+    return {
+      gap, dir, prevGap,
+      calGoal: cutGoal?.calGoal ?? null,
+      stepGoal: cutGoal?.stepGoal ?? null,
+    };
+  }, [alertLevel, effectiveActual, goals]);
+
+  // Derail = a run of 3+ consecutive weeks with calories over target. Once a
+  // run reaches 3, the WHOLE run is marked — including its first two weeks —
+  // so historical highlights show the full off-track stretch, not just week
+  // 3+, across the trend chart shading, the weekly log rows, and the phase
+  // timeline.
   const derailedRows = useMemo(() => {
-    const miss = ACTUAL.map(r => r.aF != null && r.tF != null && r.aF > r.tF);
+    const miss = effectiveActual.map(r => r.aCal != null && r.tCal != null && r.aCal > r.tCal);
     const derailed = new Array(ACTUAL.length).fill(false);
     let start = -1;
     for (let i = 0; i <= ACTUAL.length; i++) {
@@ -1278,7 +1274,7 @@ export default function Dashboard() {
       }
     }
     return ACTUAL.map((r, i) => ({ ...r, derailed: derailed[i] }));
-  }, [ACTUAL]);
+  }, [ACTUAL, effectiveActual]);
   const derailedSegments = useMemo(() => {
     const segs = [];
     let cur = null;
@@ -1892,39 +1888,39 @@ export default function Dashboard() {
 
       {tab === "dashboard" && (
         <>
-          {alertLevel === "slipping" && !isAlertDismissed("bodyfat-slipping", `${latestDataVersion}::${fatStreak}`) && (
+          {alertLevel === "slipping" && !isAlertDismissed("calories-slipping", `${latestDataVersion}::${calStreak}`) && (
             <div className="banner-alert slipping">
               <AlertTriangle size={22} />
               <div className="banner-alert-text">
-                <strong>Body Fat — you're slipping.</strong> <span className="notif-weeks">{fatStreak}w</span> Actual fat has been above target for {fatStreak} weeks straight. <strong style={{ textDecoration: "underline" }}>Tighten up now, before it turns into a full derail.</strong>
+                <strong>Calories — you're slipping.</strong> <span className="notif-weeks">{calStreak}w</span> Calories have been over target for {calStreak} weeks straight. <strong style={{ textDecoration: "underline" }}>Tighten up now, before it turns into a full derail.</strong>
                 {recovery && <RecoveryFooter r={recovery} />}
               </div>
-              <button className="alert-close-btn" onClick={() => dismissAlert("bodyfat-slipping", `${latestDataVersion}::${fatStreak}`)} aria-label="Dismiss"><X size={16} /></button>
+              <button className="alert-close-btn" onClick={() => dismissAlert("calories-slipping", `${latestDataVersion}::${calStreak}`)} aria-label="Dismiss"><X size={16} /></button>
             </div>
           )}
-          {alertLevel === "derailed" && !isAlertDismissed("bodyfat-derailed", `${latestDataVersion}::${fatStreak}`) && (
+          {alertLevel === "derailed" && !isAlertDismissed("calories-derailed", `${latestDataVersion}::${calStreak}`) && (
             <div className="banner-alert derailed">
               <AlertCircle size={30} />
               <div className="banner-alert-text">
-                <strong>Body Fat — you've derailed.</strong> <span className="notif-weeks">{fatStreak}w</span> Fat's been above target for {fatStreak} weeks in a row — this isn't a rough week, it's a pattern.
+                <strong>Calories — you've derailed.</strong> <span className="notif-weeks">{calStreak}w</span> Calories have been over target for {calStreak} weeks in a row — this isn't a rough week, it's a pattern.
                 {recovery && <RecoveryFooter r={recovery} />}
               </div>
-              <button className="alert-close-btn" onClick={() => dismissAlert("bodyfat-derailed", `${latestDataVersion}::${fatStreak}`)} aria-label="Dismiss"><X size={16} /></button>
+              <button className="alert-close-btn" onClick={() => dismissAlert("calories-derailed", `${latestDataVersion}::${calStreak}`)} aria-label="Dismiss"><X size={16} /></button>
             </div>
           )}
-          {!alertLevel && ACTUAL.length > 0 && !isAlertDismissed("bodyfat-ontrack", `${latestDataVersion}::${onTrackStreak}`) && (() => {
-            const last = ACTUAL[ACTUAL.length - 1];
-            const overTarget = last.aF != null && last.tF != null && last.aF > last.tF;
+          {!alertLevel && ACTUAL.length > 0 && !isAlertDismissed("calories-ontrack", `${latestDataVersion}::${calOnTrackStreak}`) && (() => {
+            const last = effectiveActual[effectiveActual.length - 1];
+            const overTarget = last.aCal != null && last.tCal != null && last.aCal > last.tCal;
             return (
               <div className="banner-ontrack">
                 <Check size={15} />
                 <span className="banner-ontrack-text">
-                  <strong>Body Fat — </strong>
-                  {fatStreak === 1 || overTarget
+                  <strong>Calories — </strong>
+                  {calStreak === 1 || overTarget
                     ? "over target this week. One more over-target week triggers a slipping alert."
-                    : <>on track — at or under target for {onTrackStreak} week{onTrackStreak === 1 ? "" : "s"}. <span className="notif-weeks ontrack-pill">{onTrackStreak}w</span></>}
+                    : <>on track — at or under target for {calOnTrackStreak} week{calOnTrackStreak === 1 ? "" : "s"}. <span className="notif-weeks ontrack-pill">{calOnTrackStreak}w</span></>}
                 </span>
-                <button className="alert-close-btn" onClick={() => dismissAlert("bodyfat-ontrack", `${latestDataVersion}::${onTrackStreak}`)} aria-label="Dismiss"><X size={14} /></button>
+                <button className="alert-close-btn" onClick={() => dismissAlert("calories-ontrack", `${latestDataVersion}::${calOnTrackStreak}`)} aria-label="Dismiss"><X size={14} /></button>
               </div>
             );
           })()}
@@ -2857,8 +2853,10 @@ const BASE_STYLES = `
   .stat-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 14px; margin-bottom: 14px; }
   .stat-card { position: relative; background: var(--panel); border-radius: 12px; padding: 14px 15px; min-width: 0; }
   .stat-card-clickable { cursor: pointer; transition: background 0.15s ease; }
-  .stat-card-clickable:hover, .stat-card-clickable:focus-visible { background: var(--panel-2); }
-  .stat-card-clickable:focus-visible { outline: 2px solid var(--cut); outline-offset: 2px; }
+  @media (hover: hover) {
+    .stat-card-clickable:hover { background: rgba(255, 255, 255, 0.85); }
+  }
+  .stat-card-clickable:focus-visible { background: rgba(255, 255, 255, 0.85); outline: 2px solid var(--cut); outline-offset: 2px; }
   .stat-alert-badge { position: absolute; top: -7px; right: 10px; display: inline-flex; align-items: center; gap: 3px; color: #1a0f0f; font-family: 'JetBrains Mono', monospace; font-size: 10.3px; font-weight: 700; letter-spacing: 0.03em; padding: 2px 6px; border-radius: 20px; box-shadow: 0 0 0 3px var(--bg); }
   .stat-alert-badge.bad { background: var(--bad); }
   .stat-alert-badge.warn { background: var(--gain); }
@@ -3083,7 +3081,7 @@ const BASE_STYLES = `
        +Roadmap, Targets, and the date dropdown fit on one line without
        shrinking the toggle buttons themselves (they still match row 2). */
     .range-targets-group { gap: 4px 3px; }
-    .dash .range-targets-group .toggle-group { gap: 1px; padding: 1px; }
+    .dash .range-targets-group .toggle-group { gap: 1px; padding: 3px 1px; }
     .date-window-select { appearance: none; -webkit-appearance: none; padding-right: 6px !important; background-image: none; }
   }
 
