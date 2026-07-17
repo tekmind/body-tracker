@@ -580,14 +580,14 @@ export default function Dashboard() {
   const [status, setStatus] = useState("loading"); // loading | ready | error
   const [errMsg, setErrMsg] = useState("");
   const [range, setRange] = useState("tracked"); // tracked | full
-  const [dateWindow, setDateWindow] = useState("month"); // month | sixMonths | phase | all
+  const [dateWindow, setDateWindow] = useState("sixMonths"); // month | sixMonths | phase | all
   // Dismissed top alerts, keyed by a stable id per banner. Session-only —
   // intentionally not persisted, so a dismissed alert reappears next visit
   // if the underlying condition is still true.
   const [dismissedAlerts, setDismissedAlerts] = useState(() => new Set());
   const dismissAlert = (id) => setDismissedAlerts(prev => new Set(prev).add(id));
   // Up to 2 metrics plotted at once, in selection order (oldest drops first).
-  const [wbfSelected, setWbfSelected] = useState(["weight", "bodyFat"]);
+  const [wbfSelected, setWbfSelected] = useState(["bodyFat", "muscle"]);
   const [wbfTargetsOn, setWbfTargetsOn] = useState(true);
   const toggleWbfMetric = (key) => setWbfSelected((prev) => {
     if (prev.includes(key)) return prev.filter((k) => k !== key);
@@ -2383,21 +2383,31 @@ export default function Dashboard() {
           <div className="panel-title">Actual vs. Target</div>
           <div className="panel-head-actions panel-head-actions-stack">
             <div className="range-targets-group">
-              <div className="toggle-group">
+              <div className="toggle-group rtg-range">
                 <button className={"toggle-btn " + (range === "tracked" ? "active" : "")} onClick={() => setRange("tracked")}>TRACKED</button>
                 <button className={"toggle-btn " + (range === "full" ? "active" : "")} onClick={() => setRange("full")}>+ ROADMAP</button>
               </div>
-              <SeriesToggle
-                items={[{ key: "targets", label: "TARGETS" }]}
-                active={{ targets: wbfTargetsOn }}
-                onToggle={() => setWbfTargetsOn((v) => !v)}
-              />
+              <div className="rtg-targets">
+                <SeriesToggle
+                  items={[{ key: "targets", label: "TARGETS" }]}
+                  active={{ targets: wbfTargetsOn }}
+                  onToggle={() => setWbfTargetsOn((v) => !v)}
+                />
+              </div>
+              <div className="toggle-group rtg-datewindow">
+                <select className="toggle-btn active date-window-select" value={dateWindow} onChange={(e) => setDateWindow(e.target.value)}>
+                  <option value="month">Month</option>
+                  <option value="sixMonths">6 Months</option>
+                  <option value="phase">Phase</option>
+                  <option value="all">All</option>
+                </select>
+              </div>
             </div>
             <SeriesToggle
               items={[
-                { key: "weight", label: "WEIGHT" },
                 { key: "bodyFat", label: "FAT" },
                 { key: "muscle", label: "MUSCLE" },
+                { key: "weight", label: "WEIGHT" },
                 { key: "calories", label: "CALORIES" },
                 { key: "steps", label: "STEPS" },
               ]}
@@ -2411,15 +2421,6 @@ export default function Dashboard() {
               onToggle={toggleWbfMetric}
             />
           </div>
-        </div>
-        <div className="date-window-row">
-          <label htmlFor="date-window-select" className="date-window-label">Show</label>
-          <select id="date-window-select" className="date-window-select" value={dateWindow} onChange={(e) => setDateWindow(e.target.value)}>
-            <option value="month">Month</option>
-            <option value="sixMonths">6 Months</option>
-            <option value="phase">Phase</option>
-            <option value="all">All</option>
-          </select>
         </div>
         {wbfSelected.length === 0 ? (
           <div className="pacing-empty">Select 1–2 metrics above to plot.</div>
@@ -2914,13 +2915,12 @@ const BASE_STYLES = `
   .panel-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; gap: 10px; flex-wrap: wrap; }
   .panel-head-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
   .range-targets-group { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-  .range-targets-group .series-toggle { order: 1; }
-  .range-targets-group .toggle-group:not(.series-toggle) { order: 2; }
+  .range-targets-group .rtg-targets { order: 1; }
+  .range-targets-group .rtg-datewindow { order: 2; }
+  .range-targets-group .rtg-range { order: 3; }
   .panel-head-actions-stack .range-targets-group { order: 2; }
   .panel-head-actions-stack > .series-toggle { order: 1; }
-  .date-window-row { display: flex; align-items: center; gap: 8px; justify-content: flex-end; margin-bottom: 10px; }
-  .date-window-label { font-family: 'JetBrains Mono', monospace; font-size: 10.6px; letter-spacing: 0.05em; color: var(--text-dim); }
-  .date-window-select { font-family: 'JetBrains Mono', monospace; font-size: 10.6px; letter-spacing: 0.05em; color: var(--text); background: var(--panel-2); border: none; border-radius: 6px; padding: 4px 8px; cursor: pointer; }
+  .date-window-select { font-family: inherit; border: none; outline: none; }
   .panel-title { font-family: 'Space Grotesk', sans-serif; font-size: 16.1px; font-weight: 600; }
   .panel-title .dim { color: var(--text-dim); font-weight: 400; margin-left: 6px; font-size: 13.8px; }
   .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
@@ -3084,8 +3084,14 @@ const BASE_STYLES = `
     .panel-head-actions-stack { flex-direction: column; align-items: flex-start; gap: 6px; }
     .panel-head-actions-stack .range-targets-group { order: 1; }
     .panel-head-actions-stack > .series-toggle { order: 2; }
-    .range-targets-group .toggle-group:not(.series-toggle) { order: 1; }
-    .range-targets-group .series-toggle { order: 2; }
+    .range-targets-group .rtg-range { order: 1; }
+    .range-targets-group .rtg-targets { order: 2; }
+    .range-targets-group .rtg-datewindow { order: 3; }
+    /* Tighten this one row so Tracked/+Roadmap, Targets, and the date
+       dropdown all fit on one line at typical phone widths. */
+    .range-targets-group { gap: 5px; }
+    .range-targets-group .toggle-group { gap: 2px; padding: 2px; }
+    .dash .range-targets-group .toggle-btn { padding: 3px 7px; font-size: 10px; }
   }
 
   /* ---------- Clean brokerage-app styling ---------- */
@@ -3123,8 +3129,6 @@ const BASE_STYLES = `
   .dash .toggle-group { background: #ecebe5; border-radius: 999px; padding: 3px; }
   .dash .toggle-btn { border-radius: 999px; font-family: 'Inter', sans-serif; font-weight: 600; letter-spacing: 0.02em; padding: 4px 10px; font-size: 11.3px; }
   .dash .toggle-btn.active { background: #ffffff; box-shadow: 0 1px 3px rgba(20, 22, 27, 0.16); }
-  .dash .date-window-label, .dash .date-window-select { font-family: 'Inter', sans-serif; font-weight: 600; letter-spacing: 0.02em; font-size: 12px; }
-  .dash .date-window-select { border-radius: 999px; }
 
   /* Stat cards: sentence-case labels, big clean numbers, pill deltas */
   .dash .stat-label { font-family: 'Inter', sans-serif; font-size: 13.2px; font-weight: 600; text-transform: none; letter-spacing: 0.01em; }
