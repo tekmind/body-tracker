@@ -2311,14 +2311,15 @@ export default function Dashboard() {
       {(pacing.calGoal != null || pacing.stepGoal != null) && (
         <div className="pacing-mini">
           <div className="pacing-mini-head">
-            <span><Flame size={12} /> This week's pacing · {pacing.daysRemaining}d left</span>
+            <span><Flame size={12} /> <strong>This week's pacing</strong> · {pacing.daysRemaining}d left</span>
           </div>
           <div className="pacing-mini-row">
             {pacing.calGoal != null && pacing.recCal != null && (() => {
               const bad = pacing.calStatus === "over" || pacing.calStatus === "behind";
               return (
                 <span className={"pacing-mini-item " + (bad ? "pacing-status-bad" : "pacing-status-good")}>
-                  Calories: <strong className={bad ? "cell-bad" : "cell-good"}>{pacing.recCal.toLocaleString()}/day</strong>
+                  <span className={"pacing-pill " + (bad ? "pacing-pill-bad" : "pacing-pill-good")}>Calories</span>
+                  <strong className={bad ? "cell-bad" : "cell-good"}>{pacing.recCal.toLocaleString()}/day</strong>
                 </span>
               );
             })()}
@@ -2326,7 +2327,8 @@ export default function Dashboard() {
               const bad = pacing.stepStatus === "behind";
               return (
                 <span className={"pacing-mini-item " + (bad ? "pacing-status-bad" : "pacing-status-good")}>
-                  Steps: <strong className={bad ? "cell-bad" : "cell-good"}>{pacing.recSteps.toLocaleString()}/day</strong>
+                  <span className={"pacing-pill " + (bad ? "pacing-pill-bad" : "pacing-pill-good")}>Steps</span>
+                  <strong className={bad ? "cell-bad" : "cell-good"}>{pacing.recSteps.toLocaleString()}/day</strong>
                 </span>
               );
             })()}
@@ -2717,7 +2719,7 @@ const BASE_STYLES = `
     --text: #16181d; --text-dim: #5d6167; --text-faint: #8f939b;
     --cut: #5b8dee; --derailed: #c4534a; --maintain: #4caf7d; --gain: #dba236;
     --good: #368727; --bad: #c73a2f;
-    --bar-good: #7fb46e; --bar-bad: #d4867c;
+    --bar-good: #4caf7d; --bar-bad: #c73a2f;
     font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text);
     padding: 28px 24px 40px; border-radius: 16px; width: 100%; max-width: 1900px; margin: 0 auto; box-sizing: border-box;
   }
@@ -2840,6 +2842,10 @@ const BASE_STYLES = `
   .pacing-mini-item strong.cell-bad { color: var(--bad); }
   .pacing-mini-item.pacing-status-good { color: var(--good); }
   .pacing-mini-item.pacing-status-bad { color: var(--bad); }
+  .pacing-mini-item { display: inline-flex; align-items: center; gap: 7px; }
+  .pacing-pill { display: inline-flex; align-items: center; padding: 2px 9px; border-radius: 999px; font-family: 'Inter', sans-serif; font-weight: 700; font-size: 11px; letter-spacing: 0.02em; color: #ffffff; }
+  .pacing-pill-good { background: var(--good); }
+  .pacing-pill-bad { background: var(--bad); }
   .goal-card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 14px 15px; }
   .goal-card-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
   .goal-card-date { font-family: 'JetBrains Mono', monospace; font-size: 11.5px; color: var(--text-faint); }
@@ -3071,9 +3077,9 @@ const BASE_STYLES = `
     .title { font-size: 32.2px; }
     .panel { padding: 14px 12px 6px; }
     .banner-alert { padding: 14px 12px; min-height: 0; font-size: 15.5px; }
-    .banner-alert, .banner-ontrack { position: relative; padding-right: 54px; }
-    .banner-alert .notif-weeks, .banner-ontrack .notif-weeks { position: absolute; top: 12px; right: 38px; }
-    .banner-alert .alert-close-btn, .banner-ontrack .alert-close-btn { position: absolute; top: 8px; right: 8px; margin-left: 0; }
+    .banner-alert, .banner-ontrack { position: relative; padding-right: 80px; }
+    .banner-alert .notif-weeks, .banner-ontrack .notif-weeks { position: absolute; top: 50%; right: 40px; transform: translateY(-50%); }
+    .banner-alert .alert-close-btn, .banner-ontrack .alert-close-btn { position: absolute; top: 50%; right: 8px; transform: translateY(-50%); margin-left: 0; }
     .notif-row .notif-weeks { margin-left: auto; }
     .stat-value { font-size: 29.9px; }
     .stat-value-line { height: 30px; }
@@ -3092,6 +3098,12 @@ const BASE_STYLES = `
     .range-targets-group .rtg-range { order: 1; }
     .range-targets-group .rtg-targets { order: 2; }
     .range-targets-group .rtg-datewindow { order: 3; }
+    /* Tighten just the container chrome (gaps/pill padding) so Tracked/
+       +Roadmap, Targets, and the date dropdown fit on one line without
+       shrinking the toggle buttons themselves (they still match row 2). */
+    .range-targets-group { gap: 4px 3px; }
+    .dash .range-targets-group .toggle-group { gap: 1px; padding: 1px; }
+    .date-window-select { appearance: none; -webkit-appearance: none; padding-right: 6px !important; background-image: none; }
   }
 
   /* ---------- Clean brokerage-app styling ---------- */
