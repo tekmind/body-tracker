@@ -2137,7 +2137,7 @@ export default function Dashboard() {
           accent={PHASE_COLOR.Maintain} badge={mkBadge(muscleStreak, muscleStreak >= 3 ? "bad" : "warn")} />
         <StatCard icon={Flame} label="Calories" value={fmtNum(latest.aCal)} unit=""
           sub={latest.tCal != null && latest.aCal != null
-            ? <>target {fmtNum(latest.tCal)} · <span className={latest.aCal <= latest.tCal ? "cell-good" : "cell-bad"}>{latest.aCal - latest.tCal > 0 ? "+" : ""}{fmtNum(latest.aCal - latest.tCal)} kcal</span></>
+            ? <>target {fmtNum(latest.tCal)} · <span className={latest.aCal <= latest.tCal ? "cell-good" : "cell-bad"}>{latest.aCal - latest.tCal > 0 ? "+" : ""}{fmtNum(latest.aCal - latest.tCal)}</span></>
             : (avgCal != null ? `${calData.length}wk avg ${fmtNum(avgCal)}` : null)}
           accent={PHASE_COLOR.Gain} badge={mkBadge(bucketAlert(calStreak), "bad")} />
         <StatCard icon={Footprints} label="Steps" value={fmtNum(latest.steps)} unit=""
