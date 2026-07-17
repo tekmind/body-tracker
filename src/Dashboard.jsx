@@ -349,7 +349,9 @@ function StatCard({ icon: Icon, label, value, valueTag, unit, weekValue, weekLab
       </div>
       <div className="stat-value-row">
         <div className="stat-value-main">
-          <div className="stat-value">{value}<span className="stat-unit">{unit}</span></div>
+          <div className="stat-value-line">
+            <div className="stat-value">{value}<span className="stat-unit">{unit}</span></div>
+          </div>
           {valueTag && <span className="stat-value-tag">{valueTag}</span>}
         </div>
         {weekValue != null && (
@@ -2715,15 +2717,16 @@ const BASE_STYLES = `
   .stat-top { display: flex; align-items: center; gap: 7px; margin-bottom: 10px; }
   .stat-icon { width: 22px; height: 22px; border-radius: 6px; display: flex; align-items: center; justify-content: center; }
   .stat-label { font-family: 'JetBrains Mono', monospace; font-size: 11.5px; letter-spacing: 0.07em; color: var(--text-dim); text-transform: uppercase; }
-  .stat-value-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+  .stat-value-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 6px; }
   .stat-value-main { display: flex; flex-direction: column; min-width: 0; }
+  .stat-value-line { height: 38px; display: flex; align-items: center; }
   .stat-value { font-family: 'Space Grotesk', sans-serif; font-size: 36.8px; font-weight: 700; letter-spacing: -0.01em; line-height: 1; }
   .stat-unit { font-size: 14.9px; font-weight: 500; color: var(--text-dim); margin-left: 2px; }
-  .stat-value-tag { font-family: 'JetBrains Mono', monospace; font-size: 9px; font-weight: 600; letter-spacing: 0.05em; color: var(--text-faint); text-transform: uppercase; }
+  .stat-value-tag { margin-top: 3px; font-family: 'JetBrains Mono', monospace; font-size: 9px; font-weight: 600; letter-spacing: 0.05em; color: var(--text-faint); text-transform: uppercase; }
   .stat-week { display: flex; flex-direction: column; align-items: center; flex-shrink: 0; }
-  .stat-week-box { height: 42px; display: flex; align-items: center; justify-content: center; padding: 0 10px; border-radius: 10px; background: var(--panel-2); font-family: 'Space Grotesk', sans-serif; font-size: 14px; font-weight: 600; color: var(--text-dim); white-space: nowrap; }
-  .stat-week-unit { font-size: 9.5px; font-weight: 500; color: var(--text-faint); margin-left: 1px; }
-  .stat-week-tag { margin-top: 4px; font-family: 'JetBrains Mono', monospace; font-size: 8.5px; font-weight: 600; letter-spacing: 0.03em; color: var(--text-faint); white-space: nowrap; }
+  .stat-week-box { height: 38px; display: flex; align-items: center; justify-content: center; padding: 0 10px; border-radius: 10px; background: var(--panel-2); font-family: 'Space Grotesk', sans-serif; font-size: 18px; font-weight: 600; color: var(--text-dim); white-space: nowrap; }
+  .stat-week-unit { font-size: 10.5px; font-weight: 500; color: var(--text-faint); margin-left: 1px; }
+  .stat-week-tag { margin-top: 3px; font-family: 'JetBrains Mono', monospace; font-size: 8.5px; font-weight: 600; letter-spacing: 0.03em; color: var(--text-faint); text-transform: uppercase; white-space: nowrap; }
   .stat-sub { font-family: 'JetBrains Mono', monospace; font-size: 12.6px; color: var(--text-dim); margin-top: 6px; display: flex; align-items: center; gap: 4px; }
   .stat-sub.down { color: var(--cut); } .stat-sub.up { color: var(--gain); } .stat-sub.flat { color: var(--text-dim); }
 
@@ -2890,7 +2893,8 @@ const BASE_STYLES = `
     .banner-alert .notif-weeks, .banner-ontrack .notif-weeks { position: absolute; top: 12px; right: 12px; }
     .notif-row .notif-weeks { margin-left: auto; }
     .stat-value { font-size: 29.9px; }
-    .stat-week-box { height: 36px; }
+    .stat-value-line { height: 34px; }
+    .stat-week-box { height: 34px; font-size: 14px; }
     .stat-grid { grid-template-columns: repeat(2, 1fr); }
     .tab-label-full { display: none; }
     .tab-label-short { display: inline; }
