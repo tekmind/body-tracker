@@ -309,11 +309,11 @@ function cellClass(kind, actual, target) {
 
 function calBarColor(actual, target) {
   if (actual == null || target == null) return "#5b8dee";
-  return actual <= target ? "var(--good)" : "var(--bad)";
+  return actual <= target ? "var(--bar-good)" : "var(--bar-bad)";
 }
 function stepsBarColor(actual, target) {
   if (actual == null || target == null) return "#5b8dee";
-  return actual >= target ? "var(--good)" : "var(--bad)";
+  return actual >= target ? "var(--bar-good)" : "var(--bar-bad)";
 }
 
 function missStreak(actualRows, actualKey, targetKey, isMiss) {
@@ -2209,8 +2209,8 @@ export default function Dashboard() {
             </ComposedChart>
           </ResponsiveContainer>
           <ChartLegend items={[
-            { label: "at/under target", color: "var(--good)", swatch: "box" },
-            { label: "over target", color: "var(--bad)", swatch: "box" },
+            { label: "at/under target", color: "var(--bar-good)", swatch: "box" },
+            { label: "over target", color: "var(--bar-bad)", swatch: "box" },
             { label: "no target set", color: "#5b8dee", swatch: "box" },
             { label: "target", color: chartTheme.ink, swatch: "dash" },
           ]} />
@@ -2232,8 +2232,8 @@ export default function Dashboard() {
             </ComposedChart>
           </ResponsiveContainer>
           <ChartLegend items={[
-            { label: "at/over goal", color: "var(--good)", swatch: "box" },
-            { label: "under goal", color: "var(--bad)", swatch: "box" },
+            { label: "at/over goal", color: "var(--bar-good)", swatch: "box" },
+            { label: "under goal", color: "var(--bar-bad)", swatch: "box" },
             { label: "no goal set", color: "#5b8dee", swatch: "box" },
             { label: "step goal", color: chartTheme.ink, swatch: "dash" },
           ]} />
@@ -2485,6 +2485,7 @@ const BASE_STYLES = `
     --text: #16181d; --text-dim: #5d6167; --text-faint: #8f939b;
     --cut: #5b8dee; --derailed: #c4534a; --maintain: #4caf7d; --gain: #dba236;
     --good: #368727; --bad: #c73a2f;
+    --bar-good: #7fb46e; --bar-bad: #d4867c;
     font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text);
     padding: 28px 24px 40px; border-radius: 16px; width: 100%; max-width: 1900px; margin: 0 auto; box-sizing: border-box;
   }
