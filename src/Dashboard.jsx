@@ -332,6 +332,7 @@ function mkBadge(weeks, level) { return weeks > 0 ? { weeks, level } : null; }
 function formatDailyTag(label) {
   if (label === "today") return "TODAY";
   if (label === "yesterday") return "YESTERDAY";
+  if (label === "wk avg") return "WK AVG";
   const d = parseDate(label);
   return d ? `${d.getMonth() + 1}/${d.getDate()}` : label;
 }
@@ -1216,6 +1217,28 @@ export default function Dashboard() {
     return { weight: pick("weight"), fatMass: pick("fatMass"), muscleMass: pick("muscleMass"), bodyFat: pick("bodyFat") };
   }, [mergedDailyEntries]);
 
+  // Calories/Steps stat cards use this week's daily-log average as their
+  // main number. "This week" is the same Fri–Thu block the Daily tab's
+  // pacing uses. Today is always excluded (it's still in progress), and
+  // days with no logged value simply don't count toward the average —
+  // they don't drag it down as zeros.
+  const weekAvgStats = useMemo(() => {
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const todayStr = formatMDY(today);
+    const blockStart = blockStartFor(today);
+    const blockEnd = blockEndFor(blockStart);
+    const daysThisWeek = mergedDailyEntries.filter(d => {
+      if (d.date === todayStr) return false;
+      const dd = parseDate(d.date);
+      return dd && dd >= blockStart && dd <= blockEnd;
+    });
+    function avg(key) {
+      const vals = daysThisWeek.map(d => d[key]).filter(v => v != null);
+      return vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) : null;
+    }
+    return { cal: avg("cal"), steps: avg("steps") };
+  }, [mergedDailyEntries]);
+
   const pacing = useMemo(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -1352,6 +1375,8 @@ export default function Dashboard() {
   const bodyFatCard = dailyCardStat(todayStats.bodyFat, latest.aBF);
   const fatMassCard = dailyCardStat(todayStats.fatMass, latest.aF);
   const muscleMassCard = dailyCardStat(todayStats.muscleMass, latest.aM);
+  const calCard = dailyCardStat({ value: weekAvgStats.cal, label: "wk avg" }, latest.aCal);
+  const stepsCard = dailyCardStat({ value: weekAvgStats.steps, label: "wk avg" }, latest.steps);
   // Fat Mass and Body Fat % share the same on-track streak — the app has
   // always treated them as one "fat" trend line (see the top banner, which
   // is also fat-mass-driven despite being labeled "Body Fat").
@@ -2231,15 +2256,19 @@ export default function Dashboard() {
           trend={muscleChange == null ? null : muscleChange > 0 ? "up" : muscleChange < 0 ? "down" : "flat"}
           statusLevel={muscleStatus}
           accent={STATUS_COLOR[muscleStatus]} badge={muscleBadge} />
-        <StatCard icon={Flame} label="Calories" value={fmtNum(latest.aCal)} unit=""
-          sub={latest.tCal != null && latest.aCal != null
-            ? <>target {fmtNum(latest.tCal)} · <span className={latest.aCal <= latest.tCal ? "cell-good" : "cell-bad"}>{latest.aCal - latest.tCal > 0 ? "+" : ""}{fmtNum(latest.aCal - latest.tCal)}</span></>
+        <StatCard icon={Flame} label="Calories" value={fmtNum(calCard.main)} valueTag={calCard.tag} unit=""
+          weekValue={calCard.week != null ? fmtNum(calCard.week) : null} weekLabel={calCard.weekLabel}
+          weekBg={STATUS_COLOR[calStatus] + "22"}
+          sub={latest.tCal != null && calCard.main != null
+            ? <>target {fmtNum(latest.tCal)} · <span className={calCard.main <= latest.tCal ? "cell-good" : "cell-bad"}>{calCard.main - latest.tCal > 0 ? "+" : ""}{fmtNum(calCard.main - latest.tCal)}</span></>
             : (avgCal != null ? `${calData.length}wk avg ${fmtNum(avgCal)}` : null)}
           statusLevel={calStatus}
           accent={STATUS_COLOR[calStatus]} badge={calBadge} />
-        <StatCard icon={Footprints} label="Steps" value={fmtNum(latest.steps)} unit=""
-          sub={latest.tSteps != null && latest.steps != null
-            ? <>goal {fmtNum(latest.tSteps)} · <span className={latest.steps >= latest.tSteps ? "cell-good" : "cell-bad"}>{latest.steps - latest.tSteps > 0 ? "+" : ""}{fmtNum(latest.steps - latest.tSteps)}</span></>
+        <StatCard icon={Footprints} label="Steps" value={fmtNum(stepsCard.main)} valueTag={stepsCard.tag} unit=""
+          weekValue={stepsCard.week != null ? fmtNum(stepsCard.week) : null} weekLabel={stepsCard.weekLabel}
+          weekBg={STATUS_COLOR[stepsStatus] + "22"}
+          sub={latest.tSteps != null && stepsCard.main != null
+            ? <>goal {fmtNum(latest.tSteps)} · <span className={stepsCard.main >= latest.tSteps ? "cell-good" : "cell-bad"}>{stepsCard.main - latest.tSteps > 0 ? "+" : ""}{fmtNum(stepsCard.main - latest.tSteps)}</span></>
             : (avgSteps != null ? `${stepsData.length}wk avg ${fmtNum(avgSteps)}` : null)}
           statusLevel={stepsStatus}
           accent={STATUS_COLOR[stepsStatus]} badge={stepsBadge} />
