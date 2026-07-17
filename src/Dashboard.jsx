@@ -2984,11 +2984,8 @@ const BASE_STYLES = `
   .notes-field { grid-column: span 4; }
   .form-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
 
-  @media (max-width: 1260px) {
-    .stat-grid { grid-template-columns: repeat(3, 1fr); }
-  }
-
   @media (max-width: 860px) {
+    .stat-grid { grid-template-columns: repeat(3, 1fr); }
     .row-2 { grid-template-columns: 1fr; }
     .row-2 .panel:not(:last-child) { margin-bottom: 0; }
     .form-grid { grid-template-columns: repeat(2, 1fr); }
@@ -3005,7 +3002,8 @@ const BASE_STYLES = `
     .title { font-size: 32.2px; }
     .panel { padding: 14px 12px 6px; }
     .banner-alert { padding: 14px 12px; min-height: 0; font-size: 15.5px; }
-    .banner-alert, .banner-ontrack { position: relative; padding-right: 40px; }
+    .banner-alert, .banner-ontrack { position: relative; padding-right: 54px; }
+    .banner-alert .notif-weeks, .banner-ontrack .notif-weeks { position: absolute; top: 12px; right: 38px; }
     .banner-alert .alert-close-btn, .banner-ontrack .alert-close-btn { position: absolute; top: 8px; right: 8px; margin-left: 0; }
     .notif-row .notif-weeks { margin-left: auto; }
     .stat-value { font-size: 29.9px; }
