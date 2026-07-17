@@ -1924,7 +1924,7 @@ export default function Dashboard() {
               <div className="panel-title">Goal Log</div>
               <div style={{ display: "flex", gap: 8 }}>
                 <button className="btn-primary sm" onClick={openAddGoal} disabled={goalSaving}>
-                  {goalSaving ? <Loader2 size={13} className="spin" /> : <Plus size={13} />} New goal
+                  {goalSaving ? <Loader2 size={13} className="spin" /> : <Plus size={13} />} New
                 </button>
               </div>
             </div>
@@ -1944,7 +1944,7 @@ export default function Dashboard() {
                 </thead>
                 <tbody>
                   {goals.length === 0 && (
-                    <tr><td colSpan={10} className="empty-row">No goals set yet — click "New goal" to add one.</td></tr>
+                    <tr><td colSpan={10} className="empty-row">No goals set yet — click "New" to add one.</td></tr>
                   )}
                   {taggedGoals
                     .map((g, i) => ({ ...g, _origIndex: i }))
@@ -2253,10 +2253,6 @@ export default function Dashboard() {
                 </tbody>
               </table>
             </div>
-          </div>
-
-          <div className="footer-note">
-            This tab and its pacing math run entirely on their own — daily calories/steps here don't feed into the Weekly Log, charts, or top dashboard buckets. Those stay driven by whatever you enter manually in the weekly Add/Edit form.
           </div>
         </div>
       ) : (
@@ -2642,10 +2638,6 @@ export default function Dashboard() {
           </table>
         </div>
       </div>
-
-      <div className="footer-note">
-        Target weight/muscle/fat/BF% are calculated automatically from your Goal Settings rates — no manual entry needed. Data lives in this artifact's private storage; nobody else can see it.
-      </div>
       </>
       )}
 
@@ -2903,7 +2895,7 @@ const BASE_STYLES = `
   .tt-dot { width: 6px; height: 6px; border-radius: 50%; }
   .tt-name { color: var(--text-dim); flex: 1; } .tt-val { color: var(--text); font-weight: 600; }
 
-  .table-wrap { overflow-x: auto; }
+  .table-wrap { overflow-x: auto; padding-bottom: 14px; }
   table { width: 100%; border-collapse: collapse; font-family: 'JetBrains Mono', monospace; font-size: 13.2px; }
   th { text-align: center; padding: 8px 10px; color: var(--text-faint); font-weight: 500; letter-spacing: 0.05em; text-transform: uppercase; font-size: 10.9px; background: var(--panel); border-bottom: 1px solid var(--border); }
   td { text-align: center; padding: 7px 10px; border-bottom: 1px solid rgba(43,47,58,0.5); color: var(--text-dim); }
