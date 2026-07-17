@@ -579,7 +579,7 @@ export default function Dashboard() {
   const [entries, setEntries] = useState([]);
   const [status, setStatus] = useState("loading"); // loading | ready | error
   const [errMsg, setErrMsg] = useState("");
-  const [range, setRange] = useState("tracked");
+  const [range, setRange] = useState("month"); // month | sixMonths | phase | all
   // Dismissed top alerts, keyed by a stable id per banner. Session-only —
   // intentionally not persisted, so a dismissed alert reappears next visit
   // if the underlying condition is still true.
@@ -1048,7 +1048,19 @@ export default function Dashboard() {
     });
   }, [enrichedWithAdj]);
   const chartData = useMemo(() => {
-    const src = range === "tracked" ? ACTUAL : enrichedEntries;
+    let src;
+    if (range === "all") {
+      src = enrichedEntries; // includes future roadmap weeks
+    } else if (range === "phase") {
+      const currentPhase = ACTUAL.length ? ACTUAL[ACTUAL.length - 1].phase : null;
+      let start = ACTUAL.length;
+      for (let i = ACTUAL.length - 1; i >= 0 && ACTUAL[i].phase === currentPhase; i--) start = i;
+      src = ACTUAL.slice(start);
+    } else if (range === "sixMonths") {
+      src = ACTUAL.slice(-26); // ~26 tracked weeks
+    } else {
+      src = ACTUAL.slice(-4); // ~4 tracked weeks
+    }
     return src.map(r => ({ ...r, label: r.date }));
   }, [range, ACTUAL, enrichedEntries]);
 
@@ -2370,8 +2382,10 @@ export default function Dashboard() {
           <div className="panel-head-actions panel-head-actions-stack">
             <div className="range-targets-group">
               <div className="toggle-group">
-                <button className={"toggle-btn " + (range === "tracked" ? "active" : "")} onClick={() => setRange("tracked")}>TRACKED</button>
-                <button className={"toggle-btn " + (range === "full" ? "active" : "")} onClick={() => setRange("full")}>+ ROADMAP</button>
+                <button className={"toggle-btn " + (range === "month" ? "active" : "")} onClick={() => setRange("month")}>MONTH</button>
+                <button className={"toggle-btn " + (range === "sixMonths" ? "active" : "")} onClick={() => setRange("sixMonths")}>6 MONTHS</button>
+                <button className={"toggle-btn " + (range === "phase" ? "active" : "")} onClick={() => setRange("phase")}>PHASE</button>
+                <button className={"toggle-btn " + (range === "all" ? "active" : "")} onClick={() => setRange("all")}>ALL</button>
               </div>
               <SeriesToggle
                 items={[{ key: "targets", label: "TARGETS" }]}
@@ -2407,7 +2421,7 @@ export default function Dashboard() {
               {derailedSegments.map((s, i) => (
                 <ReferenceArea key={i} x1={s.x1} x2={s.x2} yAxisId="a" fill="var(--bad)" fillOpacity={0.1} stroke="var(--bad)" strokeOpacity={0.25} />
               ))}
-              <XAxis dataKey="label" tick={{ fill: chartTheme.tick, fontSize: 9.5, fontFamily: chartTheme.font }} axisLine={{ stroke: chartTheme.grid }} tickLine={false} interval={range === "full" ? 3 : 1} angle={-35} textAnchor="end" height={40} />
+              <XAxis dataKey="label" tick={{ fill: chartTheme.tick, fontSize: 9.5, fontFamily: chartTheme.font }} axisLine={{ stroke: chartTheme.grid }} tickLine={false} interval={Math.max(0, Math.ceil(chartData.length / 10) - 1)} angle={-35} textAnchor="end" height={40} />
               <YAxis yAxisId="a" width={34} tick={{ fill: chartTheme.tick, fontSize: 10, fontFamily: chartTheme.font }} axisLine={false} tickLine={false}
                 domain={[`dataMin - ${wbfMetrics[wbfSelected[0]].pad}`, `dataMax + ${wbfMetrics[wbfSelected[0]].pad}`]}
                 tickFormatter={(v) => fmtNum(v, wbfMetrics[wbfSelected[0]].decimals)} />
@@ -2871,11 +2885,14 @@ const BASE_STYLES = `
   body.touch-tooltip-hidden .recharts-tooltip-wrapper { display: none !important; }
   /* A long-press-to-see-the-tooltip gesture reads as a long-press-to-select
      to the OS, popping up the native text-selection/copy callout mid-tap.
-     Charts have no selectable text worth keeping, so opt them out. */
+     Charts have no selectable text worth keeping, so opt them out. Also
+     claim touch gestures entirely so dragging a finger across the chart to
+     scan the tooltip doesn't also scroll the page vertically. */
   .recharts-wrapper, .recharts-wrapper * {
     -webkit-user-select: none; user-select: none;
     -webkit-touch-callout: none;
   }
+  .recharts-wrapper { touch-action: none; }
   .chart-legend-note { display: flex; align-items: center; gap: 6px; font-family: 'JetBrains Mono', monospace; font-size: 11.5px; color: var(--text-faint); padding: 0 0 12px 4px; }
   .derailed-swatch { width: 10px; height: 10px; border-radius: 2px; background: var(--bad); opacity: 0.35; display: inline-block; }
 
