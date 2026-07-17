@@ -775,8 +775,7 @@ export default function Dashboard() {
     calories: { label: "Calories",   actualKey: "aCal",  targetKey: "tCal",   color: "#dba236",      pad: 200,  decimals: 0 },
     steps:    { label: "Steps",      actualKey: "steps", targetKey: "tSteps", color: "#5b8dee",      pad: 1000, decimals: 0 },
   };
-  // All target lines share one color (rather than a tint of their metric's
-  // own color) so "dashed gold" reads as one consistent "target" language.
+  // Shared "dashed gold" target color for the Calories/Steps bar charts.
   const wbfTargetColor = "#dba236";
 
   const persist = useCallback(async (next) => {
@@ -2454,13 +2453,13 @@ export default function Dashboard() {
               {wbfSelected.map((key, idx) => {
                 const m = wbfMetrics[key];
                 return (
-                  <Line key={key} yAxisId={idx === 0 ? "a" : "b"} type="monotone" dataKey={m.actualKey} name={`${m.label} (actual)`} stroke={m.color} strokeWidth={2} dot={{ r: 2.5, fill: m.color }} connectNulls isAnimationActive={false} />
+                  <Line key={key} yAxisId={idx === 0 ? "a" : "b"} type="monotone" dataKey={m.actualKey} name={`${m.label} (actual)`} stroke={m.color} strokeWidth={2} dot={{ r: 2.5, fill: m.color }} connectNulls />
                 );
               })}
               {wbfTargetsOn && wbfSelected.map((key, idx) => {
                 const m = wbfMetrics[key];
                 return (
-                  <Line key={key + "-t"} yAxisId={idx === 0 ? "a" : "b"} type="monotone" dataKey={m.targetKey} name={`${m.label} (target)`} stroke={wbfTargetColor} strokeWidth={1.5} strokeDasharray="4 3" dot={false} connectNulls isAnimationActive={false} />
+                  <Line key={key + "-t"} yAxisId={idx === 0 ? "a" : "b"} type="monotone" dataKey={m.targetKey} name={`${m.label} (target)`} stroke={m.color} strokeOpacity={0.55} strokeWidth={1.5} strokeDasharray="4 3" dot={false} connectNulls />
                 );
               })}
             </ComposedChart>
@@ -2468,7 +2467,7 @@ export default function Dashboard() {
         )}
         <ChartLegend items={[
           ...wbfSelected.map((key) => ({ label: `${wbfMetrics[key].label} (actual)`, color: wbfMetrics[key].color, swatch: "box" })),
-          ...(wbfTargetsOn ? wbfSelected.map((key) => ({ label: `${wbfMetrics[key].label} (target)`, color: wbfTargetColor, swatch: "dash" })) : []),
+          ...(wbfTargetsOn ? wbfSelected.map((key) => ({ label: `${wbfMetrics[key].label} (target)`, color: wbfMetrics[key].color, swatch: "dash" })) : []),
           ...(derailedSegments.length > 0 ? [{ label: "derailed weeks", swatch: "shade" }] : []),
         ]} />
       </div>
@@ -2487,14 +2486,14 @@ export default function Dashboard() {
                   <Cell key={i} fill={calBarColor(r.aCal, r.tCal)} />
                 ))}
               </Bar>
-              <Line type="monotone" dataKey="tCal" name="Target" stroke={chartTheme.ink} strokeWidth={1.5} strokeDasharray="4 3" dot={false} connectNulls />
+              <Line type="monotone" dataKey="tCal" name="Target" stroke={wbfTargetColor} strokeWidth={1.5} strokeDasharray="4 3" dot={false} connectNulls />
             </ComposedChart>
           </ResponsiveContainer>
           <ChartLegend items={[
             { label: "at/under target", color: "var(--bar-good)", swatch: "box" },
             { label: "over target", color: "var(--bar-bad)", swatch: "box" },
             { label: "no target set", color: "#5b8dee", swatch: "box" },
-            { label: "target", color: chartTheme.ink, swatch: "dash" },
+            { label: "target", color: wbfTargetColor, swatch: "dash" },
           ]} />
         </div>
         <div className="panel">
@@ -2510,14 +2509,14 @@ export default function Dashboard() {
                   <Cell key={i} fill={stepsBarColor(r.steps, r.tSteps)} />
                 ))}
               </Bar>
-              <Line type="monotone" dataKey="tSteps" name="Target" stroke={chartTheme.ink} strokeWidth={1.5} strokeDasharray="4 3" dot={false} connectNulls />
+              <Line type="monotone" dataKey="tSteps" name="Target" stroke={wbfTargetColor} strokeWidth={1.5} strokeDasharray="4 3" dot={false} connectNulls />
             </ComposedChart>
           </ResponsiveContainer>
           <ChartLegend items={[
             { label: "at/over target", color: "var(--bar-good)", swatch: "box" },
             { label: "under target", color: "var(--bar-bad)", swatch: "box" },
             { label: "no target set", color: "#5b8dee", swatch: "box" },
-            { label: "target", color: chartTheme.ink, swatch: "dash" },
+            { label: "target", color: wbfTargetColor, swatch: "dash" },
           ]} />
         </div>
       </div>
