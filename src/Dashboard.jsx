@@ -190,6 +190,11 @@ function tagGoalStatuses(goals) {
 
 const WEEK_MS = 7 * 24 * 3600 * 1000;
 function round1(n) { return Math.round(n * 10) / 10; }
+function fmtNum(n, decimals) {
+  if (n === null || n === undefined || Number.isNaN(n)) return "–";
+  if (decimals == null) return n.toLocaleString();
+  return n.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+}
 
 function activeGoalFor(goals, phase, date) {
   if (!date) return null;
@@ -361,7 +366,7 @@ function CustomTooltip({ active, payload }) {
         <div key={i} className="tt-row">
           <span className="tt-dot" style={{ background: p.color }} />
           <span className="tt-name">{p.name}</span>
-          <span className="tt-val">{typeof p.value === "number" ? p.value.toFixed(1) : p.value}</span>
+          <span className="tt-val">{typeof p.value === "number" ? fmtNum(p.value, 1) : p.value}</span>
         </div>
       ))}
     </div>
@@ -390,6 +395,22 @@ function RecoveryFooter({ r }) {
           {r.stepGoal != null && <span className="rec-chip">{r.stepGoal.toLocaleString()} steps/day</span>}
         </div>
       )}
+    </div>
+  );
+}
+
+function SeriesToggle({ items, active, onToggle }) {
+  return (
+    <div className="toggle-group series-toggle">
+      {items.map((it) => (
+        <button
+          key={it.key}
+          className={"toggle-btn " + (active[it.key] ? "active" : "")}
+          onClick={() => onToggle(it.key)}
+        >
+          {it.label}
+        </button>
+      ))}
     </div>
   );
 }
@@ -523,6 +544,8 @@ export default function Dashboard() {
   const [status, setStatus] = useState("loading"); // loading | ready | error
   const [errMsg, setErrMsg] = useState("");
   const [range, setRange] = useState("tracked");
+  const [wbfVisible, setWbfVisible] = useState({ targets: true, weight: true, bodyFat: true });
+  const [mvfVisible, setMvfVisible] = useState({ targets: true, muscle: true, fat: true });
   const [formOpen, setFormOpen] = useState(false);
   const [editIndex, setEditIndex] = useState(null);
   const [form, setForm] = useState(emptyForm);
@@ -1602,11 +1625,11 @@ export default function Dashboard() {
         </div>
         <div className="hero-card">
           <div className="hero-w">
-            <div className="hero-num">{latest.aW ?? "–"}<span className="hero-unit">lb</span></div>
+            <div className="hero-num">{fmtNum(latest.aW)}<span className="hero-unit">lb</span></div>
             <div className="hero-lbl">Weight</div>
           </div>
           <div className={"hero-bf" + (latest.aBF != null && latest.tBF != null ? (latest.aBF <= latest.tBF ? " good" : " bad") : "")}>
-            <div className="hero-num hero-num-bf">{latest.aBF ?? "–"}<span className="hero-unit">%</span></div>
+            <div className="hero-num hero-num-bf">{fmtNum(latest.aBF)}<span className="hero-unit">%</span></div>
             <div className="hero-lbl">Body Fat</div>
           </div>
         </div>
@@ -2042,11 +2065,11 @@ export default function Dashboard() {
                             {inBlock && <span className="this-block-tag">this block</span>}
                             {d._synced && <span className="synced-tag" title="Synced from HealthKit"><Watch size={10} /> synced</span>}
                           </td>
-                          <td>{d.cal ?? "–"}</td>
-                          <td>{d.steps ? d.steps.toLocaleString() : "–"}</td>
-                          <td>{d.weight ?? "–"}</td>
-                          <td>{d.fatMass ?? "–"}</td>
-                          <td>{d.muscleMass ?? "–"}</td>
+                          <td>{fmtNum(d.cal)}</td>
+                          <td>{fmtNum(d.steps)}</td>
+                          <td>{fmtNum(d.weight)}</td>
+                          <td>{fmtNum(d.fatMass)}</td>
+                          <td>{fmtNum(d.muscleMass)}</td>
                           <td className="row-actions">
                             <button className="icon-btn" onClick={() => openEditDaily(d)} title="Edit"><Pencil size={12} /></button>
                             <DeleteBtn id={`daily-${d._i}`} onDelete={() => (d._synced ? handleDeleteSynced(d) : handleDeleteDaily(d))} />
@@ -2094,40 +2117,51 @@ export default function Dashboard() {
       <PhaseTimeline all={resolvedEntries} trackedCount={ACTUAL.length} derailedDates={derailedDates} />
 
       <div className="stat-grid">
-        <StatCard icon={Scale} label="Weight" value={latest.aW ?? "–"} unit="lb"
-          sub={weightChange != null ? `${weightChange > 0 ? "+" : ""}${weightChange.toFixed(1)} lb since start` : null}
+        <StatCard icon={Scale} label="Weight" value={fmtNum(latest.aW)} unit="lb"
+          sub={weightChange != null ? `${weightChange > 0 ? "+" : ""}${fmtNum(weightChange, 1)} lb since start` : null}
           trend={weightChange == null ? null : weightChange < 0 ? "down" : weightChange > 0 ? "up" : "flat"}
           accent={PHASE_COLOR.Cut} alertWeeks={bucketAlert(weightStreak)} />
-        <StatCard icon={Percent} label="Body Fat" value={latest.aBF ?? "–"} unit="%"
-          sub={bestBF?.aBF != null ? `best ${bestBF.aBF}% (wk ${bestBF.wk})` : null}
+        <StatCard icon={Percent} label="Body Fat" value={fmtNum(latest.aBF)} unit="%"
+          sub={bestBF?.aBF != null ? `best ${fmtNum(bestBF.aBF)}% (wk ${bestBF.wk})` : null}
           trend={bestBF && latest.aBF > bestBF.aBF ? "up" : "flat"}
           accent={PHASE_COLOR.Derailed} alertWeeks={bucketAlert(fatStreak)} />
-        <StatCard icon={TrendingDown} label="Fat Mass" value={latest.aF ?? "–"} unit="lb"
-          sub={fatMassChange != null ? `${fatMassChange > 0 ? "+" : ""}${fatMassChange.toFixed(1)} lb since start` : null}
+        <StatCard icon={TrendingDown} label="Fat Mass" value={fmtNum(latest.aF)} unit="lb"
+          sub={fatMassChange != null ? `${fatMassChange > 0 ? "+" : ""}${fmtNum(fatMassChange, 1)} lb since start` : null}
           trend={fatMassChange == null ? null : fatMassChange < 0 ? "down" : fatMassChange > 0 ? "up" : "flat"}
           accent={PHASE_COLOR.Derailed} alertWeeks={0} />
-        <StatCard icon={TrendingUp} label="Muscle Mass" value={latest.aM ?? "–"} unit="lb"
-          sub={muscleChange != null ? `${muscleChange > 0 ? "+" : ""}${muscleChange.toFixed(1)} lb since start` : null}
+        <StatCard icon={TrendingUp} label="Muscle Mass" value={fmtNum(latest.aM)} unit="lb"
+          sub={muscleChange != null ? `${muscleChange > 0 ? "+" : ""}${fmtNum(muscleChange, 1)} lb since start` : null}
           trend={muscleChange == null ? null : muscleChange > 0 ? "up" : muscleChange < 0 ? "down" : "flat"}
           accent={PHASE_COLOR.Maintain} alertWeeks={bucketAlert(muscleStreak)} />
-        <StatCard icon={Flame} label="Calories" value={latest.aCal ?? "–"} unit="kcal"
+        <StatCard icon={Flame} label="Calories" value={fmtNum(latest.aCal)} unit="kcal"
           sub={latest.tCal != null && latest.aCal != null
-            ? <>target {latest.tCal} · <span className={latest.aCal <= latest.tCal ? "cell-good" : "cell-bad"}>{latest.aCal - latest.tCal > 0 ? "+" : ""}{latest.aCal - latest.tCal} kcal</span></>
-            : (avgCal != null ? `${calData.length}wk avg ${avgCal}` : null)}
+            ? <>target {fmtNum(latest.tCal)} · <span className={latest.aCal <= latest.tCal ? "cell-good" : "cell-bad"}>{latest.aCal - latest.tCal > 0 ? "+" : ""}{fmtNum(latest.aCal - latest.tCal)} kcal</span></>
+            : (avgCal != null ? `${calData.length}wk avg ${fmtNum(avgCal)}` : null)}
           accent={PHASE_COLOR.Gain} alertWeeks={bucketAlert(calStreak)} />
-        <StatCard icon={Footprints} label="Steps" value={latest.steps != null ? latest.steps.toLocaleString() : "–"} unit=""
+        <StatCard icon={Footprints} label="Steps" value={fmtNum(latest.steps)} unit=""
           sub={latest.tSteps != null && latest.steps != null
-            ? <>goal {latest.tSteps.toLocaleString()} · <span className={latest.steps >= latest.tSteps ? "cell-good" : "cell-bad"}>{latest.steps - latest.tSteps > 0 ? "+" : ""}{(latest.steps - latest.tSteps).toLocaleString()}</span></>
-            : (avgSteps != null ? `${stepsData.length}wk avg ${avgSteps.toLocaleString()}` : null)}
+            ? <>goal {fmtNum(latest.tSteps)} · <span className={latest.steps >= latest.tSteps ? "cell-good" : "cell-bad"}>{latest.steps - latest.tSteps > 0 ? "+" : ""}{fmtNum(latest.steps - latest.tSteps)}</span></>
+            : (avgSteps != null ? `${stepsData.length}wk avg ${fmtNum(avgSteps)}` : null)}
           accent="#8b8f9c" alertWeeks={bucketAlert(stepsStreak)} />
       </div>
 
       <div className="panel">
         <div className="panel-head">
           <div className="panel-title">Weight & Body Fat<span className="dim">actual vs. target</span></div>
-          <div className="toggle-group">
-            <button className={"toggle-btn " + (range === "tracked" ? "active" : "")} onClick={() => setRange("tracked")}>TRACKED</button>
-            <button className={"toggle-btn " + (range === "full" ? "active" : "")} onClick={() => setRange("full")}>+ ROADMAP</button>
+          <div className="panel-head-actions">
+            <SeriesToggle
+              items={[
+                { key: "weight", label: "WEIGHT" },
+                { key: "bodyFat", label: "BODY FAT" },
+                { key: "targets", label: "TARGETS" },
+              ]}
+              active={wbfVisible}
+              onToggle={(key) => setWbfVisible((v) => ({ ...v, [key]: !v[key] }))}
+            />
+            <div className="toggle-group">
+              <button className={"toggle-btn " + (range === "tracked" ? "active" : "")} onClick={() => setRange("tracked")}>TRACKED</button>
+              <button className={"toggle-btn " + (range === "full" ? "active" : "")} onClick={() => setRange("full")}>+ ROADMAP</button>
+            </div>
           </div>
         </div>
         <ResponsiveContainer width="100%" height={260}>
@@ -2140,17 +2174,17 @@ export default function Dashboard() {
             <YAxis yAxisId="w" tick={{ fill: chartTheme.tick, fontSize: 10, fontFamily: chartTheme.font }} axisLine={false} tickLine={false} domain={["dataMin - 2", "dataMax + 2"]} />
             <YAxis yAxisId="bf" orientation="right" tick={{ fill: chartTheme.tick, fontSize: 10, fontFamily: chartTheme.font }} axisLine={false} tickLine={false} domain={["dataMin - 1", "dataMax + 1"]} />
             <Tooltip content={<CustomTooltip />} />
-            <Line yAxisId="w" type="monotone" dataKey="aW" name="Weight (actual)" stroke={chartTheme.ink} strokeWidth={2} dot={{ r: 2.5, fill: chartTheme.ink }} connectNulls />
-            <Line yAxisId="w" type="monotone" dataKey="tW" name="Weight (target)" stroke="#5b8dee" strokeWidth={1.5} strokeDasharray="4 3" dot={false} connectNulls />
-            <Line yAxisId="bf" type="monotone" dataKey="aBF" name="Body Fat % (actual)" stroke="#c4534a" strokeWidth={2} dot={{ r: 2.5, fill: "#c4534a" }} connectNulls />
-            <Line yAxisId="bf" type="monotone" dataKey="tBF" name="Body Fat % (target)" stroke="#dba236" strokeWidth={1.5} strokeDasharray="4 3" dot={false} connectNulls />
+            <Line yAxisId="w" type="monotone" dataKey="aW" name="Weight (actual)" stroke={chartTheme.ink} strokeWidth={2} dot={{ r: 2.5, fill: chartTheme.ink }} connectNulls hide={!wbfVisible.weight} />
+            <Line yAxisId="w" type="monotone" dataKey="tW" name="Weight (target)" stroke="#5b8dee" strokeWidth={1.5} strokeDasharray="4 3" dot={false} connectNulls hide={!wbfVisible.targets} />
+            <Line yAxisId="bf" type="monotone" dataKey="aBF" name="Body Fat % (actual)" stroke="#c4534a" strokeWidth={2} dot={{ r: 2.5, fill: "#c4534a" }} connectNulls hide={!wbfVisible.bodyFat} />
+            <Line yAxisId="bf" type="monotone" dataKey="tBF" name="Body Fat % (target)" stroke="#dba236" strokeWidth={1.5} strokeDasharray="4 3" dot={false} connectNulls hide={!wbfVisible.targets} />
           </ComposedChart>
         </ResponsiveContainer>
         <ChartLegend items={[
-          { label: "Weight (actual)", color: chartTheme.ink, swatch: "box" },
-          { label: "Weight (target)", color: "#5b8dee", swatch: "dash" },
-          { label: "BF% (actual)", color: "#c4534a", swatch: "box" },
-          { label: "BF% (target)", color: "#dba236", swatch: "dash" },
+          ...(wbfVisible.weight ? [{ label: "Weight (actual)", color: chartTheme.ink, swatch: "box" }] : []),
+          ...(wbfVisible.targets ? [{ label: "Weight (target)", color: "#5b8dee", swatch: "dash" }] : []),
+          ...(wbfVisible.bodyFat ? [{ label: "BF% (actual)", color: "#c4534a", swatch: "box" }] : []),
+          ...(wbfVisible.targets ? [{ label: "BF% (target)", color: "#dba236", swatch: "dash" }] : []),
           ...(derailedSegments.length > 0 ? [{ label: "derailed weeks", swatch: "shade" }] : []),
         ]} />
       </div>
@@ -2162,7 +2196,7 @@ export default function Dashboard() {
             <ComposedChart data={ACTUAL} margin={{ top: 8, right: 8, left: -18, bottom: 12 }}>
               <CartesianGrid strokeDasharray="2 4" stroke={chartTheme.grid} vertical={false} />
               <XAxis dataKey="date" tick={{ fill: chartTheme.tick, fontSize: 9.5, fontFamily: chartTheme.font }} axisLine={{ stroke: chartTheme.grid }} tickLine={false} angle={-35} textAnchor="end" height={40} />
-              <YAxis tick={{ fill: chartTheme.tick, fontSize: 10, fontFamily: chartTheme.font }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fill: chartTheme.tick, fontSize: 10, fontFamily: chartTheme.font }} axisLine={false} tickLine={false} tickFormatter={(v) => fmtNum(v)} />
               <Tooltip content={<CustomTooltip />} />
               <Bar dataKey="aCal" name="Actual" radius={[3, 3, 0, 0]}>
                 {ACTUAL.map((r, i) => (
@@ -2185,7 +2219,7 @@ export default function Dashboard() {
             <ComposedChart data={ACTUAL} margin={{ top: 8, right: 8, left: -18, bottom: 12 }}>
               <CartesianGrid strokeDasharray="2 4" stroke={chartTheme.grid} vertical={false} />
               <XAxis dataKey="date" tick={{ fill: chartTheme.tick, fontSize: 9.5, fontFamily: chartTheme.font }} axisLine={{ stroke: chartTheme.grid }} tickLine={false} angle={-35} textAnchor="end" height={40} />
-              <YAxis tick={{ fill: chartTheme.tick, fontSize: 10, fontFamily: chartTheme.font }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fill: chartTheme.tick, fontSize: 10, fontFamily: chartTheme.font }} axisLine={false} tickLine={false} tickFormatter={(v) => fmtNum(v)} />
               <Tooltip content={<CustomTooltip />} />
               <Bar dataKey="steps" name="Steps" radius={[3, 3, 0, 0]}>
                 {ACTUAL.map((r, i) => (
@@ -2205,7 +2239,20 @@ export default function Dashboard() {
       </div>
 
       <div className="panel">
-        <div className="panel-head"><div className="panel-title">Muscle vs. Fat<span className="dim">actual vs. target, lb</span></div></div>
+        <div className="panel-head">
+          <div className="panel-title">Muscle vs. Fat<span className="dim">actual vs. target, lb</span></div>
+          <div className="panel-head-actions">
+            <SeriesToggle
+              items={[
+                { key: "muscle", label: "MUSCLE" },
+                { key: "fat", label: "FAT" },
+                { key: "targets", label: "TARGETS" },
+              ]}
+              active={mvfVisible}
+              onToggle={(key) => setMvfVisible((v) => ({ ...v, [key]: !v[key] }))}
+            />
+          </div>
+        </div>
         <ResponsiveContainer width="100%" height={190}>
           <ComposedChart data={chartData} margin={{ top: 8, right: 8, left: -18, bottom: 12 }}>
             <defs>
@@ -2222,17 +2269,17 @@ export default function Dashboard() {
             <YAxis yAxisId="m" tick={{ fill: chartTheme.tick, fontSize: 10, fontFamily: chartTheme.font }} axisLine={false} tickLine={false} domain={["dataMin - 1", "dataMax + 1"]} />
             <YAxis yAxisId="f" orientation="right" tick={{ fill: chartTheme.tick, fontSize: 10, fontFamily: chartTheme.font }} axisLine={false} tickLine={false} domain={["dataMin - 1", "dataMax + 1"]} />
             <Tooltip content={<CustomTooltip />} />
-            <Area yAxisId="m" type="monotone" dataKey="aM" name="Muscle (actual)" stroke="#4caf7d" fill="url(#mGrad)" strokeWidth={2} connectNulls />
-            <Line yAxisId="m" type="monotone" dataKey="tM" name="Muscle (target)" stroke="#dba236" strokeWidth={1.5} strokeDasharray="4 3" dot={false} connectNulls />
-            <Line yAxisId="f" type="monotone" dataKey="aF" name="Fat (actual)" stroke="#c4534a" strokeWidth={2} dot={{ r: 2.5, fill: "#c4534a" }} connectNulls />
-            <Line yAxisId="f" type="monotone" dataKey="tF" name="Fat (target)" stroke="#5b8dee" strokeWidth={1.5} strokeDasharray="4 3" dot={false} connectNulls />
+            <Area yAxisId="m" type="monotone" dataKey="aM" name="Muscle (actual)" stroke="#4caf7d" fill="url(#mGrad)" strokeWidth={2} connectNulls hide={!mvfVisible.muscle} />
+            <Line yAxisId="m" type="monotone" dataKey="tM" name="Muscle (target)" stroke="#dba236" strokeWidth={1.5} strokeDasharray="4 3" dot={false} connectNulls hide={!mvfVisible.targets} />
+            <Line yAxisId="f" type="monotone" dataKey="aF" name="Fat (actual)" stroke="#c4534a" strokeWidth={2} dot={{ r: 2.5, fill: "#c4534a" }} connectNulls hide={!mvfVisible.fat} />
+            <Line yAxisId="f" type="monotone" dataKey="tF" name="Fat (target)" stroke="#5b8dee" strokeWidth={1.5} strokeDasharray="4 3" dot={false} connectNulls hide={!mvfVisible.targets} />
           </ComposedChart>
         </ResponsiveContainer>
         <ChartLegend items={[
-          { label: "Muscle (actual)", color: "#4caf7d", swatch: "box" },
-          { label: "Muscle (target)", color: "#dba236", swatch: "dash" },
-          { label: "Fat (actual)", color: "#c4534a", swatch: "box" },
-          { label: "Fat (target)", color: "#5b8dee", swatch: "dash" },
+          ...(mvfVisible.muscle ? [{ label: "Muscle (actual)", color: "#4caf7d", swatch: "box" }] : []),
+          ...(mvfVisible.targets ? [{ label: "Muscle (target)", color: "#dba236", swatch: "dash" }] : []),
+          ...(mvfVisible.fat ? [{ label: "Fat (actual)", color: "#c4534a", swatch: "box" }] : []),
+          ...(mvfVisible.targets ? [{ label: "Fat (target)", color: "#5b8dee", swatch: "dash" }] : []),
           ...(derailedSegments.length > 0 ? [{ label: "derailed weeks", swatch: "shade" }] : []),
         ]} />
       </div>
@@ -2279,12 +2326,12 @@ export default function Dashboard() {
                             <span className="group-stats">
                               {g.singleEntry ? (
                                 <>
-                                  {g.singleEntry.aW != null && <span className="gstat" style={{ borderColor: phaseColor(g.phase) + "66" }}><span className="gstat-label">Weight</span><span className="gstat-val">{g.singleEntry.aW} lb</span></span>}
-                                  {g.singleEntry.aM != null && <span className="gstat" style={{ borderColor: phaseColor(g.phase) + "66" }}><span className="gstat-label">Muscle</span><span className="gstat-val">{g.singleEntry.aM} lb</span></span>}
-                                  {g.singleEntry.aF != null && <span className="gstat" style={{ borderColor: phaseColor(g.phase) + "66" }}><span className="gstat-label">Fat Mass</span><span className="gstat-val">{g.singleEntry.aF} lb</span></span>}
-                                  {g.singleEntry.aBF != null && <span className="gstat" style={{ borderColor: phaseColor(g.phase) + "66" }}><span className="gstat-label">Body Fat %</span><span className="gstat-val">{g.singleEntry.aBF}%</span></span>}
-                                  {g.singleEntry.aCal != null && <span className="gstat" style={{ borderColor: phaseColor(g.phase) + "66" }}><span className="gstat-label">Avg Cal</span><span className="gstat-val">{g.singleEntry.aCal.toLocaleString()}</span></span>}
-                                  {g.singleEntry.steps != null && <span className="gstat" style={{ borderColor: phaseColor(g.phase) + "66" }}><span className="gstat-label">Avg Steps</span><span className="gstat-val">{g.singleEntry.steps.toLocaleString()}</span></span>}
+                                  {g.singleEntry.aW != null && <span className="gstat" style={{ borderColor: phaseColor(g.phase) + "66" }}><span className="gstat-label">Weight</span><span className="gstat-val">{fmtNum(g.singleEntry.aW)} lb</span></span>}
+                                  {g.singleEntry.aM != null && <span className="gstat" style={{ borderColor: phaseColor(g.phase) + "66" }}><span className="gstat-label">Muscle</span><span className="gstat-val">{fmtNum(g.singleEntry.aM)} lb</span></span>}
+                                  {g.singleEntry.aF != null && <span className="gstat" style={{ borderColor: phaseColor(g.phase) + "66" }}><span className="gstat-label">Fat Mass</span><span className="gstat-val">{fmtNum(g.singleEntry.aF)} lb</span></span>}
+                                  {g.singleEntry.aBF != null && <span className="gstat" style={{ borderColor: phaseColor(g.phase) + "66" }}><span className="gstat-label">Body Fat %</span><span className="gstat-val">{fmtNum(g.singleEntry.aBF)}%</span></span>}
+                                  {g.singleEntry.aCal != null && <span className="gstat" style={{ borderColor: phaseColor(g.phase) + "66" }}><span className="gstat-label">Avg Cal</span><span className="gstat-val">{fmtNum(g.singleEntry.aCal)}</span></span>}
+                                  {g.singleEntry.steps != null && <span className="gstat" style={{ borderColor: phaseColor(g.phase) + "66" }}><span className="gstat-label">Avg Steps</span><span className="gstat-val">{fmtNum(g.singleEntry.steps)}</span></span>}
                                 </>
                               ) : (
                                 <>
@@ -2367,20 +2414,20 @@ export default function Dashboard() {
                             <span className="phase-tag" style={{ background: phaseColor(r.phase) + "22", color: phaseColor(r.phase) }}>{r.phase}</span>
                           )}
                         </td>
-                        <td className="target-cell">{r.tW ?? "–"}</td>
-                        <td className={cellClass("weight", r.aW, r.tW)}>{r.aW ?? "–"}</td>
-                        <td className="target-cell">{r.tM ?? "–"}</td>
-                        <td className={cellClass("muscle", r.aM, r.tM)}>{r.aM ?? "–"}</td>
-                        <td className="target-cell">{r.tF ?? "–"}</td>
-                        <td className={cellClass("fat", r.aF, r.tF)}>{r.aF ?? "–"}</td>
-                        <td className="target-cell">{r.tFatAdj != null ? `${r.tFatAdj > 0 ? "+" : ""}${r.tFatAdj}` : "–"}</td>
-                        <td className={"adj-cell " + (r.aFatAdj != null && r.tFatAdj != null ? (r.aFatAdj <= r.tFatAdj ? "cell-good" : "cell-bad") : "")}>{r.aFatAdj != null ? `${r.aFatAdj > 0 ? "+" : ""}${r.aFatAdj}` : "–"}</td>
-                        <td className="target-cell">{r.tBF != null ? `${r.tBF}%` : "–"}</td>
-                        <td className={cellClass("bf", r.aBF, r.tBF)}>{r.aBF != null ? `${r.aBF}%` : "–"}</td>
-                        <td className="target-cell">{r.tCal ?? "–"}</td>
-                        <td className={cellClass("calories", r.aCal, r.tCal)}>{r.aCal ?? "–"}</td>
-                        <td className="target-cell">{r.tSteps != null ? r.tSteps.toLocaleString() : "–"}</td>
-                        <td className={cellClass("steps", r.steps, r.tSteps)}>{r.steps ? r.steps.toLocaleString() : "–"}</td>
+                        <td className="target-cell">{fmtNum(r.tW)}</td>
+                        <td className={cellClass("weight", r.aW, r.tW)}>{fmtNum(r.aW)}</td>
+                        <td className="target-cell">{fmtNum(r.tM)}</td>
+                        <td className={cellClass("muscle", r.aM, r.tM)}>{fmtNum(r.aM)}</td>
+                        <td className="target-cell">{fmtNum(r.tF)}</td>
+                        <td className={cellClass("fat", r.aF, r.tF)}>{fmtNum(r.aF)}</td>
+                        <td className="target-cell">{r.tFatAdj != null ? `${r.tFatAdj > 0 ? "+" : ""}${fmtNum(r.tFatAdj)}` : "–"}</td>
+                        <td className={"adj-cell " + (r.aFatAdj != null && r.tFatAdj != null ? (r.aFatAdj <= r.tFatAdj ? "cell-good" : "cell-bad") : "")}>{r.aFatAdj != null ? `${r.aFatAdj > 0 ? "+" : ""}${fmtNum(r.aFatAdj)}` : "–"}</td>
+                        <td className="target-cell">{r.tBF != null ? `${fmtNum(r.tBF)}%` : "–"}</td>
+                        <td className={cellClass("bf", r.aBF, r.tBF)}>{r.aBF != null ? `${fmtNum(r.aBF)}%` : "–"}</td>
+                        <td className="target-cell">{fmtNum(r.tCal)}</td>
+                        <td className={cellClass("calories", r.aCal, r.tCal)}>{fmtNum(r.aCal)}</td>
+                        <td className="target-cell">{fmtNum(r.tSteps)}</td>
+                        <td className={cellClass("steps", r.steps, r.tSteps)}>{fmtNum(r.steps)}</td>
                         <td className="row-actions">
                           {r.notes && (
                             <button className="icon-btn note-btn" title="View note"
