@@ -604,15 +604,23 @@ export default function Dashboard() {
 
   // Recharts only clears its hover tooltip on the next mousemove/touchmove
   // elsewhere — on touch devices that leaves it stuck open until you tap
-  // somewhere else. Force it closed the moment the finger lifts.
+  // somewhere else. Rather than fight Recharts' internal state (React 18's
+  // event delegation means a dispatched "mouseleave" never reaches it), a
+  // body class forces the tooltip DOM node hidden outright whenever a
+  // finger isn't actively down, and clears the instant one is.
   useEffect(() => {
-    const dismiss = () => {
-      document.querySelectorAll(".recharts-wrapper").forEach((el) => {
-        el.dispatchEvent(new MouseEvent("mouseleave", { bubbles: true }));
-      });
+    const show = () => document.body.classList.remove("touch-tooltip-hidden");
+    const hide = () => document.body.classList.add("touch-tooltip-hidden");
+    document.addEventListener("touchstart", show, { passive: true });
+    document.addEventListener("touchmove", show, { passive: true });
+    document.addEventListener("touchend", hide, { passive: true });
+    document.addEventListener("touchcancel", hide, { passive: true });
+    return () => {
+      document.removeEventListener("touchstart", show);
+      document.removeEventListener("touchmove", show);
+      document.removeEventListener("touchend", hide);
+      document.removeEventListener("touchcancel", hide);
     };
-    document.addEventListener("touchend", dismiss, { passive: true });
-    return () => document.removeEventListener("touchend", dismiss);
   }, []);
 
   const [goals, setGoals] = useState([]);
@@ -2360,9 +2368,16 @@ export default function Dashboard() {
         <div className="panel-head">
           <div className="panel-title">Actual vs. Target</div>
           <div className="panel-head-actions panel-head-actions-stack">
-            <div className="toggle-group">
-              <button className={"toggle-btn " + (range === "tracked" ? "active" : "")} onClick={() => setRange("tracked")}>TRACKED</button>
-              <button className={"toggle-btn " + (range === "full" ? "active" : "")} onClick={() => setRange("full")}>+ ROADMAP</button>
+            <div className="range-targets-group">
+              <div className="toggle-group">
+                <button className={"toggle-btn " + (range === "tracked" ? "active" : "")} onClick={() => setRange("tracked")}>TRACKED</button>
+                <button className={"toggle-btn " + (range === "full" ? "active" : "")} onClick={() => setRange("full")}>+ ROADMAP</button>
+              </div>
+              <SeriesToggle
+                items={[{ key: "targets", label: "TARGETS" }]}
+                active={{ targets: wbfTargetsOn }}
+                onToggle={() => setWbfTargetsOn((v) => !v)}
+              />
             </div>
             <SeriesToggle
               items={[
@@ -2380,11 +2395,6 @@ export default function Dashboard() {
                 steps: wbfSelected.includes("steps"),
               }}
               onToggle={toggleWbfMetric}
-            />
-            <SeriesToggle
-              items={[{ key: "targets", label: "TARGETS" }]}
-              active={{ targets: wbfTargetsOn }}
-              onToggle={() => setWbfTargetsOn((v) => !v)}
             />
           </div>
         </div>
@@ -2856,6 +2866,9 @@ const BASE_STYLES = `
   .stat-sub.status-good { color: var(--good); } .stat-sub.status-warn { color: var(--gain); } .stat-sub.status-bad { color: var(--bad); }
 
   .panel { background: var(--panel); border-radius: 12px; padding: 18px 18px 8px; margin-bottom: 14px; }
+  /* Hides Recharts' hover tooltip whenever no finger is actively touching
+     the screen (see the touchstart/touchend listeners in Dashboard). */
+  body.touch-tooltip-hidden .recharts-tooltip-wrapper { display: none !important; }
   .chart-legend-note { display: flex; align-items: center; gap: 6px; font-family: 'JetBrains Mono', monospace; font-size: 11.5px; color: var(--text-faint); padding: 0 0 12px 4px; }
   .derailed-swatch { width: 10px; height: 10px; border-radius: 2px; background: var(--bad); opacity: 0.35; display: inline-block; }
 
@@ -2867,8 +2880,9 @@ const BASE_STYLES = `
   .cl-shade { width: 12px; height: 10px; border-radius: 2px; background: var(--bad); opacity: 0.3; border: 1px solid var(--bad); display: inline-block; }
   .panel-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; gap: 10px; flex-wrap: wrap; }
   .panel-head-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
-  .panel-head-actions-stack .toggle-group { order: 2; }
-  .panel-head-actions-stack .series-toggle { order: 1; }
+  .range-targets-group { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .panel-head-actions-stack .range-targets-group { order: 2; }
+  .panel-head-actions-stack > .series-toggle { order: 1; }
   .panel-title { font-family: 'Space Grotesk', sans-serif; font-size: 16.1px; font-weight: 600; }
   .panel-title .dim { color: var(--text-dim); font-weight: 400; margin-left: 6px; font-size: 13.8px; }
   .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
@@ -3030,8 +3044,8 @@ const BASE_STYLES = `
     div.dash .header-top { align-items: center; }
     div.dash .stat-sub .cell-good, div.dash .stat-sub .cell-bad { white-space: nowrap; }
     .panel-head-actions-stack { flex-direction: column; align-items: flex-start; gap: 6px; }
-    .panel-head-actions-stack .toggle-group { order: 1; }
-    .panel-head-actions-stack .series-toggle { order: 2; }
+    .panel-head-actions-stack .range-targets-group { order: 1; }
+    .panel-head-actions-stack > .series-toggle { order: 2; }
   }
 
   /* ---------- Clean brokerage-app styling ---------- */
