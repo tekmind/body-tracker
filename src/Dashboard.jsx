@@ -1217,26 +1217,35 @@ export default function Dashboard() {
     return { weight: pick("weight"), fatMass: pick("fatMass"), muscleMass: pick("muscleMass"), bodyFat: pick("bodyFat") };
   }, [mergedDailyEntries]);
 
-  // Calories/Steps stat cards use this week's daily-log average as their
-  // main number. "This week" is the same Fri–Thu block the Daily tab's
-  // pacing uses. Today is always excluded (it's still in progress), and
-  // days with no logged value simply don't count toward the average —
-  // they don't drag it down as zeros.
+  // Calories/Steps stat cards use a daily-log weekly average as their main
+  // number. "This week" is the same Fri–Thu block the Daily tab's pacing
+  // uses. Today is always excluded (it's still in progress), and days with
+  // no logged value simply don't count toward the average — they don't
+  // drag it down as zeros. If this week has no data yet (e.g. it just
+  // started), each metric independently falls back to its own most
+  // recently completed week with data, so the card keeps showing that
+  // average instead of resetting until new entries come in.
   const weekAvgStats = useMemo(() => {
     const today = new Date(); today.setHours(0, 0, 0, 0);
     const todayStr = formatMDY(today);
-    const blockStart = blockStartFor(today);
-    const blockEnd = blockEndFor(blockStart);
-    const daysThisWeek = mergedDailyEntries.filter(d => {
-      if (d.date === todayStr) return false;
-      const dd = parseDate(d.date);
-      return dd && dd >= blockStart && dd <= blockEnd;
-    });
-    function avg(key) {
-      const vals = daysThisWeek.map(d => d[key]).filter(v => v != null);
+    const sorted = mergedDailyEntries
+      .map(d => ({ ...d, _d: parseDate(d.date) }))
+      .filter(d => d._d)
+      .sort((a, b) => b._d.getTime() - a._d.getTime());
+
+    function avgForMetric(key) {
+      const mostRecent = sorted.find(d => d.date !== todayStr && d[key] != null);
+      if (!mostRecent) return null;
+      const blockStart = blockStartFor(mostRecent._d);
+      const blockEnd = blockEndFor(blockStart);
+      const vals = sorted
+        .filter(d => d.date !== todayStr && d._d >= blockStart && d._d <= blockEnd)
+        .map(d => d[key])
+        .filter(v => v != null);
       return vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) : null;
     }
-    return { cal: avg("cal"), steps: avg("steps") };
+
+    return { cal: avgForMetric("cal"), steps: avgForMetric("steps") };
   }, [mergedDailyEntries]);
 
   const pacing = useMemo(() => {
@@ -2762,7 +2771,7 @@ const BASE_STYLES = `
   .tl-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
 
   .stat-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 14px; margin-bottom: 14px; }
-  .stat-card { position: relative; background: var(--panel); border-radius: 12px; padding: 14px 15px; }
+  .stat-card { position: relative; background: var(--panel); border-radius: 12px; padding: 14px 15px; min-width: 0; }
   .stat-alert-badge { position: absolute; top: -7px; right: 10px; display: inline-flex; align-items: center; gap: 3px; color: #1a0f0f; font-family: 'JetBrains Mono', monospace; font-size: 10.3px; font-weight: 700; letter-spacing: 0.03em; padding: 2px 6px; border-radius: 20px; box-shadow: 0 0 0 3px var(--bg); }
   .stat-alert-badge.bad { background: var(--bad); }
   .stat-alert-badge.warn { background: var(--gain); }
@@ -2770,14 +2779,14 @@ const BASE_STYLES = `
   .stat-top { display: flex; align-items: center; gap: 7px; margin-bottom: 10px; }
   .stat-icon { width: 22px; height: 22px; border-radius: 6px; display: flex; align-items: center; justify-content: center; }
   .stat-label { font-family: 'JetBrains Mono', monospace; font-size: 11.5px; letter-spacing: 0.07em; color: var(--text-dim); text-transform: uppercase; }
-  .stat-value-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 6px; }
+  .stat-value-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
   .stat-value-main { display: flex; flex-direction: column; min-width: 0; }
   .stat-value-line { height: 34px; display: flex; align-items: center; }
-  .stat-value { font-family: 'Space Grotesk', sans-serif; font-size: 36.8px; font-weight: 700; letter-spacing: -0.01em; line-height: 1; }
-  .stat-unit { font-size: 14.9px; font-weight: 500; color: var(--text-dim); margin-left: 2px; }
+  .stat-value { font-family: 'Space Grotesk', sans-serif; font-size: 32px; font-weight: 700; letter-spacing: -0.01em; line-height: 1; white-space: nowrap; }
+  .stat-unit { font-size: 13.5px; font-weight: 500; color: var(--text-dim); margin-left: 2px; }
   .stat-value-tag { margin-top: 3px; font-family: 'JetBrains Mono', monospace; font-size: 9px; font-weight: 600; letter-spacing: 0.05em; color: var(--text-faint); text-transform: uppercase; }
   .stat-week { display: flex; flex-direction: column; align-items: center; flex-shrink: 0; }
-  .stat-week-box { height: 34px; display: flex; align-items: center; justify-content: center; padding: 0 10px; border-radius: 10px; background: var(--panel-2); font-family: 'Space Grotesk', sans-serif; font-size: 18px; font-weight: 600; color: var(--text-dim); white-space: nowrap; }
+  .stat-week-box { height: 34px; display: flex; align-items: center; justify-content: center; padding: 0 8px; border-radius: 10px; background: var(--panel-2); font-family: 'Space Grotesk', sans-serif; font-size: 15px; font-weight: 600; color: var(--text-dim); white-space: nowrap; }
   .stat-week-unit { font-size: 10.5px; font-weight: 500; color: var(--text-faint); margin-left: 1px; }
   .stat-week-tag { margin-top: 3px; font-family: 'JetBrains Mono', monospace; font-size: 9px; font-weight: 600; letter-spacing: 0.03em; color: var(--text-faint); text-transform: uppercase; white-space: nowrap; }
   .stat-sub { font-family: 'JetBrains Mono', monospace; font-size: 12.6px; color: var(--text-dim); margin-top: 6px; display: flex; align-items: center; gap: 4px; }
