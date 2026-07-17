@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import {
-  ComposedChart, LineChart, BarChart, Line, Bar, Area, AreaChart, XAxis, YAxis,
+  ComposedChart, LineChart, BarChart, Line, Bar, XAxis, YAxis,
   CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, ReferenceArea, Cell
 } from "recharts";
 import {
@@ -585,8 +585,14 @@ export default function Dashboard() {
   // if the underlying condition is still true.
   const [dismissedAlerts, setDismissedAlerts] = useState(() => new Set());
   const dismissAlert = (id) => setDismissedAlerts(prev => new Set(prev).add(id));
-  const [wbfVisible, setWbfVisible] = useState({ targets: true, weight: true, bodyFat: true });
-  const [mvfVisible, setMvfVisible] = useState({ targets: true, muscle: true, fat: true });
+  // Up to 2 metrics plotted at once, in selection order (oldest drops first).
+  const [wbfSelected, setWbfSelected] = useState(["weight", "bodyFat"]);
+  const [wbfTargetsOn, setWbfTargetsOn] = useState(true);
+  const toggleWbfMetric = (key) => setWbfSelected((prev) => {
+    if (prev.includes(key)) return prev.filter((k) => k !== key);
+    if (prev.length >= 2) return [prev[1], key];
+    return [...prev, key];
+  });
   const [formOpen, setFormOpen] = useState(false);
   const [editIndex, setEditIndex] = useState(null);
   const [form, setForm] = useState(emptyForm);
@@ -595,6 +601,19 @@ export default function Dashboard() {
   // refresh without a network round-trip or a flash of the wrong tab.
   const [tab, setTab] = useState(() => localStorage.getItem("bt_tab") || "dashboard"); // dashboard | daily | habits | settings
   useEffect(() => { localStorage.setItem("bt_tab", tab); }, [tab]);
+
+  // Recharts only clears its hover tooltip on the next mousemove/touchmove
+  // elsewhere — on touch devices that leaves it stuck open until you tap
+  // somewhere else. Force it closed the moment the finger lifts.
+  useEffect(() => {
+    const dismiss = () => {
+      document.querySelectorAll(".recharts-wrapper").forEach((el) => {
+        el.dispatchEvent(new MouseEvent("mouseleave", { bubbles: true }));
+      });
+    };
+    document.addEventListener("touchend", dismiss, { passive: true });
+    return () => document.removeEventListener("touchend", dismiss);
+  }, []);
 
   const [goals, setGoals] = useState([]);
   const [goalFormOpen, setGoalFormOpen] = useState(false);
@@ -738,6 +757,15 @@ export default function Dashboard() {
   });
   // Chart colors that can't come from CSS variables (recharts props).
   const chartTheme = { grid: "#e7e6e0", tick: "#70747c", ink: "#16181d", font: "Inter" };
+  // Selectable series for the "Actual vs. Target" chart — any 2 of these can
+  // be plotted together, each on its own axis.
+  const wbfMetrics = {
+    weight:   { label: "Weight",     actualKey: "aW",    targetKey: "tW",     color: chartTheme.ink, pad: 2,    decimals: 1 },
+    bodyFat:  { label: "Body Fat %", actualKey: "aBF",   targetKey: "tBF",    color: "#c4534a",      pad: 1,    decimals: 1 },
+    muscle:   { label: "Muscle",     actualKey: "aM",    targetKey: "tM",     color: "#4caf7d",      pad: 1,    decimals: 1 },
+    calories: { label: "Calories",   actualKey: "aCal",  targetKey: "tCal",   color: "#dba236",      pad: 200,  decimals: 0 },
+    steps:    { label: "Steps",      actualKey: "steps", targetKey: "tSteps", color: "#5b8dee",      pad: 1000, decimals: 0 },
+  };
 
   const persist = useCallback(async (next) => {
     setSaving(true);
@@ -2330,7 +2358,7 @@ export default function Dashboard() {
 
       <div className="panel">
         <div className="panel-head">
-          <div className="panel-title">Weight & Body Fat<span className="dim">actual vs. target</span></div>
+          <div className="panel-title">Actual vs. Target</div>
           <div className="panel-head-actions panel-head-actions-stack">
             <div className="toggle-group">
               <button className={"toggle-btn " + (range === "tracked" ? "active" : "")} onClick={() => setRange("tracked")}>TRACKED</button>
@@ -2339,35 +2367,64 @@ export default function Dashboard() {
             <SeriesToggle
               items={[
                 { key: "weight", label: "WEIGHT" },
-                { key: "bodyFat", label: "BODY FAT" },
-                { key: "targets", label: "TARGETS" },
+                { key: "bodyFat", label: "FAT" },
+                { key: "muscle", label: "MUSCLE" },
+                { key: "calories", label: "CALORIES" },
+                { key: "steps", label: "STEPS" },
               ]}
-              active={wbfVisible}
-              onToggle={(key) => setWbfVisible((v) => ({ ...v, [key]: !v[key] }))}
+              active={{
+                weight: wbfSelected.includes("weight"),
+                bodyFat: wbfSelected.includes("bodyFat"),
+                muscle: wbfSelected.includes("muscle"),
+                calories: wbfSelected.includes("calories"),
+                steps: wbfSelected.includes("steps"),
+              }}
+              onToggle={toggleWbfMetric}
+            />
+            <SeriesToggle
+              items={[{ key: "targets", label: "TARGETS" }]}
+              active={{ targets: wbfTargetsOn }}
+              onToggle={() => setWbfTargetsOn((v) => !v)}
             />
           </div>
         </div>
-        <ResponsiveContainer width="100%" height={260}>
-          <ComposedChart data={chartData} margin={{ top: 8, right: 4, left: 4, bottom: 12 }}>
-            <CartesianGrid strokeDasharray="2 4" stroke={chartTheme.grid} vertical={false} />
-            {derailedSegments.map((s, i) => (
-              <ReferenceArea key={i} x1={s.x1} x2={s.x2} yAxisId="w" fill="var(--bad)" fillOpacity={0.1} stroke="var(--bad)" strokeOpacity={0.25} />
-            ))}
-            <XAxis dataKey="label" tick={{ fill: chartTheme.tick, fontSize: 9.5, fontFamily: chartTheme.font }} axisLine={{ stroke: chartTheme.grid }} tickLine={false} interval={range === "full" ? 3 : 1} angle={-35} textAnchor="end" height={40} />
-            <YAxis yAxisId="w" width={34} tick={{ fill: chartTheme.tick, fontSize: 10, fontFamily: chartTheme.font }} axisLine={false} tickLine={false} domain={["dataMin - 2", "dataMax + 2"]} />
-            <YAxis yAxisId="bf" orientation="right" width={30} tick={{ fill: chartTheme.tick, fontSize: 10, fontFamily: chartTheme.font }} axisLine={false} tickLine={false} domain={["dataMin - 1", "dataMax + 1"]} />
-            <Tooltip content={<CustomTooltip />} />
-            <Line yAxisId="w" type="monotone" dataKey="aW" name="Weight (actual)" stroke={chartTheme.ink} strokeWidth={2} dot={{ r: 2.5, fill: chartTheme.ink }} connectNulls hide={!wbfVisible.weight} />
-            <Line yAxisId="w" type="monotone" dataKey="tW" name="Weight (target)" stroke="#5b8dee" strokeWidth={1.5} strokeDasharray="4 3" dot={false} connectNulls hide={!wbfVisible.targets} />
-            <Line yAxisId="bf" type="monotone" dataKey="aBF" name="Body Fat % (actual)" stroke="#c4534a" strokeWidth={2} dot={{ r: 2.5, fill: "#c4534a" }} connectNulls hide={!wbfVisible.bodyFat} />
-            <Line yAxisId="bf" type="monotone" dataKey="tBF" name="Body Fat % (target)" stroke="#dba236" strokeWidth={1.5} strokeDasharray="4 3" dot={false} connectNulls hide={!wbfVisible.targets} />
-          </ComposedChart>
-        </ResponsiveContainer>
+        {wbfSelected.length === 0 ? (
+          <div className="pacing-empty">Select 1–2 metrics above to plot.</div>
+        ) : (
+          <ResponsiveContainer width="100%" height={260}>
+            <ComposedChart data={chartData} margin={{ top: 8, right: 4, left: 4, bottom: 12 }}>
+              <CartesianGrid strokeDasharray="2 4" stroke={chartTheme.grid} vertical={false} />
+              {derailedSegments.map((s, i) => (
+                <ReferenceArea key={i} x1={s.x1} x2={s.x2} yAxisId="a" fill="var(--bad)" fillOpacity={0.1} stroke="var(--bad)" strokeOpacity={0.25} />
+              ))}
+              <XAxis dataKey="label" tick={{ fill: chartTheme.tick, fontSize: 9.5, fontFamily: chartTheme.font }} axisLine={{ stroke: chartTheme.grid }} tickLine={false} interval={range === "full" ? 3 : 1} angle={-35} textAnchor="end" height={40} />
+              <YAxis yAxisId="a" width={34} tick={{ fill: chartTheme.tick, fontSize: 10, fontFamily: chartTheme.font }} axisLine={false} tickLine={false}
+                domain={[`dataMin - ${wbfMetrics[wbfSelected[0]].pad}`, `dataMax + ${wbfMetrics[wbfSelected[0]].pad}`]}
+                tickFormatter={(v) => fmtNum(v, wbfMetrics[wbfSelected[0]].decimals)} />
+              {wbfSelected[1] && (
+                <YAxis yAxisId="b" orientation="right" width={38} tick={{ fill: chartTheme.tick, fontSize: 10, fontFamily: chartTheme.font }} axisLine={false} tickLine={false}
+                  domain={[`dataMin - ${wbfMetrics[wbfSelected[1]].pad}`, `dataMax + ${wbfMetrics[wbfSelected[1]].pad}`]}
+                  tickFormatter={(v) => fmtNum(v, wbfMetrics[wbfSelected[1]].decimals)} />
+              )}
+              <Tooltip content={<CustomTooltip />} />
+              {wbfSelected.map((key, idx) => {
+                const m = wbfMetrics[key];
+                return (
+                  <Line key={key} yAxisId={idx === 0 ? "a" : "b"} type="monotone" dataKey={m.actualKey} name={`${m.label} (actual)`} stroke={m.color} strokeWidth={2} dot={{ r: 2.5, fill: m.color }} connectNulls isAnimationActive={false} />
+                );
+              })}
+              {wbfTargetsOn && wbfSelected.map((key, idx) => {
+                const m = wbfMetrics[key];
+                return (
+                  <Line key={key + "-t"} yAxisId={idx === 0 ? "a" : "b"} type="monotone" dataKey={m.targetKey} name={`${m.label} (target)`} stroke={m.color} strokeOpacity={0.55} strokeWidth={1.5} strokeDasharray="4 3" dot={false} connectNulls isAnimationActive={false} />
+                );
+              })}
+            </ComposedChart>
+          </ResponsiveContainer>
+        )}
         <ChartLegend items={[
-          ...(wbfVisible.weight ? [{ label: "Weight (actual)", color: chartTheme.ink, swatch: "box" }] : []),
-          ...(wbfVisible.targets ? [{ label: "Weight (target)", color: "#5b8dee", swatch: "dash" }] : []),
-          ...(wbfVisible.bodyFat ? [{ label: "BF% (actual)", color: "#c4534a", swatch: "box" }] : []),
-          ...(wbfVisible.targets ? [{ label: "BF% (target)", color: "#dba236", swatch: "dash" }] : []),
+          ...wbfSelected.map((key) => ({ label: `${wbfMetrics[key].label} (actual)`, color: wbfMetrics[key].color, swatch: "box" })),
+          ...(wbfTargetsOn ? wbfSelected.map((key) => ({ label: `${wbfMetrics[key].label} (target)`, color: wbfMetrics[key].color, swatch: "dash" })) : []),
           ...(derailedSegments.length > 0 ? [{ label: "derailed weeks", swatch: "shade" }] : []),
         ]} />
       </div>
@@ -2421,51 +2478,6 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <div className="panel">
-        <div className="panel-head">
-          <div className="panel-title">Muscle vs. Fat<span className="dim">actual vs. target, lb</span></div>
-          <div className="panel-head-actions">
-            <SeriesToggle
-              items={[
-                { key: "muscle", label: "MUSCLE" },
-                { key: "fat", label: "FAT" },
-                { key: "targets", label: "TARGETS" },
-              ]}
-              active={mvfVisible}
-              onToggle={(key) => setMvfVisible((v) => ({ ...v, [key]: !v[key] }))}
-            />
-          </div>
-        </div>
-        <ResponsiveContainer width="100%" height={190}>
-          <ComposedChart data={chartData} margin={{ top: 8, right: 4, left: 4, bottom: 12 }}>
-            <defs>
-              <linearGradient id="mGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#4caf7d" stopOpacity={0.35} />
-                <stop offset="100%" stopColor="#4caf7d" stopOpacity={0} />
-              </linearGradient>
-            </defs>
-            <CartesianGrid strokeDasharray="2 4" stroke={chartTheme.grid} vertical={false} />
-            {derailedSegments.map((s, i) => (
-              <ReferenceArea key={i} x1={s.x1} x2={s.x2} yAxisId="m" fill="var(--bad)" fillOpacity={0.1} stroke="var(--bad)" strokeOpacity={0.25} />
-            ))}
-            <XAxis dataKey="label" tick={{ fill: chartTheme.tick, fontSize: 9.5, fontFamily: chartTheme.font }} axisLine={{ stroke: chartTheme.grid }} tickLine={false} interval={range === "full" ? 3 : 1} angle={-35} textAnchor="end" height={40} />
-            <YAxis yAxisId="m" width={34} tick={{ fill: chartTheme.tick, fontSize: 10, fontFamily: chartTheme.font }} axisLine={false} tickLine={false} domain={["dataMin - 1", "dataMax + 1"]} />
-            <YAxis yAxisId="f" orientation="right" width={30} tick={{ fill: chartTheme.tick, fontSize: 10, fontFamily: chartTheme.font }} axisLine={false} tickLine={false} domain={["dataMin - 1", "dataMax + 1"]} />
-            <Tooltip content={<CustomTooltip />} />
-            <Area yAxisId="m" type="monotone" dataKey="aM" name="Muscle (actual)" stroke="#4caf7d" fill="url(#mGrad)" strokeWidth={2} connectNulls hide={!mvfVisible.muscle} />
-            <Line yAxisId="m" type="monotone" dataKey="tM" name="Muscle (target)" stroke="#dba236" strokeWidth={1.5} strokeDasharray="4 3" dot={false} connectNulls hide={!mvfVisible.targets} />
-            <Line yAxisId="f" type="monotone" dataKey="aF" name="Fat (actual)" stroke="#c4534a" strokeWidth={2} dot={{ r: 2.5, fill: "#c4534a" }} connectNulls hide={!mvfVisible.fat} />
-            <Line yAxisId="f" type="monotone" dataKey="tF" name="Fat (target)" stroke="#5b8dee" strokeWidth={1.5} strokeDasharray="4 3" dot={false} connectNulls hide={!mvfVisible.targets} />
-          </ComposedChart>
-        </ResponsiveContainer>
-        <ChartLegend items={[
-          ...(mvfVisible.muscle ? [{ label: "Muscle (actual)", color: "#4caf7d", swatch: "box" }] : []),
-          ...(mvfVisible.targets ? [{ label: "Muscle (target)", color: "#dba236", swatch: "dash" }] : []),
-          ...(mvfVisible.fat ? [{ label: "Fat (actual)", color: "#c4534a", swatch: "box" }] : []),
-          ...(mvfVisible.targets ? [{ label: "Fat (target)", color: "#5b8dee", swatch: "dash" }] : []),
-          ...(derailedSegments.length > 0 ? [{ label: "derailed weeks", swatch: "shade" }] : []),
-        ]} />
-      </div>
 
       <div className="panel">
         <div className="panel-head">
