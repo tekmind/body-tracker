@@ -2165,14 +2165,14 @@ export default function Dashboard() {
           </div>
         </div>
         <ResponsiveContainer width="100%" height={260}>
-          <ComposedChart data={chartData} margin={{ top: 8, right: -10, left: -18, bottom: 12 }}>
+          <ComposedChart data={chartData} margin={{ top: 8, right: 4, left: 4, bottom: 12 }}>
             <CartesianGrid strokeDasharray="2 4" stroke={chartTheme.grid} vertical={false} />
             {derailedSegments.map((s, i) => (
               <ReferenceArea key={i} x1={s.x1} x2={s.x2} yAxisId="w" fill="var(--bad)" fillOpacity={0.1} stroke="var(--bad)" strokeOpacity={0.25} />
             ))}
             <XAxis dataKey="label" tick={{ fill: chartTheme.tick, fontSize: 9.5, fontFamily: chartTheme.font }} axisLine={{ stroke: chartTheme.grid }} tickLine={false} interval={range === "full" ? 3 : 1} angle={-35} textAnchor="end" height={40} />
-            <YAxis yAxisId="w" tick={{ fill: chartTheme.tick, fontSize: 10, fontFamily: chartTheme.font }} axisLine={false} tickLine={false} domain={["dataMin - 2", "dataMax + 2"]} />
-            <YAxis yAxisId="bf" orientation="right" tick={{ fill: chartTheme.tick, fontSize: 10, fontFamily: chartTheme.font }} axisLine={false} tickLine={false} domain={["dataMin - 1", "dataMax + 1"]} />
+            <YAxis yAxisId="w" width={34} tick={{ fill: chartTheme.tick, fontSize: 10, fontFamily: chartTheme.font }} axisLine={false} tickLine={false} domain={["dataMin - 2", "dataMax + 2"]} />
+            <YAxis yAxisId="bf" orientation="right" width={30} tick={{ fill: chartTheme.tick, fontSize: 10, fontFamily: chartTheme.font }} axisLine={false} tickLine={false} domain={["dataMin - 1", "dataMax + 1"]} />
             <Tooltip content={<CustomTooltip />} />
             <Line yAxisId="w" type="monotone" dataKey="aW" name="Weight (actual)" stroke={chartTheme.ink} strokeWidth={2} dot={{ r: 2.5, fill: chartTheme.ink }} connectNulls hide={!wbfVisible.weight} />
             <Line yAxisId="w" type="monotone" dataKey="tW" name="Weight (target)" stroke="#5b8dee" strokeWidth={1.5} strokeDasharray="4 3" dot={false} connectNulls hide={!wbfVisible.targets} />
@@ -2254,7 +2254,7 @@ export default function Dashboard() {
           </div>
         </div>
         <ResponsiveContainer width="100%" height={190}>
-          <ComposedChart data={chartData} margin={{ top: 8, right: -10, left: -18, bottom: 12 }}>
+          <ComposedChart data={chartData} margin={{ top: 8, right: 4, left: 4, bottom: 12 }}>
             <defs>
               <linearGradient id="mGrad" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor="#4caf7d" stopOpacity={0.35} />
@@ -2266,8 +2266,8 @@ export default function Dashboard() {
               <ReferenceArea key={i} x1={s.x1} x2={s.x2} yAxisId="m" fill="var(--bad)" fillOpacity={0.1} stroke="var(--bad)" strokeOpacity={0.25} />
             ))}
             <XAxis dataKey="label" tick={{ fill: chartTheme.tick, fontSize: 9.5, fontFamily: chartTheme.font }} axisLine={{ stroke: chartTheme.grid }} tickLine={false} interval={range === "full" ? 3 : 1} angle={-35} textAnchor="end" height={40} />
-            <YAxis yAxisId="m" tick={{ fill: chartTheme.tick, fontSize: 10, fontFamily: chartTheme.font }} axisLine={false} tickLine={false} domain={["dataMin - 1", "dataMax + 1"]} />
-            <YAxis yAxisId="f" orientation="right" tick={{ fill: chartTheme.tick, fontSize: 10, fontFamily: chartTheme.font }} axisLine={false} tickLine={false} domain={["dataMin - 1", "dataMax + 1"]} />
+            <YAxis yAxisId="m" width={34} tick={{ fill: chartTheme.tick, fontSize: 10, fontFamily: chartTheme.font }} axisLine={false} tickLine={false} domain={["dataMin - 1", "dataMax + 1"]} />
+            <YAxis yAxisId="f" orientation="right" width={30} tick={{ fill: chartTheme.tick, fontSize: 10, fontFamily: chartTheme.font }} axisLine={false} tickLine={false} domain={["dataMin - 1", "dataMax + 1"]} />
             <Tooltip content={<CustomTooltip />} />
             <Area yAxisId="m" type="monotone" dataKey="aM" name="Muscle (actual)" stroke="#4caf7d" fill="url(#mGrad)" strokeWidth={2} connectNulls hide={!mvfVisible.muscle} />
             <Line yAxisId="m" type="monotone" dataKey="tM" name="Muscle (target)" stroke="#dba236" strokeWidth={1.5} strokeDasharray="4 3" dot={false} connectNulls hide={!mvfVisible.targets} />
@@ -2659,7 +2659,7 @@ const BASE_STYLES = `
   .panel-title .dim { color: var(--text-dim); font-weight: 400; margin-left: 6px; font-size: 13.8px; }
   .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 
-  .toggle-group { display: flex; background: var(--panel-2); border-radius: 8px; padding: 2px; font-family: 'JetBrains Mono', monospace; font-size: 10.6px; white-space: nowrap; }
+  .toggle-group { display: flex; gap: 3px; background: var(--panel-2); border-radius: 8px; padding: 2px; font-family: 'JetBrains Mono', monospace; font-size: 10.6px; white-space: nowrap; }
   .toggle-btn { padding: 4px 9px; border-radius: 6px; cursor: pointer; color: var(--text-dim); letter-spacing: 0.05em; background: transparent; border: none; font-family: inherit; }
   .toggle-btn.active { background: var(--panel); color: var(--text); }
 
@@ -2812,6 +2812,7 @@ const BASE_STYLES = `
     div.dash .tab-btn svg { width: 18px; height: 18px; flex-shrink: 0; }
     div.dash .header-top { align-items: center; }
     div.dash .stat-sub .cell-good, div.dash .stat-sub .cell-bad { white-space: nowrap; }
+    .panel-head-actions-stack { align-items: flex-start; }
   }
 
   /* ---------- Clean brokerage-app styling ---------- */
