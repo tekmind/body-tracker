@@ -59,6 +59,7 @@ const SEED = [
 ];
 
 const PHASE_COLOR = { Off: "#6b7280", Cut: "#5b8dee", Derailed: "#c4534a", Maintain: "#dba236", Gain: "#4caf7d" };
+const STATUS_COLOR = { good: "#368727", warn: "#dba236", bad: "#c73a2f" };
 const PHASE_LABEL = { Off: "OFF", Cut: "CUT", Derailed: "DERAILED", Maintain: "MAINTAIN", Gain: "GAIN" };
 const PHASES = ["Off", "Cut", "Maintain", "Gain"];
 
@@ -335,7 +336,7 @@ function formatDailyTag(label) {
   return d ? `${d.getMonth() + 1}/${d.getDate()}` : label;
 }
 
-function StatCard({ icon: Icon, label, value, valueTag, unit, weekValue, weekLabel, weekBg, sub, trend, accent, badge }) {
+function StatCard({ icon: Icon, label, value, valueTag, unit, weekValue, weekLabel, weekBg, sub, trend, statusLevel, accent, badge }) {
   return (
     <div className="stat-card">
       {badge && (
@@ -362,7 +363,7 @@ function StatCard({ icon: Icon, label, value, valueTag, unit, weekValue, weekLab
         )}
       </div>
       {sub && (
-        <div className={"stat-sub " + (trend || "")}>
+        <div className={"stat-sub " + (trend || "") + (statusLevel ? " status-" + statusLevel : "")}>
           {trend === "down" && <TrendingDown size={12} />}
           {trend === "up" && <TrendingUp size={12} />}
           {trend === "flat" && <Minus size={12} />}
@@ -1083,14 +1084,11 @@ export default function Dashboard() {
     return out;
   }, [ACTUAL]);
 
-  // Per-metric streaks for the stat-card badges — "missing the goal" more than
-  // two weeks running (i.e. 3+) lights up a small warning badge on that card.
-  const weightStreak = useMemo(() => missStreak(ACTUAL, "aW", "tW", (a, t) => a > t), [ACTUAL]);
+  // Per-metric streaks for the stat-card badges — 1-2 weeks off target is a
+  // "warn" badge, 3+ is "bad".
   const muscleStreak = useMemo(() => missStreak(ACTUAL, "aM", "tM", (a, t) => a < t), [ACTUAL]);
-  const bfStreak = useMemo(() => missStreak(ACTUAL, "aBF", "tBF", (a, t) => a > t), [ACTUAL]);
   const calStreak = useMemo(() => missStreak(ACTUAL, "aCal", "tCal", (a, t) => a > t), [ACTUAL]);
   const stepsStreak = useMemo(() => missStreak(ACTUAL, "steps", "tSteps", (a, t) => a < t), [ACTUAL]);
-  const bucketAlert = (streak) => (streak > 2 ? streak : 0);
 
   // Derail = a run of 3+ consecutive weeks with fat over target. Once a run
   // reaches 3, the WHOLE run is marked — including its first two weeks — so
@@ -1354,13 +1352,23 @@ export default function Dashboard() {
   const bodyFatCard = dailyCardStat(todayStats.bodyFat, latest.aBF);
   const fatMassCard = dailyCardStat(todayStats.fatMass, latest.aF);
   const muscleMassCard = dailyCardStat(todayStats.muscleMass, latest.aM);
-  const bodyFatBadge = mkBadge(bfStreak, bfStreak >= 3 ? "bad" : "warn");
+  // Fat Mass and Body Fat % share the same on-track streak — the app has
+  // always treated them as one "fat" trend line (see the top banner, which
+  // is also fat-mass-driven despite being labeled "Body Fat").
   const fatMassBadge = mkBadge(onTrackStreak, "good");
+  const bodyFatBadge = fatMassBadge;
   const muscleBadge = mkBadge(muscleStreak, muscleStreak >= 3 ? "bad" : "warn");
-  // Cards with an active alert tint their week-value box with a light wash
-  // of their own icon color, so the alert reads at a glance; Weight always
-  // gets its icon's light blue, alert or not.
-  function alertTint(accent, badge) { return badge ? accent + "22" : null; }
+  const calBadge = mkBadge(calStreak, calStreak >= 3 ? "bad" : "warn");
+  const stepsBadge = mkBadge(stepsStreak, stepsStreak >= 3 ? "bad" : "warn");
+  // Every non-Weight card always resolves to one of good/warn/bad so its
+  // icon, week-value box, and "since start" line share one color scheme.
+  // No active badge just means "currently on track" (good). Weight stays
+  // in its own neutral blue theme and never shows a badge.
+  const bodyFatStatus = bodyFatBadge?.level || "good";
+  const fatMassStatus = fatMassBadge?.level || "good";
+  const muscleStatus = muscleBadge?.level || "good";
+  const calStatus = calBadge?.level || "good";
+  const stepsStatus = stepsBadge?.level || "good";
   // Today's phase per Goal Settings (latest-dated goal wins), falling back to
   // the latest logged week's phase if no goal is dated yet.
   const todayPhase = (() => {
@@ -2201,35 +2209,40 @@ export default function Dashboard() {
           weekBg={PHASE_COLOR.Cut + "22"}
           sub={weightChange != null ? `${weightChange > 0 ? "+" : ""}${fmtNum(weightChange, 1)} lb since start` : null}
           trend={weightChange == null ? null : weightChange < 0 ? "down" : weightChange > 0 ? "up" : "flat"}
-          accent={PHASE_COLOR.Cut} badge={mkBadge(bucketAlert(weightStreak), "bad")} />
+          accent={PHASE_COLOR.Cut} />
         <StatCard icon={Percent} label="Body Fat" value={fmtNum(bodyFatCard.main)} valueTag={bodyFatCard.tag} unit="%"
           weekValue={bodyFatCard.week != null ? fmtNum(bodyFatCard.week) : null} weekLabel={bodyFatCard.weekLabel}
-          weekBg={alertTint(PHASE_COLOR.Derailed, bodyFatBadge)}
+          weekBg={STATUS_COLOR[bodyFatStatus] + "22"}
           sub={bestBF?.aBF != null ? `best ${fmtNum(bestBF.aBF)}% (wk ${bestBF.wk})` : null}
           trend={bestBF && latest.aBF > bestBF.aBF ? "up" : "flat"}
-          accent={PHASE_COLOR.Derailed} badge={bodyFatBadge} />
+          statusLevel={bodyFatStatus}
+          accent={STATUS_COLOR[bodyFatStatus]} badge={bodyFatBadge} />
         <StatCard icon={TrendingDown} label="Fat Mass" value={fmtNum(fatMassCard.main)} valueTag={fatMassCard.tag} unit="lb"
           weekValue={fatMassCard.week != null ? fmtNum(fatMassCard.week) : null} weekLabel={fatMassCard.weekLabel}
-          weekBg={alertTint(PHASE_COLOR.Derailed, fatMassBadge)}
+          weekBg={STATUS_COLOR[fatMassStatus] + "22"}
           sub={fatMassChange != null ? `${fatMassChange > 0 ? "+" : ""}${fmtNum(fatMassChange, 1)} lb since start` : null}
           trend={fatMassChange == null ? null : fatMassChange < 0 ? "down" : fatMassChange > 0 ? "up" : "flat"}
-          accent={PHASE_COLOR.Derailed} badge={fatMassBadge} />
+          statusLevel={fatMassStatus}
+          accent={STATUS_COLOR[fatMassStatus]} badge={fatMassBadge} />
         <StatCard icon={TrendingUp} label="Muscle Mass" value={fmtNum(muscleMassCard.main)} valueTag={muscleMassCard.tag} unit="lb"
           weekValue={muscleMassCard.week != null ? fmtNum(muscleMassCard.week) : null} weekLabel={muscleMassCard.weekLabel}
-          weekBg={alertTint(PHASE_COLOR.Maintain, muscleBadge)}
+          weekBg={STATUS_COLOR[muscleStatus] + "22"}
           sub={muscleChange != null ? `${muscleChange > 0 ? "+" : ""}${fmtNum(muscleChange, 1)} lb since start` : null}
           trend={muscleChange == null ? null : muscleChange > 0 ? "up" : muscleChange < 0 ? "down" : "flat"}
-          accent={PHASE_COLOR.Maintain} badge={muscleBadge} />
+          statusLevel={muscleStatus}
+          accent={STATUS_COLOR[muscleStatus]} badge={muscleBadge} />
         <StatCard icon={Flame} label="Calories" value={fmtNum(latest.aCal)} unit=""
           sub={latest.tCal != null && latest.aCal != null
             ? <>target {fmtNum(latest.tCal)} · <span className={latest.aCal <= latest.tCal ? "cell-good" : "cell-bad"}>{latest.aCal - latest.tCal > 0 ? "+" : ""}{fmtNum(latest.aCal - latest.tCal)}</span></>
             : (avgCal != null ? `${calData.length}wk avg ${fmtNum(avgCal)}` : null)}
-          accent={PHASE_COLOR.Gain} badge={mkBadge(bucketAlert(calStreak), "bad")} />
+          statusLevel={calStatus}
+          accent={STATUS_COLOR[calStatus]} badge={calBadge} />
         <StatCard icon={Footprints} label="Steps" value={fmtNum(latest.steps)} unit=""
           sub={latest.tSteps != null && latest.steps != null
             ? <>goal {fmtNum(latest.tSteps)} · <span className={latest.steps >= latest.tSteps ? "cell-good" : "cell-bad"}>{latest.steps - latest.tSteps > 0 ? "+" : ""}{fmtNum(latest.steps - latest.tSteps)}</span></>
             : (avgSteps != null ? `${stepsData.length}wk avg ${fmtNum(avgSteps)}` : null)}
-          accent="#8b8f9c" badge={mkBadge(bucketAlert(stepsStreak), "bad")} />
+          statusLevel={stepsStatus}
+          accent={STATUS_COLOR[stepsStatus]} badge={stepsBadge} />
       </div>
 
       <div className="panel">
@@ -2740,6 +2753,7 @@ const BASE_STYLES = `
   .stat-week-tag { margin-top: 3px; font-family: 'JetBrains Mono', monospace; font-size: 9px; font-weight: 600; letter-spacing: 0.03em; color: var(--text-faint); text-transform: uppercase; white-space: nowrap; }
   .stat-sub { font-family: 'JetBrains Mono', monospace; font-size: 12.6px; color: var(--text-dim); margin-top: 6px; display: flex; align-items: center; gap: 4px; }
   .stat-sub.down { color: var(--cut); } .stat-sub.up { color: var(--gain); } .stat-sub.flat { color: var(--text-dim); }
+  .stat-sub.status-good { color: var(--good); } .stat-sub.status-warn { color: var(--gain); } .stat-sub.status-bad { color: var(--bad); }
 
   .panel { background: var(--panel); border-radius: 12px; padding: 18px 18px 8px; margin-bottom: 14px; }
   .chart-legend-note { display: flex; align-items: center; gap: 6px; font-family: 'JetBrains Mono', monospace; font-size: 11.5px; color: var(--text-faint); padding: 0 0 12px 4px; }
