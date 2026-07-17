@@ -1049,20 +1049,24 @@ export default function Dashboard() {
     });
   }, [enrichedWithAdj]);
   const chartData = useMemo(() => {
-    // Tracked/+Roadmap picks the base dataset; the Show dropdown then windows
-    // within it, so "All" means all of whichever base is currently selected.
-    const base = range === "full" ? enrichedEntries : ACTUAL;
-    let src;
+    // The Show dropdown windows the tracked history; +Roadmap then appends
+    // the future planned weeks on top of whatever window is selected,
+    // rather than replacing it.
+    let trackedWindow;
     if (dateWindow === "phase") {
       const currentPhase = ACTUAL.length ? ACTUAL[ACTUAL.length - 1].phase : null;
-      src = base.filter(r => r.phase === currentPhase);
+      trackedWindow = ACTUAL.filter(r => r.phase === currentPhase);
     } else if (dateWindow === "sixMonths") {
-      src = base.slice(-26); // ~26 weeks
+      trackedWindow = ACTUAL.slice(-26); // ~26 weeks
+    } else if (dateWindow === "threeMonths") {
+      trackedWindow = ACTUAL.slice(-13); // ~13 weeks
     } else if (dateWindow === "month") {
-      src = base.slice(-4); // ~4 weeks
+      trackedWindow = ACTUAL.slice(-4); // ~4 weeks
     } else {
-      src = base;
+      trackedWindow = ACTUAL;
     }
+    const futureRows = range === "full" ? enrichedEntries.filter(r => r.aW == null) : [];
+    const src = [...trackedWindow, ...futureRows];
     return src.map(r => ({ ...r, label: r.date }));
   }, [range, dateWindow, ACTUAL, enrichedEntries]);
 
@@ -2397,6 +2401,7 @@ export default function Dashboard() {
               <div className="toggle-group rtg-datewindow">
                 <select className="toggle-btn active date-window-select" value={dateWindow} onChange={(e) => setDateWindow(e.target.value)}>
                   <option value="month">Month</option>
+                  <option value="threeMonths">3 Months</option>
                   <option value="sixMonths">6 Months</option>
                   <option value="phase">Phase</option>
                   <option value="all">All</option>
@@ -2916,8 +2921,8 @@ const BASE_STYLES = `
   .panel-head-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
   .range-targets-group { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .range-targets-group .rtg-targets { order: 1; }
-  .range-targets-group .rtg-datewindow { order: 2; }
-  .range-targets-group .rtg-range { order: 3; }
+  .range-targets-group .rtg-range { order: 2; }
+  .range-targets-group .rtg-datewindow { order: 3; }
   .panel-head-actions-stack .range-targets-group { order: 2; }
   .panel-head-actions-stack > .series-toggle { order: 1; }
   .date-window-select { font-family: inherit; border: none; outline: none; }
@@ -3087,11 +3092,6 @@ const BASE_STYLES = `
     .range-targets-group .rtg-range { order: 1; }
     .range-targets-group .rtg-targets { order: 2; }
     .range-targets-group .rtg-datewindow { order: 3; }
-    /* Tighten this one row so Tracked/+Roadmap, Targets, and the date
-       dropdown all fit on one line at typical phone widths. */
-    .range-targets-group { gap: 5px; }
-    .range-targets-group .toggle-group { gap: 2px; padding: 2px; }
-    .dash .range-targets-group .toggle-btn { padding: 3px 7px; font-size: 10px; }
   }
 
   /* ---------- Clean brokerage-app styling ---------- */
