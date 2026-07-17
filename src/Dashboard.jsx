@@ -335,7 +335,7 @@ function formatDailyTag(label) {
   return d ? `${d.getMonth() + 1}/${d.getDate()}` : label;
 }
 
-function StatCard({ icon: Icon, label, value, valueTag, unit, weekValue, weekLabel, sub, trend, accent, badge }) {
+function StatCard({ icon: Icon, label, value, valueTag, unit, weekValue, weekLabel, weekBg, sub, trend, accent, badge }) {
   return (
     <div className="stat-card">
       {badge && (
@@ -356,7 +356,7 @@ function StatCard({ icon: Icon, label, value, valueTag, unit, weekValue, weekLab
         </div>
         {weekValue != null && (
           <div className="stat-week">
-            <div className="stat-week-box">{weekValue}<span className="stat-week-unit">{unit}</span></div>
+            <div className="stat-week-box" style={weekBg ? { background: weekBg } : undefined}>{weekValue}<span className="stat-week-unit">{unit}</span></div>
             <span className="stat-week-tag">{weekLabel}</span>
           </div>
         )}
@@ -1354,6 +1354,13 @@ export default function Dashboard() {
   const bodyFatCard = dailyCardStat(todayStats.bodyFat, latest.aBF);
   const fatMassCard = dailyCardStat(todayStats.fatMass, latest.aF);
   const muscleMassCard = dailyCardStat(todayStats.muscleMass, latest.aM);
+  const bodyFatBadge = mkBadge(bfStreak, bfStreak >= 3 ? "bad" : "warn");
+  const fatMassBadge = mkBadge(onTrackStreak, "good");
+  const muscleBadge = mkBadge(muscleStreak, muscleStreak >= 3 ? "bad" : "warn");
+  // Cards with an active alert tint their week-value box with a light wash
+  // of their own icon color, so the alert reads at a glance; Weight always
+  // gets its icon's light blue, alert or not.
+  function alertTint(accent, badge) { return badge ? accent + "22" : null; }
   // Today's phase per Goal Settings (latest-dated goal wins), falling back to
   // the latest logged week's phase if no goal is dated yet.
   const todayPhase = (() => {
@@ -2191,24 +2198,28 @@ export default function Dashboard() {
       <div className="stat-grid">
         <StatCard icon={Scale} label="Weight" value={fmtNum(weightCard.main)} valueTag={weightCard.tag} unit="lb"
           weekValue={weightCard.week != null ? fmtNum(weightCard.week) : null} weekLabel={weightCard.weekLabel}
+          weekBg={PHASE_COLOR.Cut + "22"}
           sub={weightChange != null ? `${weightChange > 0 ? "+" : ""}${fmtNum(weightChange, 1)} lb since start` : null}
           trend={weightChange == null ? null : weightChange < 0 ? "down" : weightChange > 0 ? "up" : "flat"}
           accent={PHASE_COLOR.Cut} badge={mkBadge(bucketAlert(weightStreak), "bad")} />
         <StatCard icon={Percent} label="Body Fat" value={fmtNum(bodyFatCard.main)} valueTag={bodyFatCard.tag} unit="%"
           weekValue={bodyFatCard.week != null ? fmtNum(bodyFatCard.week) : null} weekLabel={bodyFatCard.weekLabel}
+          weekBg={alertTint(PHASE_COLOR.Derailed, bodyFatBadge)}
           sub={bestBF?.aBF != null ? `best ${fmtNum(bestBF.aBF)}% (wk ${bestBF.wk})` : null}
           trend={bestBF && latest.aBF > bestBF.aBF ? "up" : "flat"}
-          accent={PHASE_COLOR.Derailed} badge={mkBadge(bucketAlert(fatStreak), "bad")} />
+          accent={PHASE_COLOR.Derailed} badge={bodyFatBadge} />
         <StatCard icon={TrendingDown} label="Fat Mass" value={fmtNum(fatMassCard.main)} valueTag={fatMassCard.tag} unit="lb"
           weekValue={fatMassCard.week != null ? fmtNum(fatMassCard.week) : null} weekLabel={fatMassCard.weekLabel}
+          weekBg={alertTint(PHASE_COLOR.Derailed, fatMassBadge)}
           sub={fatMassChange != null ? `${fatMassChange > 0 ? "+" : ""}${fmtNum(fatMassChange, 1)} lb since start` : null}
           trend={fatMassChange == null ? null : fatMassChange < 0 ? "down" : fatMassChange > 0 ? "up" : "flat"}
-          accent={PHASE_COLOR.Derailed} badge={mkBadge(onTrackStreak, "good")} />
+          accent={PHASE_COLOR.Derailed} badge={fatMassBadge} />
         <StatCard icon={TrendingUp} label="Muscle Mass" value={fmtNum(muscleMassCard.main)} valueTag={muscleMassCard.tag} unit="lb"
           weekValue={muscleMassCard.week != null ? fmtNum(muscleMassCard.week) : null} weekLabel={muscleMassCard.weekLabel}
+          weekBg={alertTint(PHASE_COLOR.Maintain, muscleBadge)}
           sub={muscleChange != null ? `${muscleChange > 0 ? "+" : ""}${fmtNum(muscleChange, 1)} lb since start` : null}
           trend={muscleChange == null ? null : muscleChange > 0 ? "up" : muscleChange < 0 ? "down" : "flat"}
-          accent={PHASE_COLOR.Maintain} badge={mkBadge(muscleStreak, muscleStreak >= 3 ? "bad" : "warn")} />
+          accent={PHASE_COLOR.Maintain} badge={muscleBadge} />
         <StatCard icon={Flame} label="Calories" value={fmtNum(latest.aCal)} unit=""
           sub={latest.tCal != null && latest.aCal != null
             ? <>target {fmtNum(latest.tCal)} · <span className={latest.aCal <= latest.tCal ? "cell-good" : "cell-bad"}>{latest.aCal - latest.tCal > 0 ? "+" : ""}{fmtNum(latest.aCal - latest.tCal)}</span></>
