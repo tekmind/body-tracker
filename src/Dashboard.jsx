@@ -775,6 +775,9 @@ export default function Dashboard() {
     calories: { label: "Calories",   actualKey: "aCal",  targetKey: "tCal",   color: "#dba236",      pad: 200,  decimals: 0 },
     steps:    { label: "Steps",      actualKey: "steps", targetKey: "tSteps", color: "#5b8dee",      pad: 1000, decimals: 0 },
   };
+  // All target lines share one color (rather than a tint of their metric's
+  // own color) so "dashed gold" reads as one consistent "target" language.
+  const wbfTargetColor = "#dba236";
 
   const persist = useCallback(async (next) => {
     setSaving(true);
@@ -2457,7 +2460,7 @@ export default function Dashboard() {
               {wbfTargetsOn && wbfSelected.map((key, idx) => {
                 const m = wbfMetrics[key];
                 return (
-                  <Line key={key + "-t"} yAxisId={idx === 0 ? "a" : "b"} type="monotone" dataKey={m.targetKey} name={`${m.label} (target)`} stroke={m.color} strokeOpacity={0.55} strokeWidth={1.5} strokeDasharray="4 3" dot={false} connectNulls isAnimationActive={false} />
+                  <Line key={key + "-t"} yAxisId={idx === 0 ? "a" : "b"} type="monotone" dataKey={m.targetKey} name={`${m.label} (target)`} stroke={wbfTargetColor} strokeWidth={1.5} strokeDasharray="4 3" dot={false} connectNulls isAnimationActive={false} />
                 );
               })}
             </ComposedChart>
@@ -2465,7 +2468,7 @@ export default function Dashboard() {
         )}
         <ChartLegend items={[
           ...wbfSelected.map((key) => ({ label: `${wbfMetrics[key].label} (actual)`, color: wbfMetrics[key].color, swatch: "box" })),
-          ...(wbfTargetsOn ? wbfSelected.map((key) => ({ label: `${wbfMetrics[key].label} (target)`, color: wbfMetrics[key].color, swatch: "dash" })) : []),
+          ...(wbfTargetsOn ? wbfSelected.map((key) => ({ label: `${wbfMetrics[key].label} (target)`, color: wbfTargetColor, swatch: "dash" })) : []),
           ...(derailedSegments.length > 0 ? [{ label: "derailed weeks", swatch: "shade" }] : []),
         ]} />
       </div>
@@ -2495,7 +2498,7 @@ export default function Dashboard() {
           ]} />
         </div>
         <div className="panel">
-          <div className="panel-head"><div className="panel-title">Steps<span className="dim">actual vs. goal</span></div></div>
+          <div className="panel-head"><div className="panel-title">Steps<span className="dim">actual vs. target</span></div></div>
           <ResponsiveContainer width="100%" height={200}>
             <ComposedChart data={ACTUAL} margin={{ top: 8, right: 8, left: -18, bottom: 12 }}>
               <CartesianGrid strokeDasharray="2 4" stroke={chartTheme.grid} vertical={false} />
@@ -2507,14 +2510,14 @@ export default function Dashboard() {
                   <Cell key={i} fill={stepsBarColor(r.steps, r.tSteps)} />
                 ))}
               </Bar>
-              <Line type="monotone" dataKey="tSteps" name="Step goal" stroke={chartTheme.ink} strokeWidth={1.5} strokeDasharray="4 3" dot={false} connectNulls />
+              <Line type="monotone" dataKey="tSteps" name="Target" stroke={chartTheme.ink} strokeWidth={1.5} strokeDasharray="4 3" dot={false} connectNulls />
             </ComposedChart>
           </ResponsiveContainer>
           <ChartLegend items={[
-            { label: "at/over goal", color: "var(--bar-good)", swatch: "box" },
-            { label: "under goal", color: "var(--bar-bad)", swatch: "box" },
-            { label: "no goal set", color: "#5b8dee", swatch: "box" },
-            { label: "step goal", color: chartTheme.ink, swatch: "dash" },
+            { label: "at/over target", color: "var(--bar-good)", swatch: "box" },
+            { label: "under target", color: "var(--bar-bad)", swatch: "box" },
+            { label: "no target set", color: "#5b8dee", swatch: "box" },
+            { label: "target", color: chartTheme.ink, swatch: "dash" },
           ]} />
         </div>
       </div>
@@ -2719,7 +2722,7 @@ const BASE_STYLES = `
     --text: #16181d; --text-dim: #5d6167; --text-faint: #8f939b;
     --cut: #5b8dee; --derailed: #c4534a; --maintain: #4caf7d; --gain: #dba236;
     --good: #368727; --bad: #c73a2f;
-    --bar-good: #4caf7d; --bar-bad: #c73a2f;
+    --bar-good: #4caf7d; --bar-bad: #c4534a;
     font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text);
     padding: 28px 24px 40px; border-radius: 16px; width: 100%; max-width: 1900px; margin: 0 auto; box-sizing: border-box;
   }
@@ -2754,7 +2757,7 @@ const BASE_STYLES = `
   .notif-row.notif-alert .notif-msg { color: #b1483c; }
   .notif-icon { display: inline-flex; flex-shrink: 0; }
   .notif-metric { font-weight: 700; }
-  .notif-msg { flex: 1; }
+  .notif-msg { flex: 0 1 auto; }
   .alert-close-btn { flex-shrink: 0; display: flex; align-items: center; justify-content: center; margin-left: auto; padding: 4px; border: none; background: transparent; border-radius: 6px; color: inherit; opacity: 0.55; cursor: pointer; }
   .alert-close-btn:hover { opacity: 1; background: rgba(0, 0, 0, 0.07); }
   .notif-weeks { display: inline-flex; align-items: center; vertical-align: middle; flex-shrink: 0; background: var(--bad); color: #ffffff; font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 700; letter-spacing: 0.02em; padding: 2px 9px; border-radius: 999px; }
@@ -3077,10 +3080,10 @@ const BASE_STYLES = `
     .title { font-size: 32.2px; }
     .panel { padding: 14px 12px 6px; }
     .banner-alert { padding: 14px 12px; min-height: 0; font-size: 15.5px; }
-    .banner-alert, .banner-ontrack { position: relative; padding-right: 80px; }
-    .banner-alert .notif-weeks, .banner-ontrack .notif-weeks { position: absolute; top: 50%; right: 40px; transform: translateY(-50%); }
-    .banner-alert .alert-close-btn, .banner-ontrack .alert-close-btn { position: absolute; top: 50%; right: 8px; transform: translateY(-50%); margin-left: 0; }
-    .notif-row .notif-weeks { margin-left: auto; }
+    .banner-alert, .banner-ontrack, .notif-row { position: relative; padding-right: 80px; }
+    .banner-alert .notif-weeks, .banner-ontrack .notif-weeks, .notif-row .notif-weeks { position: absolute; top: 50%; right: 40px; transform: translateY(-50%); margin-left: 0; }
+    .banner-alert .alert-close-btn, .banner-ontrack .alert-close-btn, .notif-row .alert-close-btn { position: absolute; top: 50%; right: 8px; transform: translateY(-50%); margin-left: 0; }
+    .notif-row .notif-msg { flex: 1 1 auto; }
     .stat-value { font-size: 29.9px; }
     .stat-value-line { height: 30px; }
     .stat-week-box { height: 30px; font-size: 14px; }
