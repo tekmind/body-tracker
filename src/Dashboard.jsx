@@ -2148,7 +2148,11 @@ export default function Dashboard() {
       <div className="panel">
         <div className="panel-head">
           <div className="panel-title">Weight & Body Fat<span className="dim">actual vs. target</span></div>
-          <div className="panel-head-actions">
+          <div className="panel-head-actions panel-head-actions-stack">
+            <div className="toggle-group">
+              <button className={"toggle-btn " + (range === "tracked" ? "active" : "")} onClick={() => setRange("tracked")}>TRACKED</button>
+              <button className={"toggle-btn " + (range === "full" ? "active" : "")} onClick={() => setRange("full")}>+ ROADMAP</button>
+            </div>
             <SeriesToggle
               items={[
                 { key: "weight", label: "WEIGHT" },
@@ -2158,14 +2162,10 @@ export default function Dashboard() {
               active={wbfVisible}
               onToggle={(key) => setWbfVisible((v) => ({ ...v, [key]: !v[key] }))}
             />
-            <div className="toggle-group">
-              <button className={"toggle-btn " + (range === "tracked" ? "active" : "")} onClick={() => setRange("tracked")}>TRACKED</button>
-              <button className={"toggle-btn " + (range === "full" ? "active" : "")} onClick={() => setRange("full")}>+ ROADMAP</button>
-            </div>
           </div>
         </div>
         <ResponsiveContainer width="100%" height={260}>
-          <ComposedChart data={chartData} margin={{ top: 8, right: 8, left: -18, bottom: 12 }}>
+          <ComposedChart data={chartData} margin={{ top: 8, right: -10, left: -18, bottom: 12 }}>
             <CartesianGrid strokeDasharray="2 4" stroke={chartTheme.grid} vertical={false} />
             {derailedSegments.map((s, i) => (
               <ReferenceArea key={i} x1={s.x1} x2={s.x2} yAxisId="w" fill="var(--bad)" fillOpacity={0.1} stroke="var(--bad)" strokeOpacity={0.25} />
@@ -2254,7 +2254,7 @@ export default function Dashboard() {
           </div>
         </div>
         <ResponsiveContainer width="100%" height={190}>
-          <ComposedChart data={chartData} margin={{ top: 8, right: 8, left: -18, bottom: 12 }}>
+          <ComposedChart data={chartData} margin={{ top: 8, right: -10, left: -18, bottom: 12 }}>
             <defs>
               <linearGradient id="mGrad" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor="#4caf7d" stopOpacity={0.35} />
@@ -2653,13 +2653,14 @@ const BASE_STYLES = `
   .cl-box { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
   .cl-shade { width: 12px; height: 10px; border-radius: 2px; background: var(--bad); opacity: 0.3; border: 1px solid var(--bad); display: inline-block; }
   .panel-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; gap: 10px; flex-wrap: wrap; }
-  .panel-head-actions { display: flex; align-items: center; gap: 8px; }
+  .panel-head-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+  .panel-head-actions-stack { flex-direction: column; align-items: flex-end; gap: 6px; }
   .panel-title { font-family: 'Space Grotesk', sans-serif; font-size: 16.1px; font-weight: 600; }
   .panel-title .dim { color: var(--text-dim); font-weight: 400; margin-left: 6px; font-size: 13.8px; }
   .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 
-  .toggle-group { display: flex; background: var(--panel-2); border-radius: 8px; padding: 2px; font-family: 'JetBrains Mono', monospace; font-size: 12.1px; }
-  .toggle-btn { padding: 5px 11px; border-radius: 6px; cursor: pointer; color: var(--text-dim); letter-spacing: 0.05em; background: transparent; border: none; font-family: inherit; }
+  .toggle-group { display: flex; background: var(--panel-2); border-radius: 8px; padding: 2px; font-family: 'JetBrains Mono', monospace; font-size: 10.6px; white-space: nowrap; }
+  .toggle-btn { padding: 4px 9px; border-radius: 6px; cursor: pointer; color: var(--text-dim); letter-spacing: 0.05em; background: transparent; border: none; font-family: inherit; }
   .toggle-btn.active { background: var(--panel); color: var(--text); }
 
   .tt { background: #0f1115; border: 1px solid var(--border); border-radius: 8px; padding: 9px 11px; font-family: 'JetBrains Mono', monospace; font-size: 12.6px; }
@@ -2846,7 +2847,7 @@ const BASE_STYLES = `
 
   /* Segmented control, like the US / International pill toggle */
   .dash .toggle-group { background: #ecebe5; border-radius: 999px; padding: 3px; }
-  .dash .toggle-btn { border-radius: 999px; font-family: 'Inter', sans-serif; font-weight: 600; letter-spacing: 0.02em; padding: 5px 14px; }
+  .dash .toggle-btn { border-radius: 999px; font-family: 'Inter', sans-serif; font-weight: 600; letter-spacing: 0.02em; padding: 4px 10px; font-size: 11.3px; }
   .dash .toggle-btn.active { background: #ffffff; box-shadow: 0 1px 3px rgba(20, 22, 27, 0.16); }
 
   /* Stat cards: sentence-case labels, big clean numbers, pill deltas */
