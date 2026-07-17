@@ -579,7 +579,8 @@ export default function Dashboard() {
   const [entries, setEntries] = useState([]);
   const [status, setStatus] = useState("loading"); // loading | ready | error
   const [errMsg, setErrMsg] = useState("");
-  const [range, setRange] = useState("month"); // month | sixMonths | phase | all
+  const [range, setRange] = useState("tracked"); // tracked | full
+  const [dateWindow, setDateWindow] = useState("month"); // month | sixMonths | phase | all
   // Dismissed top alerts, keyed by a stable id per banner. Session-only —
   // intentionally not persisted, so a dismissed alert reappears next visit
   // if the underlying condition is still true.
@@ -1048,21 +1049,22 @@ export default function Dashboard() {
     });
   }, [enrichedWithAdj]);
   const chartData = useMemo(() => {
+    // Tracked/+Roadmap picks the base dataset; the Show dropdown then windows
+    // within it, so "All" means all of whichever base is currently selected.
+    const base = range === "full" ? enrichedEntries : ACTUAL;
     let src;
-    if (range === "all") {
-      src = enrichedEntries; // includes future roadmap weeks
-    } else if (range === "phase") {
+    if (dateWindow === "phase") {
       const currentPhase = ACTUAL.length ? ACTUAL[ACTUAL.length - 1].phase : null;
-      let start = ACTUAL.length;
-      for (let i = ACTUAL.length - 1; i >= 0 && ACTUAL[i].phase === currentPhase; i--) start = i;
-      src = ACTUAL.slice(start);
-    } else if (range === "sixMonths") {
-      src = ACTUAL.slice(-26); // ~26 tracked weeks
+      src = base.filter(r => r.phase === currentPhase);
+    } else if (dateWindow === "sixMonths") {
+      src = base.slice(-26); // ~26 weeks
+    } else if (dateWindow === "month") {
+      src = base.slice(-4); // ~4 weeks
     } else {
-      src = ACTUAL.slice(-4); // ~4 tracked weeks
+      src = base;
     }
     return src.map(r => ({ ...r, label: r.date }));
-  }, [range, ACTUAL, enrichedEntries]);
+  }, [range, dateWindow, ACTUAL, enrichedEntries]);
 
   // Current streak of consecutive tracked weeks where actual fat came in above target fat.
   const fatStreak = useMemo(() => {
@@ -2382,10 +2384,8 @@ export default function Dashboard() {
           <div className="panel-head-actions panel-head-actions-stack">
             <div className="range-targets-group">
               <div className="toggle-group">
-                <button className={"toggle-btn " + (range === "month" ? "active" : "")} onClick={() => setRange("month")}>MONTH</button>
-                <button className={"toggle-btn " + (range === "sixMonths" ? "active" : "")} onClick={() => setRange("sixMonths")}>6 MONTHS</button>
-                <button className={"toggle-btn " + (range === "phase" ? "active" : "")} onClick={() => setRange("phase")}>PHASE</button>
-                <button className={"toggle-btn " + (range === "all" ? "active" : "")} onClick={() => setRange("all")}>ALL</button>
+                <button className={"toggle-btn " + (range === "tracked" ? "active" : "")} onClick={() => setRange("tracked")}>TRACKED</button>
+                <button className={"toggle-btn " + (range === "full" ? "active" : "")} onClick={() => setRange("full")}>+ ROADMAP</button>
               </div>
               <SeriesToggle
                 items={[{ key: "targets", label: "TARGETS" }]}
@@ -2411,6 +2411,15 @@ export default function Dashboard() {
               onToggle={toggleWbfMetric}
             />
           </div>
+        </div>
+        <div className="date-window-row">
+          <label htmlFor="date-window-select" className="date-window-label">Show</label>
+          <select id="date-window-select" className="date-window-select" value={dateWindow} onChange={(e) => setDateWindow(e.target.value)}>
+            <option value="month">Month</option>
+            <option value="sixMonths">6 Months</option>
+            <option value="phase">Phase</option>
+            <option value="all">All</option>
+          </select>
         </div>
         {wbfSelected.length === 0 ? (
           <div className="pacing-empty">Select 1–2 metrics above to plot.</div>
@@ -2909,6 +2918,9 @@ const BASE_STYLES = `
   .range-targets-group .toggle-group:not(.series-toggle) { order: 2; }
   .panel-head-actions-stack .range-targets-group { order: 2; }
   .panel-head-actions-stack > .series-toggle { order: 1; }
+  .date-window-row { display: flex; align-items: center; gap: 8px; justify-content: flex-end; margin-bottom: 10px; }
+  .date-window-label { font-family: 'JetBrains Mono', monospace; font-size: 10.6px; letter-spacing: 0.05em; color: var(--text-dim); }
+  .date-window-select { font-family: 'JetBrains Mono', monospace; font-size: 10.6px; letter-spacing: 0.05em; color: var(--text); background: var(--panel-2); border: none; border-radius: 6px; padding: 4px 8px; cursor: pointer; }
   .panel-title { font-family: 'Space Grotesk', sans-serif; font-size: 16.1px; font-weight: 600; }
   .panel-title .dim { color: var(--text-dim); font-weight: 400; margin-left: 6px; font-size: 13.8px; }
   .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
@@ -3111,6 +3123,8 @@ const BASE_STYLES = `
   .dash .toggle-group { background: #ecebe5; border-radius: 999px; padding: 3px; }
   .dash .toggle-btn { border-radius: 999px; font-family: 'Inter', sans-serif; font-weight: 600; letter-spacing: 0.02em; padding: 4px 10px; font-size: 11.3px; }
   .dash .toggle-btn.active { background: #ffffff; box-shadow: 0 1px 3px rgba(20, 22, 27, 0.16); }
+  .dash .date-window-label, .dash .date-window-select { font-family: 'Inter', sans-serif; font-weight: 600; letter-spacing: 0.02em; font-size: 12px; }
+  .dash .date-window-select { border-radius: 999px; }
 
   /* Stat cards: sentence-case labels, big clean numbers, pill deltas */
   .dash .stat-label { font-family: 'Inter', sans-serif; font-size: 13.2px; font-weight: 600; text-transform: none; letter-spacing: 0.01em; }
