@@ -328,7 +328,14 @@ function missStreak(actualRows, actualKey, targetKey, isMiss) {
 
 function mkBadge(weeks, level) { return weeks > 0 ? { weeks, level } : null; }
 
-function StatCard({ icon: Icon, label, value, unit, sub, trend, accent, badge }) {
+function formatDailyTag(label) {
+  if (label === "today") return "TODAY";
+  if (label === "yesterday") return "YESTERDAY";
+  const d = parseDate(label);
+  return d ? `${d.getMonth() + 1}/${d.getDate()}` : label;
+}
+
+function StatCard({ icon: Icon, label, value, valueTag, unit, weekValue, weekLabel, sub, trend, accent, badge }) {
   return (
     <div className="stat-card">
       {badge && (
@@ -340,7 +347,18 @@ function StatCard({ icon: Icon, label, value, unit, sub, trend, accent, badge })
         <span className="stat-icon" style={{ background: accent + "22", color: accent }}><Icon size={15} strokeWidth={2.25} /></span>
         <span className="stat-label">{label}</span>
       </div>
-      <div className="stat-value">{value}<span className="stat-unit">{unit}</span></div>
+      <div className="stat-value-row">
+        <div className="stat-value-main">
+          <div className="stat-value">{value}<span className="stat-unit">{unit}</span></div>
+          {valueTag && <span className="stat-value-tag">{valueTag}</span>}
+        </div>
+        {weekValue != null && (
+          <div className="stat-week">
+            <span className="stat-week-val">{weekValue}<span className="stat-week-unit">{unit}</span></span>
+            <span className="stat-week-tag">{weekLabel}</span>
+          </div>
+        )}
+      </div>
       {sub && (
         <div className={"stat-sub " + (trend || "")}>
           {trend === "down" && <TrendingDown size={12} />}
@@ -1170,6 +1188,34 @@ export default function Dashboard() {
     return [...dailyEntries, ...synced];
   }, [dailyEntries, healthkitDaily]);
 
+  // Body-composition stat cards prefer today's daily-log entry over the
+  // weekly log. Falls back to yesterday, then the most recently recorded
+  // day, so the card never goes blank just because today hasn't been
+  // logged yet. Body fat % isn't logged daily, so it's derived from that
+  // same day's fat mass / weight.
+  const todayStats = useMemo(() => {
+    const todayStr = formatMDY(new Date());
+    const yesterday = new Date(); yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStr = formatMDY(yesterday);
+    const sorted = mergedDailyEntries
+      .map(d => ({ ...d, _d: parseDate(d.date) }))
+      .filter(d => d._d)
+      .sort((a, b) => b._d.getTime() - a._d.getTime())
+      .map(d => ({ ...d, bodyFat: (d.fatMass != null && d.weight) ? round1(d.fatMass / d.weight * 100) : null }));
+
+    function pick(key) {
+      const t = sorted.find(d => d.date === todayStr);
+      if (t && t[key] != null) return { value: t[key], label: "today" };
+      const y = sorted.find(d => d.date === yesterdayStr);
+      if (y && y[key] != null) return { value: y[key], label: "yesterday" };
+      const last = sorted.find(d => d[key] != null);
+      if (last) return { value: last[key], label: last.date };
+      return { value: null, label: null };
+    }
+
+    return { weight: pick("weight"), fatMass: pick("fatMass"), muscleMass: pick("muscleMass"), bodyFat: pick("bodyFat") };
+  }, [mergedDailyEntries]);
+
   const pacing = useMemo(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -1284,6 +1330,28 @@ export default function Dashboard() {
   }
 
   const latest = ACTUAL[ACTUAL.length - 1];
+  // Short "Fri 7/11" label for the latest weekly log entry, shown next to
+  // the daily-log-driven stat card numbers so it's clear which week the
+  // smaller reference number came from.
+  const latestWeekLabel = (() => {
+    const d = parseDate(latest?.date);
+    if (!d) return "last wk";
+    return `${d.toLocaleDateString(undefined, { weekday: "short" })} ${d.getMonth() + 1}/${d.getDate()}`;
+  })();
+  // Pairs a daily-log-driven stat card's main number with its "as of"
+  // tag, and the smaller last-week reference number shown beside it. If
+  // there's no daily data at all, falls back to showing just the weekly
+  // number as the main value (no redundant week block).
+  function dailyCardStat(daily, weeklyValue) {
+    if (daily.value != null) {
+      return { main: daily.value, tag: formatDailyTag(daily.label), week: weeklyValue, weekLabel: latestWeekLabel };
+    }
+    return { main: weeklyValue, tag: null, week: null, weekLabel: null };
+  }
+  const weightCard = dailyCardStat(todayStats.weight, latest.aW);
+  const bodyFatCard = dailyCardStat(todayStats.bodyFat, latest.aBF);
+  const fatMassCard = dailyCardStat(todayStats.fatMass, latest.aF);
+  const muscleMassCard = dailyCardStat(todayStats.muscleMass, latest.aM);
   // Today's phase per Goal Settings (latest-dated goal wins), falling back to
   // the latest logged week's phase if no goal is dated yet.
   const todayPhase = (() => {
@@ -2119,19 +2187,23 @@ export default function Dashboard() {
       <PhaseTimeline all={resolvedEntries} trackedCount={ACTUAL.length} derailedDates={derailedDates} />
 
       <div className="stat-grid">
-        <StatCard icon={Scale} label="Weight" value={fmtNum(latest.aW)} unit="lb"
+        <StatCard icon={Scale} label="Weight" value={fmtNum(weightCard.main)} valueTag={weightCard.tag} unit="lb"
+          weekValue={weightCard.week != null ? fmtNum(weightCard.week) : null} weekLabel={weightCard.weekLabel}
           sub={weightChange != null ? `${weightChange > 0 ? "+" : ""}${fmtNum(weightChange, 1)} lb since start` : null}
           trend={weightChange == null ? null : weightChange < 0 ? "down" : weightChange > 0 ? "up" : "flat"}
           accent={PHASE_COLOR.Cut} badge={mkBadge(bucketAlert(weightStreak), "bad")} />
-        <StatCard icon={Percent} label="Body Fat" value={fmtNum(latest.aBF)} unit="%"
+        <StatCard icon={Percent} label="Body Fat" value={fmtNum(bodyFatCard.main)} valueTag={bodyFatCard.tag} unit="%"
+          weekValue={bodyFatCard.week != null ? fmtNum(bodyFatCard.week) : null} weekLabel={bodyFatCard.weekLabel}
           sub={bestBF?.aBF != null ? `best ${fmtNum(bestBF.aBF)}% (wk ${bestBF.wk})` : null}
           trend={bestBF && latest.aBF > bestBF.aBF ? "up" : "flat"}
           accent={PHASE_COLOR.Derailed} badge={mkBadge(bucketAlert(fatStreak), "bad")} />
-        <StatCard icon={TrendingDown} label="Fat Mass" value={fmtNum(latest.aF)} unit="lb"
+        <StatCard icon={TrendingDown} label="Fat Mass" value={fmtNum(fatMassCard.main)} valueTag={fatMassCard.tag} unit="lb"
+          weekValue={fatMassCard.week != null ? fmtNum(fatMassCard.week) : null} weekLabel={fatMassCard.weekLabel}
           sub={fatMassChange != null ? `${fatMassChange > 0 ? "+" : ""}${fmtNum(fatMassChange, 1)} lb since start` : null}
           trend={fatMassChange == null ? null : fatMassChange < 0 ? "down" : fatMassChange > 0 ? "up" : "flat"}
           accent={PHASE_COLOR.Derailed} badge={mkBadge(onTrackStreak, "good")} />
-        <StatCard icon={TrendingUp} label="Muscle Mass" value={fmtNum(latest.aM)} unit="lb"
+        <StatCard icon={TrendingUp} label="Muscle Mass" value={fmtNum(muscleMassCard.main)} valueTag={muscleMassCard.tag} unit="lb"
+          weekValue={muscleMassCard.week != null ? fmtNum(muscleMassCard.week) : null} weekLabel={muscleMassCard.weekLabel}
           sub={muscleChange != null ? `${muscleChange > 0 ? "+" : ""}${fmtNum(muscleChange, 1)} lb since start` : null}
           trend={muscleChange == null ? null : muscleChange > 0 ? "up" : muscleChange < 0 ? "down" : "flat"}
           accent={PHASE_COLOR.Maintain} badge={mkBadge(muscleStreak, muscleStreak >= 3 ? "bad" : "warn")} />
@@ -2643,8 +2715,15 @@ const BASE_STYLES = `
   .stat-top { display: flex; align-items: center; gap: 7px; margin-bottom: 10px; }
   .stat-icon { width: 22px; height: 22px; border-radius: 6px; display: flex; align-items: center; justify-content: center; }
   .stat-label { font-family: 'JetBrains Mono', monospace; font-size: 11.5px; letter-spacing: 0.07em; color: var(--text-dim); text-transform: uppercase; }
+  .stat-value-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 6px; }
+  .stat-value-main { display: flex; flex-direction: column; min-width: 0; }
   .stat-value { font-family: 'Space Grotesk', sans-serif; font-size: 36.8px; font-weight: 700; letter-spacing: -0.01em; }
   .stat-unit { font-size: 14.9px; font-weight: 500; color: var(--text-dim); margin-left: 2px; }
+  .stat-value-tag { font-family: 'JetBrains Mono', monospace; font-size: 9px; font-weight: 600; letter-spacing: 0.05em; color: var(--text-faint); text-transform: uppercase; }
+  .stat-week { display: flex; flex-direction: column; align-items: flex-end; flex-shrink: 0; padding-bottom: 3px; }
+  .stat-week-val { font-family: 'Space Grotesk', sans-serif; font-size: 14px; font-weight: 600; color: var(--text-dim); white-space: nowrap; }
+  .stat-week-unit { font-size: 9.5px; font-weight: 500; color: var(--text-faint); margin-left: 1px; }
+  .stat-week-tag { font-family: 'JetBrains Mono', monospace; font-size: 8.5px; font-weight: 600; letter-spacing: 0.03em; color: var(--text-faint); white-space: nowrap; }
   .stat-sub { font-family: 'JetBrains Mono', monospace; font-size: 12.6px; color: var(--text-dim); margin-top: 6px; display: flex; align-items: center; gap: 4px; }
   .stat-sub.down { color: var(--cut); } .stat-sub.up { color: var(--gain); } .stat-sub.flat { color: var(--text-dim); }
 
@@ -2863,6 +2942,8 @@ const BASE_STYLES = `
   /* Stat cards: sentence-case labels, big clean numbers, pill deltas */
   .dash .stat-label { font-family: 'Inter', sans-serif; font-size: 13.2px; font-weight: 600; text-transform: none; letter-spacing: 0.01em; }
   .dash .stat-value { font-family: 'Inter', sans-serif; font-weight: 700; letter-spacing: -0.02em; }
+  .dash .stat-week-val { font-family: 'Inter', sans-serif; font-weight: 700; }
+  .dash .stat-value-tag, .dash .stat-week-tag { font-family: 'Inter', sans-serif; }
   .dash .stat-sub { font-family: 'Inter', sans-serif; font-size: 13.2px; }
   .dash .stat-sub .cell-good { background: #ddefd4; color: #2b6e1e; padding: 1px 8px; border-radius: 999px; }
   .dash .stat-sub .cell-bad { background: #f8ddd9; color: #a5342a; padding: 1px 8px; border-radius: 999px; }
