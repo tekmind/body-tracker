@@ -349,9 +349,15 @@ function formatDailyTag(label) {
   return d ? `${d.getMonth() + 1}/${d.getDate()}` : label;
 }
 
-function StatCard({ icon: Icon, label, value, valueTag, unit, weekValue, weekLabel, weekBg, sub, trend, statusLevel, accent, badge }) {
+function StatCard({ icon: Icon, label, value, valueTag, unit, weekValue, weekLabel, weekBg, sub, trend, statusLevel, accent, badge, onClick }) {
   return (
-    <div className="stat-card">
+    <div
+      className={"stat-card" + (onClick ? " stat-card-clickable" : "")}
+      onClick={onClick}
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={onClick ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick(); } } : undefined}
+    >
       {badge && (
         <span className={"stat-alert-badge " + badge.level} title={(badge.level === "good" ? "On track " : "Missed target ") + badge.weeks + " weeks in a row"}>
           {badge.level === "good" ? <Check size={10} /> : <AlertTriangle size={10} />} {badge.weeks}w
@@ -600,13 +606,23 @@ export default function Dashboard() {
   });
   const isAlertDismissed = (id, signature) => dismissedAlerts[id] === signature;
   // Up to 2 metrics plotted at once, in selection order (oldest drops first).
-  const [wbfSelected, setWbfSelected] = useState(["bodyFat", "muscle"]);
+  const [wbfSelected, setWbfSelected] = useState(["fatMass", "muscle"]);
   const [wbfTargetsOn, setWbfTargetsOn] = useState(true);
   const toggleWbfMetric = (key) => setWbfSelected((prev) => {
     if (prev.includes(key)) return prev.filter((k) => k !== key);
     if (prev.length >= 2) return [prev[1], key];
     return [...prev, key];
   });
+  // Jump-to-chart: clicking a stat card focuses the Actual vs. Target chart
+  // on just that metric, with targets on and a 3-month window, then scrolls
+  // it into view.
+  const trendChartRef = useRef(null);
+  const jumpToChart = (key) => {
+    setWbfSelected([key]);
+    setWbfTargetsOn(true);
+    setDateWindow("threeMonths");
+    trendChartRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
   const [formOpen, setFormOpen] = useState(false);
   const [editIndex, setEditIndex] = useState(null);
   const [form, setForm] = useState(emptyForm);
@@ -783,7 +799,7 @@ export default function Dashboard() {
   // be plotted together, each on its own axis.
   const wbfMetrics = {
     weight:   { label: "Weight",     actualKey: "aW",    targetKey: "tW",     color: chartTheme.ink, pad: 2,    decimals: 1 },
-    bodyFat:  { label: "Body Fat %", actualKey: "aBF",   targetKey: "tBF",    color: "#c4534a",      pad: 1,    decimals: 1 },
+    fatMass:  { label: "Fat Mass",   actualKey: "aF",    targetKey: "tF",     color: "#c4534a",      pad: 1,    decimals: 1 },
     muscle:   { label: "Muscle",     actualKey: "aM",    targetKey: "tM",     color: "#4caf7d",      pad: 1,    decimals: 1 },
     calories: { label: "Calories",   actualKey: "aCal",  targetKey: "tCal",   color: "#dba236",      pad: 200,  decimals: 0 },
     steps:    { label: "Steps",      actualKey: "steps", targetKey: "tSteps", color: "#5b8dee",      pad: 1000, decimals: 0 },
@@ -1743,7 +1759,7 @@ export default function Dashboard() {
 
   function openExport() {
     setBackupMsg("");
-    setBackupText(JSON.stringify({ entries, goals, daily: dailyEntries }, null, 2));
+    setBackupText(JSON.stringify({ entries, goals, daily: dailyEntries, habits: habitLog, habitTargets }, null, 2));
     setBackupMode("export");
   }
   function openImport() {
@@ -1774,12 +1790,19 @@ export default function Dashboard() {
     });
     return [...byDate.values()].sort((a, b) => (parseDate(a.date)?.getTime() ?? 0) - (parseDate(b.date)?.getTime() ?? 0));
   }
+  function dedupeHabits(list) {
+    const byDate = new Map();
+    list.forEach(e => byDate.set(e.date, { ...byDate.get(e.date), ...e }));
+    return [...byDate.values()].sort((a, b) => (parseDate(a.date)?.getTime() ?? 0) - (parseDate(b.date)?.getTime() ?? 0));
+  }
   function handleDedupe() {
     const cleanEntries = dedupeEntries(entries);
     const cleanDaily = dedupeDaily(dailyEntries);
+    const cleanHabits = dedupeHabits(habitLog);
     persist(cleanEntries);
     persistDaily(cleanDaily);
-    setBackupMsg(`Cleaned up: ${entries.length - cleanEntries.length} duplicate week${entries.length - cleanEntries.length === 1 ? "" : "s"} and ${dailyEntries.length - cleanDaily.length} duplicate day${dailyEntries.length - cleanDaily.length === 1 ? "" : "s"} removed.`);
+    persistHabits(cleanHabits);
+    setBackupMsg(`Cleaned up: ${entries.length - cleanEntries.length} duplicate week${entries.length - cleanEntries.length === 1 ? "" : "s"}, ${dailyEntries.length - cleanDaily.length} duplicate day${dailyEntries.length - cleanDaily.length === 1 ? "" : "s"}, and ${habitLog.length - cleanHabits.length} duplicate habit day${habitLog.length - cleanHabits.length === 1 ? "" : "s"} removed.`);
   }
   function handleRestore() {
     try {
@@ -1791,6 +1814,13 @@ export default function Dashboard() {
       persist(cleanEntries);
       persistGoals(parsed.goals.map(g => ({ ...g, phase: migratePhase(g.phase) })));
       persistDaily(dedupeDaily(parsed.daily));
+      // Habits were added to the app (and this backup) after some exports
+      // were taken — only touch habit data if the backup actually has it,
+      // so restoring an older export doesn't wipe today's habit log.
+      if (Array.isArray(parsed.habits)) persistHabits(dedupeHabits(parsed.habits));
+      if (parsed.habitTargets && typeof parsed.habitTargets === "object") {
+        persistHabitTargets({ ...DEFAULT_HABIT_TARGETS, ...parsed.habitTargets });
+      }
       setBackupMode(null);
       setBackupText("");
       setBackupMsg("Backup restored.");
@@ -1999,7 +2029,7 @@ export default function Dashboard() {
 
           <div className="panel" style={{ paddingBottom: 18 }}>
             <div className="panel-head">
-              <div className="panel-title">Backup & Restore<span className="dim">weekly log + goals + daily log, one JSON blob</span></div>
+              <div className="panel-title">Backup & Restore<span className="dim">weekly log + goals + daily log + habits, one JSON blob</span></div>
               <div style={{ display: "flex", gap: 8 }}>
                 <button className="btn-ghost" onClick={handleDedupe}>Dedupe</button>
                 <button className="btn-ghost" onClick={openExport}>Export</button>
@@ -2293,35 +2323,35 @@ export default function Dashboard() {
           weekBg={PHASE_COLOR.Cut + "22"}
           sub={weightChange != null ? `${weightChange > 0 ? "+" : ""}${fmtNum(weightChange, 1)} lb since start` : null}
           trend={weightChange == null ? null : weightChange < 0 ? "down" : weightChange > 0 ? "up" : "flat"}
-          accent={PHASE_COLOR.Cut} />
+          accent={PHASE_COLOR.Cut} onClick={() => jumpToChart("weight")} />
         <StatCard icon={Percent} label="Body Fat" value={fmtNum(bodyFatCard.main)} valueTag={bodyFatCard.tag} unit="%"
           weekValue={bodyFatCard.week != null ? fmtNum(bodyFatCard.week) : null} weekLabel={bodyFatCard.weekLabel}
           weekBg={STATUS_COLOR[bodyFatStatus] + "22"}
           sub={bestBF?.aBF != null ? `best ${fmtNum(bestBF.aBF)}% (wk ${bestBF.wk})` : null}
           trend={bestBF && latest.aBF > bestBF.aBF ? "up" : "flat"}
           statusLevel={bodyFatStatus}
-          accent={STATUS_COLOR[bodyFatStatus]} badge={bodyFatBadge} />
+          accent={STATUS_COLOR[bodyFatStatus]} badge={bodyFatBadge} onClick={() => jumpToChart("fatMass")} />
         <StatCard icon={TrendingDown} label="Fat Mass" value={fmtNum(fatMassCard.main)} valueTag={fatMassCard.tag} unit="lb"
           weekValue={fatMassCard.week != null ? fmtNum(fatMassCard.week) : null} weekLabel={fatMassCard.weekLabel}
           weekBg={STATUS_COLOR[fatMassStatus] + "22"}
           sub={fatMassChange != null ? `${fatMassChange > 0 ? "+" : ""}${fmtNum(fatMassChange, 1)} lb since start` : null}
           trend={fatMassChange == null ? null : fatMassChange < 0 ? "down" : fatMassChange > 0 ? "up" : "flat"}
           statusLevel={fatMassStatus}
-          accent={STATUS_COLOR[fatMassStatus]} badge={fatMassBadge} />
+          accent={STATUS_COLOR[fatMassStatus]} badge={fatMassBadge} onClick={() => jumpToChart("fatMass")} />
         <StatCard icon={TrendingUp} label="Muscle Mass" value={fmtNum(muscleMassCard.main)} valueTag={muscleMassCard.tag} unit="lb"
           weekValue={muscleMassCard.week != null ? fmtNum(muscleMassCard.week) : null} weekLabel={muscleMassCard.weekLabel}
           weekBg={STATUS_COLOR[muscleStatus] + "22"}
           sub={muscleChange != null ? `${muscleChange > 0 ? "+" : ""}${fmtNum(muscleChange, 1)} lb since start` : null}
           trend={muscleChange == null ? null : muscleChange > 0 ? "up" : muscleChange < 0 ? "down" : "flat"}
           statusLevel={muscleStatus}
-          accent={STATUS_COLOR[muscleStatus]} badge={muscleBadge} />
+          accent={STATUS_COLOR[muscleStatus]} badge={muscleBadge} onClick={() => jumpToChart("muscle")} />
         <StatCard icon={Flame} label="Calories" value={fmtNum(calCard.main)} valueTag={calCard.tag} unit=""
           weekValue={calCard.week != null ? fmtNum(calCard.week) : null} weekLabel={calCard.weekLabel}
           weekBg={STATUS_COLOR[calStatus] + "22"}
           sub={latest.tCal != null && calCard.main != null
             ? <>target {fmtNum(latest.tCal)} · <span className={calCard.main <= latest.tCal ? "cell-good" : "cell-bad"}>{calCard.main - latest.tCal > 0 ? "+" : ""}{fmtNum(calCard.main - latest.tCal)}</span></>
             : (avgCal != null ? `${calData.length}wk avg ${fmtNum(avgCal)}` : null)}
-          statusLevel={calStatus}
+          statusLevel={calStatus} onClick={() => jumpToChart("calories")}
           accent={STATUS_COLOR[calStatus]} badge={calBadge} />
         <StatCard icon={Footprints} label="Steps" value={fmtNum(stepsCard.main)} valueTag={stepsCard.tag} unit=""
           weekValue={stepsCard.week != null ? fmtNum(stepsCard.week) : null} weekLabel={stepsCard.weekLabel}
@@ -2330,10 +2360,10 @@ export default function Dashboard() {
             ? <>target {fmtNum(latest.tSteps)} · <span className={stepsCard.main >= latest.tSteps ? "cell-good" : "cell-bad"}>{stepsCard.main - latest.tSteps > 0 ? "+" : ""}{fmtNum(stepsCard.main - latest.tSteps)}</span></>
             : (avgSteps != null ? `${stepsData.length}wk avg ${fmtNum(avgSteps)}` : null)}
           statusLevel={stepsStatus}
-          accent={STATUS_COLOR[stepsStatus]} badge={stepsBadge} />
+          accent={STATUS_COLOR[stepsStatus]} badge={stepsBadge} onClick={() => jumpToChart("steps")} />
       </div>
 
-      <div className="panel">
+      <div className="panel" ref={trendChartRef}>
         <div className="panel-head">
           <div className="panel-title">Actual vs. Target</div>
           <div className="panel-head-actions panel-head-actions-stack">
@@ -2361,7 +2391,7 @@ export default function Dashboard() {
             </div>
             <SeriesToggle
               items={[
-                { key: "bodyFat", label: "FAT" },
+                { key: "fatMass", label: "FAT" },
                 { key: "muscle", label: "MUSCLE" },
                 { key: "weight", label: "WEIGHT" },
                 { key: "calories", label: "CALORIES" },
@@ -2369,7 +2399,7 @@ export default function Dashboard() {
               ]}
               active={{
                 weight: wbfSelected.includes("weight"),
-                bodyFat: wbfSelected.includes("bodyFat"),
+                fatMass: wbfSelected.includes("fatMass"),
                 muscle: wbfSelected.includes("muscle"),
                 calories: wbfSelected.includes("calories"),
                 steps: wbfSelected.includes("steps"),
@@ -2826,6 +2856,9 @@ const BASE_STYLES = `
 
   .stat-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 14px; margin-bottom: 14px; }
   .stat-card { position: relative; background: var(--panel); border-radius: 12px; padding: 14px 15px; min-width: 0; }
+  .stat-card-clickable { cursor: pointer; transition: background 0.15s ease; }
+  .stat-card-clickable:hover, .stat-card-clickable:focus-visible { background: var(--panel-2); }
+  .stat-card-clickable:focus-visible { outline: 2px solid var(--cut); outline-offset: 2px; }
   .stat-alert-badge { position: absolute; top: -7px; right: 10px; display: inline-flex; align-items: center; gap: 3px; color: #1a0f0f; font-family: 'JetBrains Mono', monospace; font-size: 10.3px; font-weight: 700; letter-spacing: 0.03em; padding: 2px 6px; border-radius: 20px; box-shadow: 0 0 0 3px var(--bg); }
   .stat-alert-badge.bad { background: var(--bad); }
   .stat-alert-badge.warn { background: var(--gain); }
