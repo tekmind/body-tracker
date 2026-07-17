@@ -1844,7 +1844,7 @@ export default function Dashboard() {
                   <strong>Body Fat — </strong>
                   {fatStreak === 1 || overTarget
                     ? "over target this week. One more over-target week triggers a slipping alert."
-                    : <>on track — at or under target for {onTrackStreak} week{onTrackStreak === 1 ? "" : "s"}. <span className="notif-weeks ontrack-pill">{onTrackStreak}w</span></>}
+                    : <>on track — at or under target <span className="banner-ontrack-tail">for {onTrackStreak} week{onTrackStreak === 1 ? "" : "s"}. <span className="notif-weeks ontrack-pill">{onTrackStreak}w</span></span></>}
                 </span>
                 <button className="alert-close-btn" onClick={() => dismissAlert("bodyfat-ontrack")} aria-label="Dismiss"><X size={14} /></button>
               </div>
@@ -2690,6 +2690,7 @@ const BASE_STYLES = `
   .banner-ontrack { display: flex; align-items: center; gap: 9px; padding: 10px 40px 10px 14px; border-radius: 12px; margin-bottom: 14px; font-family: 'Inter', sans-serif; font-size: 13px; background: #eef6ea; border: 1px solid #cfe6c4; color: #3a6b2c; position: relative; }
   .banner-ontrack svg { flex-shrink: 0; color: #4a8a35; }
   .banner-ontrack-text { flex: 1; }
+  .banner-ontrack-tail { white-space: nowrap; }
   .banner-alert .alert-close-btn, .banner-ontrack .alert-close-btn { position: absolute; top: 50%; right: 12px; transform: translateY(-50%); margin-left: 0; }
   .notif-stack { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
   .notif-row { display: flex; align-items: center; gap: 9px; padding: 8px 13px; border-radius: 10px; font-family: 'Inter', sans-serif; font-size: 12.5px; }
@@ -3006,7 +3007,6 @@ const BASE_STYLES = `
     .panel { padding: 14px 12px 6px; }
     .banner-alert { padding: 14px 12px; min-height: 0; font-size: 15.5px; }
     .banner-alert, .banner-ontrack { position: relative; padding-right: 40px; }
-    .banner-alert .alert-close-btn, .banner-ontrack .alert-close-btn { position: absolute; top: 8px; right: 8px; margin-left: 0; }
     .notif-row .notif-weeks { margin-left: auto; }
     .stat-value { font-size: 29.9px; }
     .stat-value-line { height: 30px; }
