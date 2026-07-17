@@ -2363,7 +2363,7 @@ export default function Dashboard() {
           accent={STATUS_COLOR[stepsStatus]} badge={stepsBadge} onClick={() => jumpToChart("steps")} />
       </div>
 
-      <div className="panel" ref={trendChartRef}>
+      <div className="panel chart-scroll-target" ref={trendChartRef}>
         <div className="panel-head">
           <div className="panel-title">Actual vs. Target</div>
           <div className="panel-head-actions panel-head-actions-stack">
@@ -2881,6 +2881,7 @@ const BASE_STYLES = `
   .stat-sub.status-good { color: var(--good); } .stat-sub.status-warn { color: var(--gain); } .stat-sub.status-bad { color: var(--bad); }
 
   .panel { background: var(--panel); border-radius: 12px; padding: 18px 18px 8px; margin-bottom: 14px; }
+  .chart-scroll-target { scroll-margin-top: calc(16px + env(safe-area-inset-top)); }
   /* Hides Recharts' hover tooltip whenever no finger is actively touching
      the screen (see the touchstart/touchend listeners in Dashboard). */
   body.touch-tooltip-hidden .recharts-tooltip-wrapper { display: none !important; }
