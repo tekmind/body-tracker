@@ -1345,34 +1345,27 @@ export default function Dashboard() {
     }
     return ACTUAL.map((r, i) => ({ ...r, derailed: derailed[i] }));
   }, [ACTUAL, effectiveActual]);
-  const derailedSegments = useMemo(() => {
-    const segs = [];
-    let cur = null;
-    derailedRows.forEach(r => {
-      if (r.derailed) {
-        if (!cur) cur = { x1: r.date, x2: r.date };
-        else cur.x2 = r.date;
-      } else if (cur) {
-        segs.push(cur); cur = null;
-      }
-    });
-    if (cur) segs.push(cur);
-    return segs;
-  }, [derailedRows]);
   // Dates of historically-derailed weeks, for red log rows and timeline marks.
   const derailedDates = useMemo(() => new Set(derailedRows.filter(r => r.derailed).map(r => r.date)), [derailedRows]);
   // Background phase bands for the Actual vs. Target chart — one shaded
-  // region per contiguous run of the same groupPhase, colored to match the
-  // phase timeline above.
+  // region per contiguous run of the same effective phase, colored to match
+  // the phase timeline above. Derailed weeks count as their own phase so
+  // they render in solid red instead of a red overlay blended on top of
+  // whatever phase color sits underneath. Each segment's end is snapped to
+  // the next segment's start (rather than its own last data point) so
+  // adjacent bands share a boundary tick instead of leaving a gap between
+  // the last point of one category band and the first point of the next.
   const phaseSegments = useMemo(() => {
     const segs = [];
     let cur = null;
     chartData.forEach(r => {
-      if (!cur || cur.phase !== r.groupPhase) { cur = { phase: r.groupPhase, x1: r.label, x2: r.label }; segs.push(cur); }
+      const phase = derailedDates.has(r.date) ? "Derailed" : r.groupPhase;
+      if (!cur || cur.phase !== phase) { cur = { phase, x1: r.label, x2: r.label }; segs.push(cur); }
       else cur.x2 = r.label;
     });
+    for (let i = 0; i < segs.length - 1; i++) segs[i].x2 = segs[i + 1].x1;
     return segs;
-  }, [chartData]);
+  }, [chartData, derailedDates]);
 
   // Pacing: given the current Fri–Thu block, what should the rest of the
   // week's daily calories/steps be to land on the weekly goal by Thursday.
@@ -2493,10 +2486,7 @@ export default function Dashboard() {
             <ComposedChart data={chartData} margin={{ top: 8, right: 4, left: 4, bottom: 12 }}>
               <CartesianGrid strokeDasharray="2 4" stroke={chartTheme.grid} vertical={false} />
               {wbfPhasesOn && phaseSegments.map((s, i) => (
-                <ReferenceArea key={"p" + i} x1={s.x1} x2={s.x2} yAxisId="a" fill={phaseColor(s.phase)} fillOpacity={0.08} stroke="none" />
-              ))}
-              {wbfPhasesOn && derailedSegments.map((s, i) => (
-                <ReferenceArea key={"d" + i} x1={s.x1} x2={s.x2} yAxisId="a" fill="var(--bad)" fillOpacity={0.12} stroke="var(--bad)" strokeOpacity={0.25} />
+                <ReferenceArea key={"p" + i} x1={s.x1} x2={s.x2} yAxisId="a" fill={phaseColor(s.phase)} fillOpacity={s.phase === "Derailed" ? 0.16 : 0.08} stroke="none" />
               ))}
               <XAxis dataKey="label" tick={{ fill: chartTheme.tick, fontSize: 9.5, fontFamily: chartTheme.font }} axisLine={{ stroke: chartTheme.grid }} tickLine={false} interval={Math.max(0, Math.ceil(chartData.length / 10) - 1)} angle={-35} textAnchor="end" height={40} />
               <YAxis yAxisId="a" width={34} tick={{ fill: chartTheme.tick, fontSize: 10, fontFamily: chartTheme.font }} axisLine={false} tickLine={false}
