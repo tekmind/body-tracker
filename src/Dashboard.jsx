@@ -179,13 +179,25 @@ function tagGoalStatuses(goals) {
   const pastOrToday = withDate.filter(g => g._d && g._d <= today).sort((a, b) => b._d - a._d);
   const globalActiveGoal = pastOrToday[0] || null;
 
+  // Each goal's effective end date is the day before the next-dated goal
+  // starts, regardless of phase — the latest-dated goal always wins per
+  // phaseOnDate, so that's the real boundary between one phase and the
+  // next. The most recently dated goal has no end yet (still in effect).
+  const ascending = [...withDate].filter(g => g._d).sort((a, b) => a._d.getTime() - b._d.getTime());
+  const endByTime = new Map();
+  ascending.forEach((g, i) => {
+    const next = ascending[i + 1];
+    endByTime.set(g._d.getTime(), next ? new Date(next._d.getTime() - DAY_MS) : null);
+  });
+
   return goals.map((g, i) => {
     const d = parseDate(g.date);
-    if (!d) return { ...g, status: "upcoming" };
-    if (d > today) return { ...g, status: "upcoming" };
+    const endDate = d ? endByTime.get(d.getTime()) ?? null : null;
+    if (!d) return { ...g, status: "upcoming", endDate: null };
+    if (d > today) return { ...g, status: "upcoming", endDate };
     if (globalActiveGoal && g.phase === globalActiveGoal.phase && g.date === globalActiveGoal.date)
-      return { ...g, status: "active" };
-    return { ...g, status: "past" };
+      return { ...g, status: "active", endDate };
+    return { ...g, status: "past", endDate };
   });
 }
 
@@ -1992,7 +2004,7 @@ export default function Dashboard() {
             <div className="table-wrap">
               <table>
                 <thead>
-                  <tr><th>Date</th><th>Phase</th><th>Status</th><th>Muscle rate</th><th>Fat rate</th><th>Step goal</th><th>Calorie goal</th><th>Duration</th><th>Notes</th><th></th></tr>
+                  <tr><th>Date range</th><th>Phase</th><th>Status</th><th>Muscle rate</th><th>Fat rate</th><th>Step goal</th><th>Calorie goal</th><th>Duration</th><th>Notes</th><th></th></tr>
                 </thead>
                 <tbody>
                   {goals.length === 0 && (
@@ -2003,7 +2015,7 @@ export default function Dashboard() {
                     .sort((a, b) => (parseDate(b.date)?.getTime() ?? 0) - (parseDate(a.date)?.getTime() ?? 0))
                     .map((g, i) => (
                       <tr key={i}>
-                        <td>{g.date}</td>
+                        <td className="goal-date-range">{g.date}{g.endDate ? <span className="goal-date-end"> – {formatMDY(g.endDate)}</span> : <span className="goal-date-ongoing"> – ongoing</span>}</td>
                         <td><span className="phase-tag" style={{ background: phaseColor(g.phase) + "22", color: phaseColor(g.phase) }}>{g.phase}</span></td>
                         <td><span className={"status-badge status-" + g.status}>{g.status.toUpperCase()}</span></td>
                         <td>{g.muscleRate > 0 ? "+" : ""}{g.muscleRate} lb/wk</td>
@@ -2973,6 +2985,9 @@ const BASE_STYLES = `
   tr.row-derail-hist td { background: rgba(199, 58, 47, 0.13); }
   tr.row-derail-hist:hover td { background: rgba(199, 58, 47, 0.2); }
   .phase-tag { display: inline-block; min-width: 72px; text-align: center; font-size: 10.9px; padding: 3px 7px; border-radius: 20px; font-weight: 600; letter-spacing: 0.04em; }
+  .goal-date-range { white-space: nowrap; }
+  .goal-date-end { color: var(--text-dim); }
+  .goal-date-ongoing { color: var(--text-faint); font-style: italic; }
   .notes-cell { text-align: left; white-space: nowrap; }
   .target-cell { color: var(--text-faint); font-style: italic; }
   .adj-cell { font-weight: 600; }
