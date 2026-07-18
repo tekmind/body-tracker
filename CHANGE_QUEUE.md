@@ -6,7 +6,7 @@ work through the queue.
 
 ## Pending
 
-- (nothing queued yet)
+- Add a Download button directly on the Backup & Restore menu (next to Export/Import), so downloading a backup doesn't require clicking Export first — saves a click.
 
 ## Done
 
