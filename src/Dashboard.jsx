@@ -111,14 +111,20 @@ function isoToMDY(iso) {
 
 const DAY_MS = 24 * 3600 * 1000;
 
+// Date stepping here uses calendar arithmetic (year/month/day fields), not
+// millisecond offsets: adding N*24h to a local midnight lands an hour off
+// when the range crosses a DST change, which shifted generated "Fridays"
+// onto Thursdays after the November fall-back.
+function addDays(date, days) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate() + days);
+}
 function blockStartFor(date) {
-  const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-  const dow = d.getDay();
+  const dow = date.getDay();
   const diff = (dow - 5 + 7) % 7;
-  return new Date(d.getTime() - diff * DAY_MS);
+  return addDays(date, -diff);
 }
 function blockEndFor(blockStart) {
-  return new Date(blockStart.getTime() + 6 * DAY_MS);
+  return addDays(blockStart, 6);
 }
 function daysBetween(a, b) {
   return Math.round((b.getTime() - a.getTime()) / DAY_MS);
@@ -144,11 +150,18 @@ function generateSchedule(entries, goals) {
   sortedGoals.forEach((g, gi) => {
     const dur = Number.isFinite(g.durationWeeks) && g.durationWeeks > 0 ? Math.floor(g.durationWeeks) : 0;
     if (!dur) return;
+    // A goal's check-ins are the Fridays that CLOSE each of its weeks: an
+    // N-week goal starting Friday X owns X+1w .. X+Nw. The Friday a goal
+    // starts on is the previous phase's closing check-in, not this goal's
+    // first — groupPhaseOnDate groups it accordingly, so generating it here
+    // (old w=0 behavior) made every phase render one row short in the log.
     const firstFri = blockStartFor(g._d);
     const nextStart = sortedGoals[gi + 1]?._d ?? null;
-    for (let w = 0; w < dur; w++) {
-      const d = new Date(firstFri.getTime() + w * 7 * DAY_MS);
-      if (nextStart && d >= blockStartFor(nextStart)) break;
+    for (let w = 1; w <= dur; w++) {
+      const d = addDays(firstFri, w * 7);
+      // A row landing exactly on the next goal's start Friday still belongs
+      // to this goal (it closes this phase's final week), so only stop past it.
+      if (nextStart && d > blockStartFor(nextStart)) break;
       const key = d.getTime();
       if (takenBlocks.has(key)) continue;
       takenBlocks.add(key);
@@ -187,7 +200,7 @@ function tagGoalStatuses(goals) {
   const endByTime = new Map();
   ascending.forEach((g, i) => {
     const next = ascending[i + 1];
-    endByTime.set(g._d.getTime(), next ? new Date(next._d.getTime() - DAY_MS) : null);
+    endByTime.set(g._d.getTime(), next ? addDays(next._d, -1) : null);
   });
 
   return goals.map((g, i) => {
@@ -236,7 +249,7 @@ function phaseOnDate(goals, date) {
 // it agrees with phaseOnDate.
 function groupPhaseOnDate(goals, date) {
   if (!date) return null;
-  return phaseOnDate(goals, new Date(date.getTime() - DAY_MS));
+  return phaseOnDate(goals, addDays(date, -1));
 }
 
 function computeTargets(entries, goals) {
@@ -286,11 +299,17 @@ function computeTargets(entries, goals) {
   });
 }
 
+// Step/calorie targets key off groupPhase, not phase: a check-in's steps and
+// calories are averages of the PRIOR week, so the row on a new goal's start
+// date must be judged against the goal that week was actually lived under —
+// otherwise a phase switch (e.g. maintain cals → cut cals) makes the boundary
+// week a false miss. Body-comp targets (computeTargets) stay on the exact-date
+// timeline since they're continuous across the boundary anyway.
 function computeStepTargets(entries, goals) {
   let last = null;
   return entries.map(entry => {
     const d = parseDate(entry.date);
-    const g = d ? activeGoalFor(goals, entry.phase, d) : null;
+    const g = d ? activeGoalFor(goals, entry.groupPhase ?? entry.phase, d) : null;
     if (g && g.stepGoal != null) last = g.stepGoal;
     return last;
   });
@@ -300,7 +319,7 @@ function computeCalorieTargets(entries, goals) {
   let last = null;
   return entries.map(entry => {
     const d = parseDate(entry.date);
-    const g = d ? activeGoalFor(goals, entry.phase, d) : null;
+    const g = d ? activeGoalFor(goals, entry.groupPhase ?? entry.phase, d) : null;
     if (g && g.calGoal != null) last = g.calGoal;
     return last;
   });
@@ -518,7 +537,12 @@ function PhaseTimeline({ all, trackedCount, derailedDates }) {
             style={{ left: `${(i / total) * 100}%`, width: `${(1 / total) * 100}%` }}
             title={`Derailed · ${r.date}`} />
         ) : null)}
-        {trackedCount > 0 && <div className="timeline-now" style={{ left: `${((trackedCount - 1) / total) * 100}%` }} />}
+        {/* Each slot is the week CLOSED by its check-in date, so every tracked
+            slot — including the latest — is already lived history. The now
+            marker sits on the boundary after the last tracked slot, not at
+            its left edge, so the latest week's fill (e.g. a derail mark)
+            reads as past, not future. */}
+        {trackedCount > 0 && <div className="timeline-now" style={{ left: `${(trackedCount / total) * 100}%` }} />}
       </div>
       <div className="timeline-legend">
         {PHASES.map(p => (
@@ -994,14 +1018,14 @@ export default function Dashboard() {
   // Goal Settings is the source of truth for phase: override each week's stored
   // phase with whatever the goal timeline says was in effect on that week's date
   // (latest-dated goal on or before it wins). Weeks earlier than the first goal
-  // keep their originally-entered phase. Targets, pacing, and anything about
-  // "what should this week's numbers be" derive from `phase`.
+  // keep their originally-entered phase. Body-comp targets derive from `phase`.
   //
-  // Display/grouping (log table sections, row color, the phase timeline) uses
-  // the separate `groupPhase` instead: on the exact date a new goal starts,
-  // that week's logged calories/steps still reflect the phase that just
-  // ended, so it displays as the old phase even though its targets are
-  // already the new one. See groupPhaseOnDate.
+  // Display/grouping (log table sections, row color, the phase timeline) and
+  // the backward-looking step/calorie targets use the separate `groupPhase`
+  // instead: on the exact date a new goal starts, that week's logged
+  // calories/steps still reflect the phase that just ended, so it displays —
+  // and is judged on cals/steps — as the old phase even though its body-comp
+  // targets are already the new one. See groupPhaseOnDate.
   const resolvedEntries = useMemo(() => scheduledEntries.map(e => {
     const d = parseDate(e.date);
     const p = phaseOnDate(goals, d);
@@ -2883,7 +2907,7 @@ const BASE_STYLES = `
   .timeline-bar { position: relative; display: flex; height: 10px; border-radius: 6px; overflow: hidden; background: var(--panel-2); }
   .timeline-seg { height: 100%; transition: opacity 0.2s; }
   .timeline-derail { position: absolute; top: 0; bottom: 0; background: #c73a2f; opacity: 1; }
-  .timeline-now { position: absolute; top: -3px; bottom: -3px; width: 3px; border-radius: 2px; background: #ffffff; box-shadow: 0 0 0 1px rgba(10, 12, 16, 0.45), 0 0 6px rgba(255, 255, 255, 0.6); }
+  .timeline-now { position: absolute; top: -3px; bottom: -3px; width: 3px; border-radius: 2px; transform: translateX(-50%); background: #ffffff; box-shadow: 0 0 0 1px rgba(10, 12, 16, 0.45), 0 0 6px rgba(255, 255, 255, 0.6); }
   .timeline-legend { display: flex; gap: 16px; margin-top: 10px; flex-wrap: wrap; }
   .tl-item { font-family: 'JetBrains Mono', monospace; font-size: 12.1px; color: var(--text-dim); letter-spacing: 0.04em; display: flex; align-items: center; gap: 5px; }
   .tl-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
