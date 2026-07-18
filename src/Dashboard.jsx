@@ -2880,9 +2880,9 @@ const BASE_STYLES = `
   .stat-card { position: relative; background: var(--panel); border-radius: 12px; padding: 14px 15px; min-width: 0; }
   .stat-card-clickable { cursor: pointer; transition: box-shadow 0.15s ease; }
   @media (hover: hover) {
-    .dash .stat-card.stat-card-clickable:hover { box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.07), 0 0 32px rgba(0, 0, 0, 0.17); }
+    .dash .stat-card.stat-card-clickable:hover { box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.045), 0 0 28px rgba(0, 0, 0, 0.11); }
   }
-  .dash .stat-card.stat-card-clickable:focus-visible { box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.07), 0 0 32px rgba(0, 0, 0, 0.17); outline: 2px solid var(--cut); outline-offset: 2px; }
+  .dash .stat-card.stat-card-clickable:focus-visible { box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.045), 0 0 28px rgba(0, 0, 0, 0.11); outline: 2px solid var(--cut); outline-offset: 2px; }
   .stat-alert-badge { position: absolute; top: -7px; right: 10px; display: inline-flex; align-items: center; gap: 3px; color: #1a0f0f; font-family: 'JetBrains Mono', monospace; font-size: 10.3px; font-weight: 700; letter-spacing: 0.03em; padding: 2px 6px; border-radius: 20px; box-shadow: 0 0 0 3px var(--bg); }
   .stat-alert-badge.bad { background: var(--bad); }
   .stat-alert-badge.warn { background: var(--gain); }
