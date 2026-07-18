@@ -503,13 +503,20 @@ function ChartLegend({ items }) {
   return (
     <div className="chart-legend">
       {items.map((it, i) => (
-        <span key={i} className="cl-item">
-          {it.swatch === "line" && <span className="cl-line" style={{ borderTopColor: it.color }} />}
-          {it.swatch === "dash" && <span className="cl-line dashed" style={{ borderTopColor: it.color }} />}
-          {it.swatch === "box" && <span className="cl-box" style={{ background: it.color }} />}
-          {it.swatch === "shade" && <span className="cl-shade" />}
-          {it.label}
-        </span>
+        it.swatch === "checkbox" ? (
+          <label key={i} className="cl-item cl-item-toggle">
+            <input type="checkbox" className="cl-checkbox" checked={it.checked} onChange={it.onToggle} />
+            {it.label}
+          </label>
+        ) : (
+          <span key={i} className="cl-item">
+            {it.swatch === "line" && <span className="cl-line" style={{ borderTopColor: it.color }} />}
+            {it.swatch === "dash" && <span className="cl-line dashed" style={{ borderTopColor: it.color }} />}
+            {it.swatch === "box" && <span className="cl-box" style={{ background: it.color }} />}
+            {it.swatch === "shade" && <span className="cl-shade" />}
+            {it.label}
+          </span>
+        )
       ))}
     </div>
   );
@@ -655,6 +662,7 @@ export default function Dashboard() {
   // Up to 2 metrics plotted at once, in selection order (oldest drops first).
   const [wbfSelected, setWbfSelected] = useState(["fatMass", "muscle"]);
   const [wbfTargetsOn, setWbfTargetsOn] = useState(true);
+  const [wbfPhasesOn, setWbfPhasesOn] = useState(true);
   const toggleWbfMetric = (key) => setWbfSelected((prev) => {
     if (prev.includes(key)) return prev.filter((k) => k !== key);
     if (prev.length >= 2) return [prev[1], key];
@@ -848,11 +856,11 @@ export default function Dashboard() {
   // Selectable series for the "Actual vs. Target" chart — any 2 of these can
   // be plotted together, each on its own axis.
   const wbfMetrics = {
-    weight:   { label: "Weight",     actualKey: "aW",    targetKey: "tW",     color: chartTheme.ink, pad: 2,    decimals: 1 },
+    weight:   { label: "Weight",     actualKey: "aW",    targetKey: "tW",     color: "#3b82f6",      pad: 2,    decimals: 1 },
     fatMass:  { label: "Fat Mass",   actualKey: "aF",    targetKey: "tF",     color: "#c4534a",      pad: 1,    decimals: 1 },
     muscle:   { label: "Muscle",     actualKey: "aM",    targetKey: "tM",     color: "#4caf7d",      pad: 1,    decimals: 1 },
     calories: { label: "Calories",   actualKey: "aCal",  targetKey: "tCal",   color: "#dba236",      pad: 200,  decimals: 0 },
-    steps:    { label: "Steps",      actualKey: "steps", targetKey: "tSteps", color: "#5b8dee",      pad: 1000, decimals: 0 },
+    steps:    { label: "Steps",      actualKey: "steps", targetKey: "tSteps", color: "#8b5cf6",      pad: 1000, decimals: 0 },
   };
   // Shared "dashed gold" target color for the Calories/Steps bar charts.
   const wbfTargetColor = "#dba236";
@@ -1353,6 +1361,18 @@ export default function Dashboard() {
   }, [derailedRows]);
   // Dates of historically-derailed weeks, for red log rows and timeline marks.
   const derailedDates = useMemo(() => new Set(derailedRows.filter(r => r.derailed).map(r => r.date)), [derailedRows]);
+  // Background phase bands for the Actual vs. Target chart — one shaded
+  // region per contiguous run of the same groupPhase, colored to match the
+  // phase timeline above.
+  const phaseSegments = useMemo(() => {
+    const segs = [];
+    let cur = null;
+    chartData.forEach(r => {
+      if (!cur || cur.phase !== r.groupPhase) { cur = { phase: r.groupPhase, x1: r.label, x2: r.label }; segs.push(cur); }
+      else cur.x2 = r.label;
+    });
+    return segs;
+  }, [chartData]);
 
   // Pacing: given the current Fri–Thu block, what should the rest of the
   // week's daily calories/steps be to land on the weekly goal by Thursday.
@@ -2472,8 +2492,11 @@ export default function Dashboard() {
           <ResponsiveContainer width="100%" height={260}>
             <ComposedChart data={chartData} margin={{ top: 8, right: 4, left: 4, bottom: 12 }}>
               <CartesianGrid strokeDasharray="2 4" stroke={chartTheme.grid} vertical={false} />
-              {derailedSegments.map((s, i) => (
-                <ReferenceArea key={i} x1={s.x1} x2={s.x2} yAxisId="a" fill="var(--bad)" fillOpacity={0.1} stroke="var(--bad)" strokeOpacity={0.25} />
+              {wbfPhasesOn && phaseSegments.map((s, i) => (
+                <ReferenceArea key={"p" + i} x1={s.x1} x2={s.x2} yAxisId="a" fill={phaseColor(s.phase)} fillOpacity={0.08} stroke="none" />
+              ))}
+              {wbfPhasesOn && derailedSegments.map((s, i) => (
+                <ReferenceArea key={"d" + i} x1={s.x1} x2={s.x2} yAxisId="a" fill="var(--bad)" fillOpacity={0.12} stroke="var(--bad)" strokeOpacity={0.25} />
               ))}
               <XAxis dataKey="label" tick={{ fill: chartTheme.tick, fontSize: 9.5, fontFamily: chartTheme.font }} axisLine={{ stroke: chartTheme.grid }} tickLine={false} interval={Math.max(0, Math.ceil(chartData.length / 10) - 1)} angle={-35} textAnchor="end" height={40} />
               <YAxis yAxisId="a" width={34} tick={{ fill: chartTheme.tick, fontSize: 10, fontFamily: chartTheme.font }} axisLine={false} tickLine={false}
@@ -2503,7 +2526,7 @@ export default function Dashboard() {
         <ChartLegend items={[
           ...wbfSelected.map((key) => ({ label: `${wbfMetrics[key].label} (actual)`, color: wbfMetrics[key].color, swatch: "box" })),
           ...(wbfTargetsOn ? wbfSelected.map((key) => ({ label: `${wbfMetrics[key].label} (target)`, color: wbfMetrics[key].color, swatch: "dash" })) : []),
-          ...(derailedSegments.length > 0 ? [{ label: "derailed weeks", swatch: "shade" }] : []),
+          { label: "Phases", swatch: "checkbox", checked: wbfPhasesOn, onToggle: () => setWbfPhasesOn(v => !v) },
         ]} />
       </div>
 
@@ -2964,6 +2987,8 @@ const BASE_STYLES = `
   .cl-line.dashed { border-top-style: dashed; }
   .cl-box { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
   .cl-shade { width: 12px; height: 10px; border-radius: 2px; background: var(--bad); opacity: 0.3; border: 1px solid var(--bad); display: inline-block; }
+  .cl-item-toggle { cursor: pointer; }
+  .cl-checkbox { width: 12px; height: 12px; margin: 0; cursor: pointer; accent-color: var(--text-dim); }
   .panel-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; gap: 10px; flex-wrap: wrap; }
   .panel-head-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
   .range-targets-group { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
