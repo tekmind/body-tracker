@@ -2261,12 +2261,13 @@ export default function Dashboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {habitLog.length === 0 && <tr><td colSpan={5} className="empty-row">No habits logged yet — check off today's habits above.</td></tr>}
+                  {habitLog.length === 0 && <tr><td colSpan={HABITS.length + 1} className="empty-row">No habits logged yet — check off today's habits above.</td></tr>}
                   {[...habitLog].sort((a, b) => (parseDate(b.date)?.getTime() ?? 0) - (parseDate(a.date)?.getTime() ?? 0)).map((e, i) => (
                     <tr key={i}>
                       <td>{e.date}</td>
                       {HABITS.map(h => (
-                        <td key={h.key}>
+                        <td key={h.key} className="habit-cell" title={`Toggle ${h.label} for ${e.date}`}
+                          onClick={() => toggleHabit(e.date, h.key)}>
                           {e[h.key]
                             ? <Check size={13} style={{ color: h.color }} />
                             : <span style={{ color: "var(--text-faint)" }}>–</span>}
@@ -3086,6 +3087,8 @@ const BASE_STYLES = `
   .goal-date-end { color: var(--text-dim); }
   .goal-date-ongoing { color: var(--text-faint); font-style: italic; }
   .notes-cell { text-align: left; white-space: nowrap; }
+  .habit-cell { cursor: pointer; }
+  .habit-cell:hover { background: var(--panel-2); }
   .target-cell { color: var(--text-faint); font-style: italic; }
   .adj-cell { font-weight: 600; }
   .phase-col { text-align: center !important; padding-left: 6px !important; padding-right: 6px !important; }
