@@ -1364,19 +1364,21 @@ export default function Dashboard() {
   // region per contiguous run of the same effective phase, colored to match
   // the phase timeline above. Derailed weeks count as their own phase so
   // they render in solid red instead of a red overlay blended on top of
-  // whatever phase color sits underneath. Each segment's end is snapped to
-  // the next segment's start (rather than its own last data point) so
-  // adjacent bands share a boundary tick instead of leaving a gap between
-  // the last point of one category band and the first point of the next.
+  // whatever phase color sits underneath. A Friday check-in reports on the
+  // week BEFORE it (the row's date is when that week closed, not when it
+  // started), so a segment starts at the PRECEDING row's tick rather than
+  // its own first row's tick — that's the week the check-in is actually
+  // describing. This also means each segment's start tick is exactly the
+  // previous segment's end tick, so bands butt up with no gap and, crucially,
+  // a derailed run never paints past the check-in date that reported it.
   const phaseSegments = useMemo(() => {
     const segs = [];
     let cur = null;
-    chartData.forEach(r => {
+    chartData.forEach((r, i) => {
       const phase = derailedDates.has(r.date) ? "Derailed" : r.groupPhase;
-      if (!cur || cur.phase !== phase) { cur = { phase, x1: r.label, x2: r.label }; segs.push(cur); }
+      if (!cur || cur.phase !== phase) { cur = { phase, x1: i > 0 ? chartData[i - 1].label : r.label, x2: r.label }; segs.push(cur); }
       else cur.x2 = r.label;
     });
-    for (let i = 0; i < segs.length - 1; i++) segs[i].x2 = segs[i + 1].x1;
     return segs;
   }, [chartData, derailedDates]);
 
