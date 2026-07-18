@@ -287,8 +287,18 @@ function computeTargets(entries, goals) {
   return entries.map(entry => {
     const d = parseDate(entry.date);
     if (!d) return null;
+    // Day-before goal lookup, same convention as groupPhaseOnDate: a check-in
+    // on a goal's start date closes the PREVIOUS goal's final week, so it's
+    // judged against that goal's projection. Matters on phase changes, where
+    // the new goal's anchor re-snaps to logged actuals — the exact-date pick
+    // made the boundary row's targets jump to its own actuals (e.g. a cut's
+    // declining target leaping back up the day a maintain started).
+    const dPrev = addDays(d, -1);
     let g = null;
-    for (const t of timeline) { if (t._d <= d) g = t; else break; }
+    for (const t of timeline) { if (t._d <= dPrev) g = t; else break; }
+    // A row landing exactly on the FIRST goal's start date has no prior goal;
+    // it's that goal's baseline row (target = anchor), so use the exact date.
+    if (!g && timeline.length && timeline[0]._d.getTime() === d.getTime()) g = timeline[0];
     if (!g || !g._anchor) return null;
     const weeks = (d.getTime() - g._anchor.date.getTime()) / WEEK_MS;
     const m = round1(g._anchor.m + (g.muscleRate || 0) * weeks);
@@ -303,8 +313,8 @@ function computeTargets(entries, goals) {
 // calories are averages of the PRIOR week, so the row on a new goal's start
 // date must be judged against the goal that week was actually lived under —
 // otherwise a phase switch (e.g. maintain cals → cut cals) makes the boundary
-// week a false miss. Body-comp targets (computeTargets) stay on the exact-date
-// timeline since they're continuous across the boundary anyway.
+// week a false miss. Body-comp targets (computeTargets) follow the same
+// day-before convention via their own goal lookup above.
 function computeStepTargets(entries, goals) {
   let last = null;
   return entries.map(entry => {
@@ -1389,7 +1399,7 @@ export default function Dashboard() {
   const weekCount = (habitKey, blockStart) => {
     let count = 0;
     for (let i = 0; i < 7; i++) {
-      const d = new Date(blockStart.getTime() + i * DAY_MS);
+      const d = addDays(blockStart, i);
       const ds = formatMDY(d);
       const entry = habitLog.find(e => e.date === ds);
       if (entry && entry[habitKey]) count++;
@@ -1407,7 +1417,7 @@ export default function Dashboard() {
       // Walk back week by week, starting from the most recently completed week.
       const thisBlockStart = blockStartFor(today);
       for (let w = 1; w <= 52; w++) {
-        const bs = new Date(thisBlockStart.getTime() - w * 7 * DAY_MS);
+        const bs = addDays(thisBlockStart, -w * 7);
         if (weekCount(h.key, bs) >= target) streak++;
         else break;
       }
@@ -1420,12 +1430,12 @@ export default function Dashboard() {
   const habitChartData = useMemo(() => {
     const today = new Date(); today.setHours(0, 0, 0, 0);
     return Array.from({ length: 4 }, (_, wi) => {
-      const weekEnd = new Date(today.getTime() - wi * 7 * DAY_MS);
-      const weekStart = new Date(weekEnd.getTime() - 6 * DAY_MS);
+      const weekEnd = addDays(today, -wi * 7);
+      const weekStart = addDays(weekEnd, -6);
       const row = { label: `${weekStart.getMonth() + 1}/${weekStart.getDate()}` };
       HABITS.forEach(h => {
         let count = 0;
-        for (let d = new Date(weekStart); d <= weekEnd; d = new Date(d.getTime() + DAY_MS)) {
+        for (let d = weekStart; d <= weekEnd; d = addDays(d, 1)) {
           const ds = formatMDY(d);
           const entry = habitLog.find(e => e.date === ds);
           if (entry && entry[h.key]) count++;
@@ -1517,7 +1527,7 @@ export default function Dashboard() {
       ? Math.round((stepGoal * (stepDaysLogged + stepDaysRemaining) - stepsLogged) / stepDaysRemaining) : null;
 
     const blockDays = Array.from({ length: 7 }, (_, i) => {
-      const date = new Date(blockStart.getTime() + i * DAY_MS);
+      const date = addDays(blockStart, i);
       const dateStr = formatMDY(date);
       const entry = mergedDailyEntries.find(d => {
         const dd = parseDate(d.date);
