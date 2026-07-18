@@ -1086,6 +1086,19 @@ export default function Dashboard() {
     });
   }, [enrichedEntries]);
   const ACTUAL = useMemo(() => enrichedEntries.filter(r => r.aW != null), [enrichedEntries]);
+  // Index (within enrichedEntries/resolvedEntries, NOT ACTUAL) one past the
+  // last row with real data. ACTUAL.length undercounts this whenever an
+  // earlier week has no logged weigh-in — a generated placeholder sits in
+  // enrichedEntries with aW: null but isn't in ACTUAL — which used to make
+  // the phase timeline's tracked/future boundary land before the most
+  // recently logged weeks, showing them (and any derail mark on them) as
+  // faded "upcoming" instead of solid "already happened".
+  const trackedIndex = useMemo(() => {
+    for (let i = enrichedEntries.length - 1; i >= 0; i--) {
+      if (enrichedEntries[i].aW != null) return i + 1;
+    }
+    return 0;
+  }, [enrichedEntries]);
   // Changes whenever a new week is logged or the latest week's numbers are
   // edited — used to invalidate dismissed-alert signatures so a dismissal
   // only lasts until the next weekly log update, not forever.
@@ -2386,7 +2399,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      <PhaseTimeline all={resolvedEntries} trackedCount={ACTUAL.length} derailedDates={derailedDates} />
+      <PhaseTimeline all={resolvedEntries} trackedCount={trackedIndex} derailedDates={derailedDates} />
 
       <div className="stat-grid">
         <StatCard icon={Scale} label="Weight" value={fmtNum(weightCard.main)} valueTag={weightCard.tag} unit="lb"
