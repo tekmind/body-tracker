@@ -216,6 +216,17 @@ function phaseOnDate(goals, date) {
   return g ? g.phase : null;
 }
 
+// A weekly check-in's calories/steps are the average of the PRIOR 7 days, so
+// on the exact date a new goal starts, that week's actuals still belong to
+// the old phase even though its targets are already the new goal's. This
+// looks up the phase as of the day before, so that boundary week groups with
+// the phase it was actually lived in — everywhere else (non-boundary dates)
+// it agrees with phaseOnDate.
+function groupPhaseOnDate(goals, date) {
+  if (!date) return null;
+  return phaseOnDate(goals, new Date(date.getTime() - DAY_MS));
+}
+
 function computeTargets(entries, goals) {
   const logged = entries
     .filter(e => e.aM != null && e.aF != null && e.aW != null)
@@ -402,7 +413,7 @@ function CustomTooltip({ active, payload }) {
       <div className="tt-head">
         <span className="tt-week">WK {row.wk}</span>
         <span className="tt-date">{row.date}</span>
-        <span className="tt-phase" style={{ color: phaseColor(row.phase) }}>{phaseLabel(row.phase)}</span>
+        <span className="tt-phase" style={{ color: phaseColor(row.groupPhase) }}>{phaseLabel(row.groupPhase)}</span>
       </div>
       {payload.map((p, i) => p.value != null && (
         <div key={i} className="tt-row">
@@ -477,7 +488,7 @@ function PhaseTimeline({ all, trackedCount, derailedDates }) {
   const segs = [];
   let cur = null;
   all.forEach((r, i) => {
-    if (!cur || cur.phase !== r.phase) { cur = { phase: r.phase, from: i, to: i, count: 1 }; segs.push(cur); }
+    if (!cur || cur.phase !== r.groupPhase) { cur = { phase: r.groupPhase, from: i, to: i, count: 1 }; segs.push(cur); }
     else { cur.to = i; cur.count++; }
   });
   const total = all.length || 1;
@@ -971,11 +982,20 @@ export default function Dashboard() {
   // Goal Settings is the source of truth for phase: override each week's stored
   // phase with whatever the goal timeline says was in effect on that week's date
   // (latest-dated goal on or before it wins). Weeks earlier than the first goal
-  // keep their originally-entered phase. Everything downstream — targets, alerts,
-  // row colors, timeline, pacing — derives from these resolved phases.
+  // keep their originally-entered phase. Targets, pacing, and anything about
+  // "what should this week's numbers be" derive from `phase`.
+  //
+  // Display/grouping (log table sections, row color, the phase timeline) uses
+  // the separate `groupPhase` instead: on the exact date a new goal starts,
+  // that week's logged calories/steps still reflect the phase that just
+  // ended, so it displays as the old phase even though its targets are
+  // already the new one. See groupPhaseOnDate.
   const resolvedEntries = useMemo(() => scheduledEntries.map(e => {
-    const p = phaseOnDate(goals, parseDate(e.date));
-    return p ? { ...e, phase: p } : e;
+    const d = parseDate(e.date);
+    const p = phaseOnDate(goals, d);
+    const phase = p || e.phase;
+    const groupPhase = groupPhaseOnDate(goals, d) || phase;
+    return { ...e, phase, groupPhase };
   }), [scheduledEntries, goals]);
 
   const targets = useMemo(() => computeTargets(resolvedEntries, goals), [resolvedEntries, goals]);
@@ -1001,13 +1021,15 @@ export default function Dashboard() {
   // began. Walks rows chronologically; when the phase changes, it re-baselines
   // to that segment's first available target-fat and first logged actual-fat.
   // Each row then reports (this week − phase-start) for both target and actual.
+  // Keyed on groupPhase so the baseline resets in step with the log table's
+  // own phase grouping (see groupPhaseOnDate).
   const enrichedWithAdj = useMemo(() => {
     let curPhase = null;
     let baseTF = null;   // phase-start target fat
     let baseAF = null;   // phase-start actual fat (first logged in the segment)
     return enrichedEntries.map(r => {
-      if (r.phase !== curPhase) {
-        curPhase = r.phase;
+      if (r.groupPhase !== curPhase) {
+        curPhase = r.groupPhase;
         baseTF = r.tF != null ? r.tF : null;
         baseAF = r.aF != null ? r.aF : null;
       } else {
@@ -1031,14 +1053,15 @@ export default function Dashboard() {
 
   // Weekly-log rows grouped into consecutive phase segments, newest first. Each
   // group gets a stable id and a count of logged vs total weeks, for the
-  // collapsible phase headers.
+  // collapsible phase headers. Grouped by groupPhase, not phase, so the week a
+  // new goal starts still shows under the phase it was actually lived in.
   const logGroups = useMemo(() => {
     const rows = [...enrichedWithAdj].reverse();
     const groups = [];
     let cur = null;
     rows.forEach(r => {
-      if (!cur || cur.phase !== r.phase) {
-        cur = { phase: r.phase, rows: [r], startDate: r.date };
+      if (!cur || cur.phase !== r.groupPhase) {
+        cur = { phase: r.groupPhase, rows: [r], startDate: r.date };
         groups.push(cur);
       } else {
         cur.rows.push(r);
@@ -1096,8 +1119,8 @@ export default function Dashboard() {
     // rather than replacing it.
     let trackedWindow;
     if (dateWindow === "phase") {
-      const currentPhase = ACTUAL.length ? ACTUAL[ACTUAL.length - 1].phase : null;
-      trackedWindow = ACTUAL.filter(r => r.phase === currentPhase);
+      const currentPhase = ACTUAL.length ? ACTUAL[ACTUAL.length - 1].groupPhase : null;
+      trackedWindow = ACTUAL.filter(r => r.groupPhase === currentPhase);
     } else if (dateWindow === "sixMonths") {
       trackedWindow = ACTUAL.slice(-26); // ~26 weeks
     } else if (dateWindow === "threeMonths") {
@@ -2618,14 +2641,14 @@ export default function Dashboard() {
                       </tr>
                     )}
                     {!collapsed && g.rows.map((r) => (
-                      <tr key={r._idx} className={rowPhaseClass(r.phase) + (r._generated ? " row-generated" : "") + (derailedDates.has(r.date) ? " row-derail-hist" : "")}>
+                      <tr key={r._idx} className={rowPhaseClass(r.groupPhase) + (r._generated ? " row-generated" : "") + (derailedDates.has(r.date) ? " row-derail-hist" : "")}>
                         <td>{r.wk}</td>
                         <td>{r.date}</td>
                         <td className="phase-col">
                           {derailedDates.has(r.date) ? (
                             <span className="phase-tag" style={{ background: PHASE_COLOR.Derailed + "22", color: PHASE_COLOR.Derailed }}>Derail</span>
                           ) : (
-                            <span className="phase-tag" style={{ background: phaseColor(r.phase) + "22", color: phaseColor(r.phase) }}>{r.phase}</span>
+                            <span className="phase-tag" style={{ background: phaseColor(r.groupPhase) + "22", color: phaseColor(r.groupPhase) }}>{r.groupPhase}</span>
                           )}
                         </td>
                         <td className="target-cell">{fmtNum(r.tW)}</td>
@@ -2847,7 +2870,7 @@ const BASE_STYLES = `
   .timeline-wrap { margin-bottom: 14px; }
   .timeline-bar { position: relative; display: flex; height: 10px; border-radius: 6px; overflow: hidden; background: var(--panel-2); }
   .timeline-seg { height: 100%; transition: opacity 0.2s; }
-  .timeline-derail { position: absolute; top: 0; bottom: 0; background: #c73a2f; opacity: 0.65; }
+  .timeline-derail { position: absolute; top: 0; bottom: 0; background: #c73a2f; opacity: 1; }
   .timeline-now { position: absolute; top: -3px; bottom: -3px; width: 3px; border-radius: 2px; background: #ffffff; box-shadow: 0 0 0 1px rgba(10, 12, 16, 0.45), 0 0 6px rgba(255, 255, 255, 0.6); }
   .timeline-legend { display: flex; gap: 16px; margin-top: 10px; flex-wrap: wrap; }
   .tl-item { font-family: 'JetBrains Mono', monospace; font-size: 12.1px; color: var(--text-dim); letter-spacing: 0.04em; display: flex; align-items: center; gap: 5px; }
@@ -2855,11 +2878,11 @@ const BASE_STYLES = `
 
   .stat-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 14px; margin-bottom: 14px; }
   .stat-card { position: relative; background: var(--panel); border-radius: 12px; padding: 14px 15px; min-width: 0; }
-  .stat-card-clickable { cursor: pointer; transition: background 0.15s ease; }
+  .stat-card-clickable { cursor: pointer; transition: box-shadow 0.15s ease; }
   @media (hover: hover) {
-    .stat-card-clickable:hover { background: rgba(255, 255, 255, 0.85); }
+    .stat-card-clickable:hover { box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.04), 0 6px 20px rgba(0, 0, 0, 0.14); }
   }
-  .stat-card-clickable:focus-visible { background: rgba(255, 255, 255, 0.85); outline: 2px solid var(--cut); outline-offset: 2px; }
+  .stat-card-clickable:focus-visible { box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.04), 0 6px 20px rgba(0, 0, 0, 0.14); outline: 2px solid var(--cut); outline-offset: 2px; }
   .stat-alert-badge { position: absolute; top: -7px; right: 10px; display: inline-flex; align-items: center; gap: 3px; color: #1a0f0f; font-family: 'JetBrains Mono', monospace; font-size: 10.3px; font-weight: 700; letter-spacing: 0.03em; padding: 2px 6px; border-radius: 20px; box-shadow: 0 0 0 3px var(--bg); }
   .stat-alert-badge.bad { background: var(--bad); }
   .stat-alert-badge.warn { background: var(--gain); }
