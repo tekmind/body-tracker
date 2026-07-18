@@ -614,14 +614,17 @@ export default function Dashboard() {
     return [...prev, key];
   });
   // Jump-to-chart: clicking a stat card focuses the Actual vs. Target chart
-  // on just that metric, with targets on and a 3-month window, then scrolls
-  // it into view.
+  // on just that metric, with targets on and a 3-month window. On mobile the
+  // chart is off-screen, so it's also scrolled into view — on desktop it's
+  // already above the fold, so scrolling would just be a jarring jump.
   const trendChartRef = useRef(null);
   const jumpToChart = (key) => {
     setWbfSelected([key]);
     setWbfTargetsOn(true);
     setDateWindow("threeMonths");
-    trendChartRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    if (window.matchMedia("(max-width: 640px)").matches) {
+      trendChartRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
   };
   const [formOpen, setFormOpen] = useState(false);
   const [editIndex, setEditIndex] = useState(null);
@@ -3080,8 +3083,8 @@ const BASE_STYLES = `
     /* Tighten just the container chrome (gaps/pill padding) so Tracked/
        +Roadmap, Targets, and the date dropdown fit on one line without
        shrinking the toggle buttons themselves (they still match row 2). */
-    .range-targets-group { gap: 4px 3px; }
-    .dash .range-targets-group .toggle-group { gap: 1px; padding: 3px 1px; }
+    .range-targets-group { gap: 4px 1px; }
+    .dash .range-targets-group .toggle-group { gap: 1px; padding: 3px; }
     .date-window-select { appearance: none; -webkit-appearance: none; padding-right: 6px !important; background-image: none; }
   }
 
