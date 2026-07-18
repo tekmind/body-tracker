@@ -1863,14 +1863,33 @@ export default function Dashboard() {
     setBackupText("");
     setBackupMode("import");
   }
-  function handleDownloadBackup() {
+  async function handleDownloadBackup() {
+    const today = new Date();
+    const stamp = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+    const filename = `body-tracker-backup-${stamp}.json`;
+    // Chromium browsers can prompt a real "save as" dialog so you pick the
+    // folder; Safari/Firefox don't support that API, so they fall back to a
+    // normal download (still honors the browser's own "ask where to save"
+    // setting if you've turned that on).
+    if (window.showSaveFilePicker) {
+      try {
+        const handle = await window.showSaveFilePicker({
+          suggestedName: filename,
+          types: [{ description: "JSON backup", accept: { "application/json": [".json"] } }],
+        });
+        const writable = await handle.createWritable();
+        await writable.write(backupText);
+        await writable.close();
+        return;
+      } catch (e) {
+        if (e.name === "AbortError") return; // user cancelled the picker
+      }
+    }
     const blob = new Blob([backupText], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    const today = new Date();
-    const stamp = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
     a.href = url;
-    a.download = `body-tracker-backup-${stamp}.json`;
+    a.download = filename;
     document.body.appendChild(a);
     a.click();
     a.remove();
