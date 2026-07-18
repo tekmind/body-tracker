@@ -5,7 +5,7 @@ import {
 } from "recharts";
 import {
   TrendingDown, TrendingUp, Minus, Flame, Footprints, Scale, Percent,
-  Plus, Pencil, Trash2, X, Save, Loader2, AlertCircle, Settings, Target, LayoutDashboard, AlertTriangle, Check, Circle, StickyNote, Dumbbell, Activity, Heart, CalendarDays, RefreshCw, Watch
+  Plus, Pencil, Trash2, X, Save, Loader2, AlertCircle, Settings, Target, LayoutDashboard, AlertTriangle, Check, Circle, StickyNote, Dumbbell, Activity, Heart, CalendarDays, RefreshCw, Watch, Download
 } from "lucide-react";
 import { supabase } from "./supabaseClient.js";
 
@@ -1863,6 +1863,19 @@ export default function Dashboard() {
     setBackupText("");
     setBackupMode("import");
   }
+  function handleDownloadBackup() {
+    const blob = new Blob([backupText], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const today = new Date();
+    const stamp = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+    a.href = url;
+    a.download = `body-tracker-backup-${stamp}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
   // Deduplicate an entries array by date — keeps the row with the most actual
   // data (most non-null fields) when duplicates exist for the same date.
   function dedupeEntries(list) {
@@ -2134,10 +2147,11 @@ export default function Dashboard() {
             </div>
             {backupMode === "export" && (
               <div className="backup-box">
-                <div className="form-note">Click the box below and copy everything (it auto-selects). Paste it somewhere safe — a note, a text file. To restore later, use Import and paste it back.</div>
+                <div className="form-note">Download it as a file, or click the box below to copy everything (it auto-selects) and paste it somewhere safe. To restore later, use Import and paste it back.</div>
                 <textarea className="backup-ta" readOnly value={backupText} onFocus={(e) => e.target.select()} />
                 <div className="form-actions">
                   <button className="btn-ghost" onClick={() => setBackupMode(null)}><X size={13} /> Close</button>
+                  <button className="btn-primary" onClick={handleDownloadBackup}><Download size={13} /> Download file</button>
                 </div>
               </div>
             )}
