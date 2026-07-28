@@ -5,16 +5,21 @@ import {
 } from "recharts";
 import {
   TrendingDown, TrendingUp, Minus, Flame, Footprints, Scale, Percent,
-  Plus, Pencil, Trash2, X, Save, Loader2, AlertCircle, Settings, Target, LayoutDashboard, AlertTriangle, Check, Circle, StickyNote, Dumbbell, Activity, Heart, CalendarDays, RefreshCw, Watch, Download
+  Plus, Pencil, Trash2, X, Save, Loader2, AlertCircle, Settings, Target, LayoutDashboard, AlertTriangle, Check, Circle, StickyNote, Dumbbell, Activity, Heart, CalendarDays, RefreshCw, Watch, Download, Utensils
 } from "lucide-react";
 import { supabase } from "./supabaseClient.js";
+import {
+  parseDate, formatMDY, mdyToISO, isoToMDY,
+  addDays, blockStartFor, blockEndFor, daysBetween,
+} from "./dateUtils.js";
+import FoodTab from "./FoodTab.jsx";
 
 const STORAGE_KEY = "entries";
 const GOALS_KEY = "phase_goals";
 const DAILY_KEY = "daily_log";
 const HABITS_KEY = "habits_log";
 const HABITS_TARGETS_KEY = "habits_targets";
-const TAB_ORDER = ["dashboard", "daily", "habits", "settings"];
+const TAB_ORDER = ["dashboard", "daily", "food", "habits", "settings"];
 const DEFAULT_HABIT_TARGETS = { walking: 5, conditioning: 3, weightLifting: 3, cardio: 3 };
 
 const HABITS = [
@@ -77,58 +82,8 @@ const SEED_GOALS = [
   { date: "8/1/26", phase: "Gain", muscleRate: 0.25, fatRate: 2.5, stepGoal: 8000, calGoal: 2600, durationWeeks: 8, notes: "Gain phase starts" },
 ];
 
-function parseDate(str) {
-  if (!str) return null;
-  const parts = String(str).split("/").map(s => s.trim());
-  if (parts.length !== 3) return null;
-  const [m, d, yRaw] = parts.map(Number);
-  if (!m || !d || Number.isNaN(yRaw)) return null;
-  const y = yRaw < 100 ? 2000 + yRaw : yRaw;
-  const dt = new Date(y, m - 1, d);
-  return Number.isNaN(dt.getTime()) ? null : dt;
-}
-
-function formatMDY(date) {
-  return `${date.getMonth() + 1}/${date.getDate()}/${String(date.getFullYear()).slice(2)}`;
-}
-
-// Conversions for <input type="date">, which speaks ISO (YYYY-MM-DD) — the
-// rest of the app stores dates as "M/D/YY" strings, so form state stays
-// unchanged and only the date-picker input itself converts at the edges.
-function mdyToISO(str) {
-  const d = parseDate(str);
-  if (!d) return "";
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${d.getFullYear()}-${mm}-${dd}`;
-}
-function isoToMDY(iso) {
-  if (!iso) return "";
-  const [y, m, d] = iso.split("-").map(Number);
-  if (!y || !m || !d) return "";
-  return formatMDY(new Date(y, m - 1, d));
-}
-
-const DAY_MS = 24 * 3600 * 1000;
-
-// Date stepping here uses calendar arithmetic (year/month/day fields), not
-// millisecond offsets: adding N*24h to a local midnight lands an hour off
-// when the range crosses a DST change, which shifted generated "Fridays"
-// onto Thursdays after the November fall-back.
-function addDays(date, days) {
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate() + days);
-}
-function blockStartFor(date) {
-  const dow = date.getDay();
-  const diff = (dow - 5 + 7) % 7;
-  return addDays(date, -diff);
-}
-function blockEndFor(blockStart) {
-  return addDays(blockStart, 6);
-}
-function daysBetween(a, b) {
-  return Math.round((b.getTime() - a.getTime()) / DAY_MS);
-}
+// Date helpers now live in ./dateUtils.js so the Food tab shares one
+// implementation of the app's "M/D/YY" convention and Fri–Thu week blocks.
 
 function generateSchedule(entries, goals) {
   const realWithDate = entries
@@ -230,6 +185,17 @@ function activeGoalFor(goals, phase, date) {
     .filter(g => g._d && g._d <= date)
     .sort((a, b) => b._d.getTime() - a._d.getTime());
   return candidates[0] || null;
+}
+
+// Whichever goal was in force on a given day, regardless of phase — the
+// latest-dated one on or before it. Phase-specific lookups use activeGoalFor;
+// this is for reading a day's targets (calories, macros) straight off.
+function goalOnDate(goals, date) {
+  if (!date) return null;
+  return goals
+    .map(g => ({ ...g, _d: parseDate(g.date) }))
+    .filter(g => g._d && g._d <= date)
+    .sort((a, b) => b._d.getTime() - a._d.getTime())[0] || null;
 }
 
 function phaseOnDate(goals, date) {
@@ -610,6 +576,9 @@ function GoalForm({ form, setForm, onSave, onCancel, isEdit, error }) {
         <label>Fat rate (lb/wk)<input value={form.fatRate} onChange={set("fatRate")} placeholder="blank = same as last goal" /></label>
         <label>Step goal (avg/day)<input value={form.stepGoal} onChange={set("stepGoal")} placeholder="blank = same as last goal" /></label>
         <label>Calorie goal (kcal/day)<input value={form.calGoal} onChange={set("calGoal")} placeholder="blank = same as last goal" /></label>
+        <label>Protein goal (g/day)<input value={form.proteinGoal} onChange={set("proteinGoal")} placeholder="blank = same as last goal" /></label>
+        <label>Carb goal (g/day)<input value={form.carbGoal} onChange={set("carbGoal")} placeholder="blank = same as last goal" /></label>
+        <label>Fat goal (g/day)<input value={form.fatGoal} onChange={set("fatGoal")} placeholder="blank = same as last goal" /></label>
         <label>Duration (weeks)<input value={form.durationWeeks} onChange={set("durationWeeks")} placeholder="e.g. 12 — generates the weeks" /></label>
         <label className="notes-field">Notes<input value={form.notes} onChange={set("notes")} placeholder="optional — why the change" /></label>
       </div>
@@ -724,7 +693,7 @@ export default function Dashboard() {
   const [goals, setGoals] = useState([]);
   const [goalFormOpen, setGoalFormOpen] = useState(false);
   const [goalEditIndex, setGoalEditIndex] = useState(null);
-  const [goalForm, setGoalForm] = useState({ date: "", phase: "Cut", muscleRate: "", fatRate: "", stepGoal: "", calGoal: "", durationWeeks: "", notes: "" });
+  const [goalForm, setGoalForm] = useState({ date: "", phase: "Cut", muscleRate: "", fatRate: "", stepGoal: "", calGoal: "", proteinGoal: "", carbGoal: "", fatGoal: "", durationWeeks: "", notes: "" });
   const [goalSaving, setGoalSaving] = useState(false);
   const [goalErrMsg, setGoalErrMsg] = useState("");
 
@@ -1551,6 +1520,67 @@ export default function Dashboard() {
     };
   }, [entries, goals, mergedDailyEntries]);
 
+  // ---- Food tab wiring -----------------------------------------------------
+  // The Food tab owns its own tables; these three callbacks are the whole
+  // seam between it and the rest of the app.
+
+  const targetsForDate = useCallback((dateStr) => {
+    const goal = goalOnDate(goals, parseDate(dateStr));
+    return {
+      cal: goal?.calGoal ?? null,
+      protein: goal?.proteinGoal ?? null,
+      carbs: goal?.carbGoal ?? null,
+      fat: goal?.fatGoal ?? null,
+    };
+  }, [goals]);
+
+  const dailyEntryFor = useCallback((dateStr) => {
+    const d = parseDate(dateStr);
+    if (!d) return null;
+    return mergedDailyEntries.find(r => {
+      const rd = parseDate(r.date);
+      return rd && rd.getTime() === d.getTime();
+    }) || null;
+  }, [mergedDailyEntries]);
+
+  // Logging food fills in that day's calorie number so pacing, streaks, and
+  // the alerts keep working without double entry. A number typed by hand on
+  // the Daily tab is left alone — the Food tab surfaces the disagreement and
+  // offers the swap rather than overwriting it silently.
+  const writeFoodCalories = useCallback((dateStr, cal, { force }) => {
+    const d = parseDate(dateStr);
+    if (!d) return;
+    const idx = dailyEntries.findIndex(r => {
+      const rd = parseDate(r.date);
+      return rd && rd.getTime() === d.getTime();
+    });
+
+    if (idx < 0) {
+      if (cal == null) return;
+      persistDaily([...dailyEntries, {
+        date: dateStr, cal, steps: null, weight: null, fatMass: null, muscleMass: null,
+        calSource: "food",
+      }]);
+      return;
+    }
+
+    const existing = dailyEntries[idx];
+    if (!force && existing.cal != null && existing.calSource !== "food") return;
+    if (existing.cal === cal && (cal == null || existing.calSource === "food")) return;
+
+    persistDaily(dailyEntries.map((r, i) => (i === idx
+      ? { ...r, cal, calSource: cal == null ? undefined : "food" }
+      : r)));
+  }, [dailyEntries, persistDaily]);
+
+  const syncFoodCalories = useCallback((dateStr, cal, rowCount) => {
+    writeFoodCalories(dateStr, rowCount === 0 ? null : cal, { force: false });
+  }, [writeFoodCalories]);
+
+  const forceFoodCalories = useCallback((dateStr, cal) => {
+    writeFoodCalories(dateStr, cal, { force: true });
+  }, [writeFoodCalories]);
+
   if (status === "loading") {
     return (
       <div className="dash dash-loading">
@@ -1732,6 +1762,9 @@ export default function Dashboard() {
       fatRate: inherit(f.fatRate, "fatRate", 0),
       stepGoal: inherit(f.stepGoal, "stepGoal", null),
       calGoal: inherit(f.calGoal, "calGoal", null),
+      proteinGoal: inherit(f.proteinGoal, "proteinGoal", null),
+      carbGoal: inherit(f.carbGoal, "carbGoal", null),
+      fatGoal: inherit(f.fatGoal, "fatGoal", null),
       durationWeeks: num(f.durationWeeks),
       notes: f.notes || "",
     };
@@ -1739,13 +1772,18 @@ export default function Dashboard() {
   function openAddGoal() {
     const today = new Date();
     const mm = today.getMonth() + 1, dd = today.getDate(), yy = String(today.getFullYear()).slice(2);
-    setGoalForm({ date: `${mm}/${dd}/${yy}`, phase: "Cut", muscleRate: "", fatRate: "", stepGoal: "", calGoal: "", durationWeeks: "", notes: "" });
+    setGoalForm({ date: `${mm}/${dd}/${yy}`, phase: "Cut", muscleRate: "", fatRate: "", stepGoal: "", calGoal: "", proteinGoal: "", carbGoal: "", fatGoal: "", durationWeeks: "", notes: "" });
     setGoalEditIndex(null);
     setGoalFormOpen(true);
   }
   function openEditGoal(g) {
     const idx = goals.indexOf(g);
-    setGoalForm({ date: g.date, phase: g.phase, muscleRate: g.muscleRate, fatRate: g.fatRate, stepGoal: g.stepGoal ?? "", calGoal: g.calGoal ?? "", durationWeeks: g.durationWeeks ?? "", notes: g.notes || "" });
+    setGoalForm({
+      date: g.date, phase: g.phase, muscleRate: g.muscleRate, fatRate: g.fatRate,
+      stepGoal: g.stepGoal ?? "", calGoal: g.calGoal ?? "",
+      proteinGoal: g.proteinGoal ?? "", carbGoal: g.carbGoal ?? "", fatGoal: g.fatGoal ?? "",
+      durationWeeks: g.durationWeeks ?? "", notes: g.notes || "",
+    });
     setGoalEditIndex(idx);
     setGoalFormOpen(true);
   }
@@ -1767,9 +1805,13 @@ export default function Dashboard() {
   }
 
   function buildDaily(f) {
+    const cal = num(f.cal);
     return {
-      date: f.date, cal: num(f.cal), steps: num(f.steps),
+      date: f.date, cal, steps: num(f.steps),
       weight: num(f.weight), fatMass: num(f.fatMass), muscleMass: num(f.muscleMass),
+      // Typing a calorie number here claims the day: the Food tab will show
+      // what it adds up to instead of quietly replacing this.
+      ...(cal != null ? { calSource: "manual" } : {}),
     };
   }
   function openAddDaily(presetDate) {
@@ -1810,6 +1852,7 @@ export default function Dashboard() {
               ...r,
               cal: d.cal ?? r.cal, steps: d.steps ?? r.steps,
               weight: d.weight ?? r.weight, fatMass: d.fatMass ?? r.fatMass, muscleMass: d.muscleMass ?? r.muscleMass,
+              calSource: d.cal != null ? "manual" : r.calSource,
             }
           : r)));
       } else {
@@ -2010,6 +2053,9 @@ export default function Dashboard() {
         <button className={"tab-btn " + (tab === "daily" ? "active" : "")} onClick={() => setTab("daily")}>
           <Flame size={13} /> Daily
         </button>
+        <button className={"tab-btn " + (tab === "food" ? "active" : "")} onClick={() => setTab("food")}>
+          <Utensils size={13} /> Food
+        </button>
         <button className={"tab-btn " + (tab === "habits" ? "active" : "")} onClick={() => setTab("habits")}>
           <Dumbbell size={13} /> Habits
         </button>
@@ -2098,11 +2144,11 @@ export default function Dashboard() {
             <div className="table-wrap">
               <table>
                 <thead>
-                  <tr><th>Date range</th><th>Phase</th><th>Status</th><th>Muscle rate</th><th>Fat rate</th><th>Step goal</th><th>Calorie goal</th><th>Duration</th><th>Notes</th><th></th></tr>
+                  <tr><th>Date range</th><th>Phase</th><th>Status</th><th>Muscle rate</th><th>Fat rate</th><th>Step goal</th><th>Calorie goal</th><th>Protein</th><th>Carbs</th><th>Fat</th><th>Duration</th><th>Notes</th><th></th></tr>
                 </thead>
                 <tbody>
                   {goals.length === 0 && (
-                    <tr><td colSpan={10} className="empty-row">No goals set yet — click "Goal" to add one.</td></tr>
+                    <tr><td colSpan={13} className="empty-row">No goals set yet — click "Goal" to add one.</td></tr>
                   )}
                   {taggedGoals
                     .map((g, i) => ({ ...g, _origIndex: i }))
@@ -2116,6 +2162,9 @@ export default function Dashboard() {
                         <td>{g.fatRate > 0 ? "+" : ""}{g.fatRate} lb/wk</td>
                         <td>{g.stepGoal != null ? g.stepGoal.toLocaleString() + "/day" : "–"}</td>
                         <td>{g.calGoal != null ? g.calGoal.toLocaleString() + "/day" : "–"}</td>
+                        <td>{g.proteinGoal != null ? g.proteinGoal + "g" : "–"}</td>
+                        <td>{g.carbGoal != null ? g.carbGoal + "g" : "–"}</td>
+                        <td>{g.fatGoal != null ? g.fatGoal + "g" : "–"}</td>
                         <td>{g.durationWeeks != null ? g.durationWeeks + " wk" : "–"}</td>
                         <td className="notes-cell">
                           {g.notes ? (
@@ -2157,7 +2206,7 @@ export default function Dashboard() {
 
           <div className="panel" style={{ paddingBottom: 18 }}>
             <div className="panel-head">
-              <div className="panel-title">Backup & Restore<span className="dim">weekly log + goals + daily log + habits, one JSON blob</span></div>
+              <div className="panel-title">Backup & Restore<span className="dim">weekly log + goals + daily log + habits, one JSON blob — the food log lives in its own tables and isn't in here</span></div>
               <div style={{ display: "flex", gap: 8 }}>
                 <button className="btn-ghost" onClick={handleDedupe}>Dedupe</button>
                 <button className="btn-ghost" onClick={openExport}>Export</button>
@@ -2415,6 +2464,13 @@ export default function Dashboard() {
             </div>
           </div>
         </div>
+      ) : tab === "food" ? (
+        <FoodTab
+          targetsForDate={targetsForDate}
+          dailyEntryFor={dailyEntryFor}
+          onDayTotalsChange={syncFoodCalories}
+          onForceDailyCalories={forceFoodCalories}
+        />
       ) : (
       <>
       {(pacing.calGoal != null || pacing.stepGoal != null) && (
@@ -3207,9 +3263,11 @@ const BASE_STYLES = `
     .stat-grid { grid-template-columns: repeat(2, 1fr); }
     .tab-label-full { display: none; }
     .tab-label-short { display: inline; }
-    div.dash .tab-bar { gap: 8px; }
-    div.dash .tab-btn { font-size: 16px; flex: 1; justify-content: center; gap: 6px; min-width: 0; padding-left: 4px; padding-right: 4px; }
-    div.dash .tab-btn svg { width: 18px; height: 18px; flex-shrink: 0; }
+    /* Five tabs have to share a phone-width row, so the labels drop a couple
+       of points rather than wrapping or scrolling off the edge. */
+    div.dash .tab-bar { gap: 4px; }
+    div.dash .tab-btn { font-size: 13.5px; flex: 1; justify-content: center; gap: 4px; min-width: 0; padding-left: 2px; padding-right: 2px; }
+    div.dash .tab-btn svg { width: 16px; height: 16px; flex-shrink: 0; }
     div.dash .header-top { align-items: center; }
     div.dash .stat-sub .cell-good, div.dash .stat-sub .cell-bad { white-space: nowrap; }
     .panel-head-actions-stack { flex-direction: column; align-items: flex-start; gap: 6px; }
