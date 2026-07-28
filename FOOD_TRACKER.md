@@ -42,6 +42,24 @@ The "say what you ate" button sends your sentence to Claude
 Without it, everything else in the tab works and that one button reports that
 it's switched off.
 
+### Which model, and what it costs
+
+Parsing runs on **Claude Haiku 4.5**, the cheapest tier. The task is
+schema-constrained extraction — split a sentence into foods, quantities, and
+units, and match against a list of ids — which doesn't need a frontier model.
+Ballpark **a third of a cent per spoken meal**, so a few dollars a year at
+several entries a day.
+
+To change it, set `FOOD_PARSE_MODEL` in the Vercel environment variables (e.g.
+`claude-sonnet-5`) and redeploy — no code change. `api/food-parse.js` sends
+per-model parameters like `effort` only to the models that accept them, so
+switching tiers can't start throwing 400s.
+
+Two things make a cheap model safe here: a `history_id` the model invents that
+isn't in the list you sent gets discarded server-side and falls through to a
+database search, and every parse lands in a review card with a per-item "wrong
+food?" picker and undo-all before you move on.
+
 ## How things fit together
 
 - **Speech** is captured in the browser with the Web Speech API — Safari and
