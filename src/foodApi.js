@@ -208,3 +208,13 @@ export async function lookupBarcode(barcode) {
 export async function parseSpokenMeal(payload) {
   return postJson("/api/food-parse", payload);
 }
+
+/**
+ * Search the web for a food's nutrition facts to pre-fill the custom-food
+ * form. Returns { nutrition, sources, error? } — nutrition is null when
+ * nothing credible turned up, which is a normal outcome rather than a
+ * failure, so it isn't thrown.
+ */
+export async function lookupNutrition({ name, brand, serving }) {
+  return postJson("/api/food-lookup", { name, brand, serving });
+}
