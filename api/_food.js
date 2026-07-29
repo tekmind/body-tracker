@@ -6,7 +6,7 @@
 // it's being ranked here or checked against your history there.
 export { tokenize } from "../src/foodMath.js";
 export { matchScore } from "../src/foodMath.js";
-import { matchScore, isMassUnit, isVolumeUnit } from "../src/foodMath.js";
+import { matchScore, isMassUnit, isVolumeUnit, toGrams } from "../src/foodMath.js";
 
 export const USDA_SEARCH_URL = "https://api.nal.usda.gov/fdc/v1/foods/search";
 export const USDA_DETAIL_URL = "https://api.nal.usda.gov/fdc/v1/food";
@@ -71,14 +71,12 @@ function usdaPortions(food) {
     const unit = String(food.servingSizeUnit).toLowerCase();
     const household = (food.householdServingFullText || "").trim();
     if (unit === "g" || unit === "ml") {
-      // A "1 cup (240ml)" style household text is the useful, speakable unit.
-      const m = household.match(/^([\d./\s]+)?\s*([a-zA-Z][a-zA-Z\s.]*)$/);
-      if (m) {
-        const qty = parseLooseNumber(m[1]) ?? 1;
-        push(household || `${food.servingSize} ${unit}`, qty, m[2].trim().toLowerCase(), Number(food.servingSize) / qty);
-      } else {
-        push(`${food.servingSize} ${unit}`, 1, "serving", Number(food.servingSize));
-      }
+      // Household text ("1 cup", "2 sticks") is the speakable unit; the
+      // servingSize field is its weight. Same parser as Open Food Facts, so
+      // both sources agree on what counts as a count.
+      const label = household || `${food.servingSize} ${unit}`;
+      const p = parseServingText(household, food.servingSize);
+      if (p.grams > 0) push(label, p.qty, p.unit, p.grams);
     }
   }
 
@@ -103,16 +101,6 @@ function usdaPortions(food) {
   }
 
   return out.slice(0, 8);
-}
-
-function parseLooseNumber(raw) {
-  if (raw == null) return null;
-  const s = String(raw).trim();
-  if (!s) return null;
-  const frac = s.match(/^(\d+)?\s*(\d)\/(\d)$/);
-  if (frac) return (Number(frac[1]) || 0) + Number(frac[2]) / Number(frac[3]);
-  const n = Number(s);
-  return Number.isFinite(n) ? n : null;
 }
 
 export function normalizeUsda(food) {
@@ -253,13 +241,15 @@ export function normalizeOff(product) {
     // Pulling the real noun out of it turns a generic "1 serving" into
     // "1 stick", and the leading count keeps the per-unit weight right when
     // a serving is more than one of the thing.
-    const { qty, unit } = parseOffServing(product.serving_size);
-    alt.push({
-      label: (product.serving_size || `${servingGrams} g`).trim(),
-      qty,
-      unit,
-      grams: round1(servingGrams / qty),
-    });
+    const p = parseServingText(product.serving_size, servingGrams);
+    if (p.grams > 0) {
+      alt.push({
+        label: (product.serving_size || `${servingGrams} g`).trim(),
+        qty: p.qty,
+        unit: p.unit,
+        grams: p.grams,
+      });
+    }
   }
 
   return {
@@ -279,18 +269,52 @@ export function normalizeOff(product) {
   };
 }
 
+const MEASURE_RE = "(g|gram|grams|kg|mg|oz|ounce|ounces|lb|lbs|pound|pounds)";
+
 /**
- * Read a count and a household unit out of Open Food Facts' free-text
- * serving_size. "1 stick (32 g)" -> {qty: 1, unit: "stick"}; a bare "32 g"
- * has no noun to find, so it stays a generic serving.
+ * Read a serving out of the free text a label states it in — "1 stick (32 g)",
+ * "1.15 oz", "2 bars (40g)", "32 g" — returning the portion's name, how many
+ * of it make one serving, and what ONE of them weighs.
+ *
+ * The subtlety that caused a bug: a leading number is only a count when a
+ * countable noun follows it. "1.15 oz" is a weight, not 1.15 of anything.
+ * Reading it as a count made a scanned beef stick log as 1.15 servings of
+ * 100 g instead of one 33 g stick.
  */
-function parseOffServing(servingSize) {
-  const raw = String(servingSize || "").trim();
-  const qtyMatch = raw.match(/^\s*(\d+(?:\.\d+)?)/);
-  const qty = qtyMatch ? Number(qtyMatch[1]) : 1;
-  const words = raw.toLowerCase().match(/[a-z]+/g) || [];
+function parseServingText(text, fallbackGrams) {
+  const lower = String(text || "").trim().toLowerCase();
+
+  // A weight in parentheses is normally the label's own conversion; a leading
+  // weight is its headline figure. When both are present they should agree —
+  // when they don't, one is a data-entry error, and the headline is the more
+  // likely of the two to be right.
+  const paren = lower.match(new RegExp(`\\(\\s*([\\d.]+)\\s*${MEASURE_RE}`));
+  const lead = lower.match(new RegExp(`^\\s*([\\d.]+)\\s*${MEASURE_RE}\\b`));
+  const parenGrams = paren ? toGrams(Number(paren[1]), paren[2]) : null;
+  const leadGrams = lead ? toGrams(Number(lead[1]), lead[2]) : null;
+
+  let totalGrams;
+  if (leadGrams != null && parenGrams != null) {
+    const disagree = Math.abs(leadGrams - parenGrams) / Math.max(leadGrams, parenGrams) > 0.25;
+    totalGrams = disagree ? leadGrams : parenGrams;
+  } else {
+    totalGrams = parenGrams ?? leadGrams;
+  }
+  if (totalGrams == null && Number(fallbackGrams) > 0) totalGrams = Number(fallbackGrams);
+
+  const words = lower.match(/[a-z]+/g) || [];
   const noun = words.find(w => w.length > 2 && !isMassUnit(w) && !isVolumeUnit(w));
-  return { qty: qty > 0 ? qty : 1, unit: noun || "serving" };
+
+  // Only a countable noun earns a count. Without one the whole thing is a
+  // single serving, however it happens to have been measured.
+  const countMatch = noun ? lower.match(/^\s*(\d+(?:\.\d+)?)/) : null;
+  const qty = countMatch && Number(countMatch[1]) > 0 ? Number(countMatch[1]) : 1;
+
+  return {
+    qty,
+    unit: noun || "serving",
+    grams: totalGrams != null ? round1(totalGrams / qty) : null,
+  };
 }
 
 const OFF_FIELDS = "code,product_name,brands,nutriments,serving_size,serving_quantity";
