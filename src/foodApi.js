@@ -218,3 +218,12 @@ export async function parseSpokenMeal(payload) {
 export async function lookupNutrition({ name, brand, serving }) {
   return postJson("/api/food-lookup", { name, brand, serving });
 }
+
+/**
+ * Read a photo of a Nutrition Facts panel. Same contract as lookupNutrition:
+ * a null `nutrition` with an `error` means it couldn't read the label, which
+ * is a normal outcome rather than a thrown failure.
+ */
+export async function readNutritionLabel({ data, mediaType }) {
+  return postJson("/api/food-label", { image: data, media_type: mediaType });
+}

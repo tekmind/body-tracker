@@ -4,9 +4,10 @@ import {
 } from "recharts";
 import {
   Plus, X, Check, Loader2, AlertCircle, Mic, Sparkles, Search, ChevronLeft, ChevronRight,
-  Trash2, Pencil, Utensils, BookMarked, Undo2, Save, ScanLine, Globe,
+  Trash2, Pencil, Utensils, BookMarked, Undo2, Save, ScanLine, Globe, Camera,
 } from "lucide-react";
 import BarcodeScanner from "./BarcodeScanner.jsx";
+import { fileToScaledJpeg } from "./labelPhoto.js";
 import { parseDate, formatMDY, addDays, blockStartFor, blockEndFor, today as todayDate } from "./dateUtils.js";
 import {
   MEAL_SECTIONS, sectionLabel, sectionForHour, unitOptions, defaultPortion,
@@ -1032,7 +1033,8 @@ function AddFoodSheet({
   const [unit, setUnit] = useState("serving");
   const [custom, setCustom] = useState(EMPTY_CUSTOM);
   const [customQty, setCustomQty] = useState("1");
-  const [lookup, setLookup] = useState(null); // { busy, sources, note, confidence, error }
+  const [lookup, setLookup] = useState(null); // { busy, source, sources, note, confidence, error }
+  const labelInputRef = useRef(null);
 
   // Fills the form from a web search rather than saving anything — the person
   // still reviews every number before it's stored, which matters because a
@@ -1194,6 +1196,54 @@ function AddFoodSheet({
 
   const openScanner = useCallback(() => { setScanErr(""); setScanning(true); }, []);
 
+  // capture="environment" opens the rear camera straight from the file input,
+  // which beats a getUserMedia viewfinder here: the OS camera focuses and
+  // exposes properly, and small print needs that.
+  const openLabelCamera = useCallback(() => {
+    setEditingFood(null);
+    setCustom(EMPTY_CUSTOM);
+    setLookup(null);
+    setMode("custom");
+    labelInputRef.current?.click();
+  }, []);
+
+  const handleLabelPhoto = useCallback(async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // so re-picking the same photo still fires onChange
+    if (!file) return;
+    setLookup({ busy: true, source: "label" });
+    try {
+      const image = await fileToScaledJpeg(file);
+      const res = await foodApi.readNutritionLabel(image);
+      if (!res.nutrition) {
+        setLookup({ busy: false, error: res.error, source: "label" });
+        return;
+      }
+      const n = res.nutrition;
+      setCustom(c => ({
+        ...c,
+        name: n.name || c.name,
+        brand: n.brand || c.brand,
+        serving_qty: String(n.serving_qty),
+        serving_unit: n.serving_unit,
+        serving_grams: n.serving_grams != null ? String(n.serving_grams) : "",
+        cal: String(n.cal),
+        protein: String(n.protein),
+        carbs: String(n.carbs),
+        fat: String(n.fat),
+      }));
+      setLookup({
+        busy: false,
+        source: "label",
+        note: [n.note, n.servings_per_container ? `${n.servings_per_container} servings per container.` : ""]
+          .filter(Boolean).join(" "),
+        confidence: n.confidence,
+      });
+    } catch (err) {
+      setLookup({ busy: false, error: err.message, source: "label" });
+    }
+  }, []);
+
   const mineList = useMemo(() => {
     const q = mineQuery.trim();
     if (!q) return catalog;
@@ -1203,6 +1253,9 @@ function AddFoodSheet({
   return (
     <div className="food-sheet-backdrop" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="food-sheet">
+        {/* One hidden input drives every "photo of label" button. */}
+        <input ref={labelInputRef} type="file" accept="image/*" capture="environment"
+          style={{ display: "none" }} onChange={handleLabelPhoto} />
         <div className="food-sheet-head">
           <div className="food-sheet-title"><Utensils size={14} /> Add to {sectionLabel(section)}</div>
           <button className="icon-btn" onClick={onClose} title="Close"><X size={14} /></button>
@@ -1324,6 +1377,7 @@ function AddFoodSheet({
             <>
               <div className="mine-head">
                 <button className="btn-primary sm" onClick={openScanner}><ScanLine size={13} /> Scan a barcode</button>
+                <button className="btn-primary sm" onClick={openLabelCamera}><Camera size={13} /> Photo of label</button>
                 <button className="btn-ghost sm" onClick={openCreate}><Plus size={13} /> Add by hand</button>
                 <span className="mine-count">
                   {catalog.length} food{catalog.length === 1 ? "" : "s"} in your list
@@ -1426,23 +1480,34 @@ function AddFoodSheet({
               </div>
 
               <div className="lookup-bar">
+                <button className="btn-primary sm" onClick={() => labelInputRef.current?.click()}
+                  disabled={lookup?.busy}>
+                  {lookup?.busy && lookup.source === "label"
+                    ? <Loader2 size={12} className="spin" /> : <Camera size={12} />}
+                  {lookup?.busy && lookup.source === "label" ? "Reading the label…" : "Photo of label"}
+                </button>
                 <button className="btn-ghost sm" onClick={runLookup} disabled={!custom.name.trim() || lookup?.busy}>
-                  {lookup?.busy ? <Loader2 size={12} className="spin" /> : <Globe size={12} />}
-                  {lookup?.busy ? "Searching the web…" : "Look up nutrition"}
+                  {lookup?.busy && lookup.source !== "label"
+                    ? <Loader2 size={12} className="spin" /> : <Globe size={12} />}
+                  {lookup?.busy && lookup.source !== "label" ? "Searching the web…" : "Look it up"}
                 </button>
                 <span className="lookup-bar-hint">
-                  Type the name (and brand, if it has one) and this searches for the label.
+                  Photographing the Nutrition Facts panel is the most accurate option — it's the package itself, not a
+                  database's copy of it. Looking it up by name needs the name typed in first.
                 </span>
               </div>
 
-              {lookup && !lookup.busy && (lookup.error || lookup.sources?.length > 0) && (
+              {/* A label read has no web sources, so gating on those alone
+                  swallowed its "check the numbers" warning entirely. */}
+              {lookup && !lookup.busy && (lookup.error || lookup.confidence || lookup.sources?.length > 0) && (
                 <div className={"lookup-result" + (lookup.error ? " lookup-miss" : "")}>
                   {lookup.error ? (
                     <div className="lookup-line"><AlertCircle size={12} /> {lookup.error}</div>
                   ) : (
                     <div className="lookup-line">
                       <Check size={12} />
-                      Filled in from the web — <strong>check the numbers before saving.</strong>
+                      {lookup.source === "label" ? "Read off the label" : "Filled in from the web"} —{" "}
+                      <strong>check the numbers before saving.</strong>
                       {lookup.confidence && (
                         <span className={"lookup-confidence lc-" + lookup.confidence}>{lookup.confidence} confidence</span>
                       )}
