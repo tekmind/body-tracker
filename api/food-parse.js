@@ -18,7 +18,7 @@
 // where the log changes.
 
 import Anthropic from "@anthropic-ai/sdk";
-import { searchUsda, searchOff, matchScore, readJsonBody } from "./_food.js";
+import { searchUsda, searchOff, searchNutritionix, matchScore, readJsonBody } from "./_food.js";
 
 // Haiku is the cheapest tier and this is a well-scoped extraction task: a
 // strict JSON schema, a short sentence, and a list of ids to match against.
@@ -211,13 +211,15 @@ export default async function handler(req, res) {
   // Only the items history didn't already answer need a database round trip.
   const needsLookup = items.filter(i => !i.history_id);
   const results = await Promise.all(needsLookup.map(async (item) => {
-    const [usda, off] = await Promise.allSettled([
+    const settled = await Promise.allSettled([
       searchUsda(item.query, 8),
+      searchNutritionix(item.query, 3),
       searchOff(item.query, 4),
     ]);
     const foods = [];
-    if (usda.status === "fulfilled" && !usda.value.error) foods.push(...usda.value.foods);
-    if (off.status === "fulfilled") foods.push(...off.value.foods);
+    for (const r of settled) {
+      if (r.status === "fulfilled" && !r.value.error) foods.push(...r.value.foods);
+    }
     foods.sort((a, b) => matchScore(item.query, b) - matchScore(item.query, a));
     return foods.slice(0, 5);
   }));

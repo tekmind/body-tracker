@@ -21,17 +21,56 @@ Until this runs, the Food tab shows a banner telling you to run it.
 
 ## 2. USDA FoodData Central key (food search)
 
-Search hits two databases: **USDA FoodData Central** for generic whole foods
-("white rice", "chicken breast") and **Open Food Facts** for packaged products.
-Open Food Facts needs no key; USDA needs a free one.
+Search hits three databases at once and merges them, because they cover
+different ground:
+
+| Source | Good at | Key needed |
+| --- | --- | --- |
+| **USDA FoodData Central** | Generic whole foods, and — via the Survey (FNDDS) set — everyday prepared foods like "pizza, cheese, thin crust" | Free, required |
+| **Nutritionix** | Restaurant menu items and grocery brands, which USDA barely covers | Free tier, optional |
+| **Open Food Facts** | Packaged products worldwide, and by far the best barcode coverage | None |
+
+Any of them failing, or having no key, still returns the others' results.
 
 1. Get a key at <https://fdc.nal.usda.gov/api-key-signup.html> (instant, no cost).
 2. Add it to your Vercel project as `USDA_API_KEY` (Settings → Environment
    Variables), and to your local `.env` if you run `npm run dev`.
 3. Redeploy.
 
-Without the key, search silently falls back to Open Food Facts alone and says
-so in the results — fine for barcoded packages, poor for generic foods.
+Without the key, search says so in the results and falls back to the other
+sources — fine for barcoded packages, poor for generic foods.
+
+### Nutritionix (optional, recommended)
+
+Sign up at <https://developer.nutritionix.com/> and add `NUTRITIONIX_APP_ID`
+and `NUTRITIONIX_APP_KEY`. The free tier is **500 requests/day**, which is
+generous for one person but is a daily cap rather than a monthly pool. Their
+terms require visible attribution wherever their data appears; the search
+sheet shows it automatically, and only when one of their results is on screen.
+
+This is what closes most of the gap against a commercial tracker — restaurant
+menus are the category USDA has essentially nothing for.
+
+### Why not FatSecret
+
+FatSecret has the largest free food database of the lot, but its OAuth 2.0
+requires **IP allowlisting** — you register up to 15 static addresses against
+your key and requests from anywhere else are rejected. Vercel's serverless
+functions egress from dynamic IPs, so this can't work without standing up a
+separate always-on proxy with a static IP. Not worth the infrastructure for a
+personal app; revisit if this ever runs somewhere with a fixed address.
+
+## 2b. Barcode scanning
+
+The **Scan** button next to the search box reads a package barcode with the
+camera and looks it up against Open Food Facts, then Nutritionix, then USDA's
+branded set.
+
+No key and no service needed. Two decoders are used because **no browser on
+iOS implements the Barcode Detection API** — Chrome on Android gets the fast
+native path, and everything else (including Safari on your iPhone) falls back
+to ZXing compiled to JavaScript. ZXing is a ~450KB chunk loaded on demand the
+first time you open the scanner, so it never affects normal startup.
 
 ## 3. Anthropic API key (voice entry)
 

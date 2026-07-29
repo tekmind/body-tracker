@@ -198,6 +198,12 @@ export async function fetchFoodDetail(source, sourceId) {
   return food;
 }
 
+/** Resolve a scanned barcode to a food. Throws with a readable miss message. */
+export async function lookupBarcode(barcode) {
+  const { food } = await getJson(`/api/food-search?barcode=${encodeURIComponent(barcode)}`);
+  return food;
+}
+
 /** Send a spoken/typed meal description off to be parsed and resolved. */
 export async function parseSpokenMeal(payload) {
   return postJson("/api/food-parse", payload);
