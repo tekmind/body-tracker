@@ -3398,5 +3398,16 @@ const BASE_STYLES = `
      pointer:fine yet still zoom when you tap a field. */
   @media (pointer: coarse), (max-width: 900px) {
     div.dash input, div.dash select, div.dash textarea { font-size: 16px; }
+
+    /* The 22px icon buttons are a miss-fest with a thumb, and edit sits right
+       next to delete — worth the extra height everywhere, not just on food
+       rows. Spacing between them grows too, so a near-miss on edit doesn't
+       land on delete. */
+    div.dash .icon-btn { width: 38px; height: 38px; border-radius: 10px; }
+    div.dash .icon-btn svg { width: 17px; height: 17px; }
+    div.dash .row-actions .icon-btn + .icon-btn { margin-left: 8px; }
+    div.dash .btn-primary, div.dash .btn-ghost { padding: 12px 18px; font-size: 14.5px; }
+    div.dash .btn-primary.sm, div.dash .btn-ghost.sm { padding: 10px 15px; font-size: 13.5px; }
+    div.dash .btn-primary svg, div.dash .btn-ghost svg { width: 16px; height: 16px; }
   }
 `;

@@ -187,6 +187,19 @@ export function scaleMacros(food, qty, unit) {
   };
 }
 
+/**
+ * Just the four macro columns of a logged row.
+ *
+ * scaleMacros() also returns an `exact` flag for the UI, which is not a column
+ * in food_log — spreading its whole result into a database write gets the
+ * request rejected outright. Anything writing macros to a row should go
+ * through here rather than remembering that.
+ */
+export function macroColumns(food, qty, unit) {
+  const { cal, protein, carbs, fat } = scaleMacros(food, qty, unit);
+  return { cal, protein, carbs, fat };
+}
+
 /** Units worth offering in the quantity picker for a given food. */
 export function unitOptions(food) {
   if (!food) return ["serving"];
