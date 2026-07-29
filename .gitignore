@@ -3,3 +3,7 @@ dist
 .DS_Store
 .env
 .claude
+
+# Local env overrides — never commit these.
+.env.local
+.env.*.local
