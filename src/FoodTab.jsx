@@ -1412,11 +1412,14 @@ export const FOOD_STYLES = `
   .food-review-skip { margin-top: 9px; font-family: 'JetBrains Mono', monospace; font-size: 11.6px; color: #a03d33; line-height: 1.5; }
 
   .food-section { padding-bottom: 12px; }
-  /* On a narrow screen the section title and its buttons can't share a line,
-     so the buttons wrap. A lone item on a wrapped line ignores the parent's
-     space-between and sits left; flex:1 lets it claim the whole line so its
-     own flex-end alignment puts the buttons back on the right. */
-  .food-section .panel-head-actions { flex: 1 0 auto; justify-content: flex-end; }
+  /* On a narrow screen the title and its controls can't share a line, so the
+     controls wrap. A lone item on a wrapped line ignores the parent's
+     space-between and sits left; letting it claim the line restores its own
+     flex-end alignment. It has to stay shrinkable (1 1 auto, min-width 0) or
+     a control row wider than the panel — the week panel's toggle plus its
+     arrows — pushes out past the edge instead of wrapping inside itself. */
+  .food-section .panel-head-actions,
+  .food-week-panel .panel-head-actions { flex: 1 1 auto; min-width: 0; justify-content: flex-end; }
   .food-section-empty { font-family: 'JetBrains Mono', monospace; font-size: 12.4px; color: var(--text-faint); padding: 12px 2px 14px; }
   .food-rows { display: flex; flex-direction: column; }
   .food-row { display: flex; align-items: center; gap: 12px; padding: 9px 2px; border-bottom: 1px solid var(--border); }
