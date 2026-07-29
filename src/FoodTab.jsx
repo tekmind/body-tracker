@@ -10,7 +10,7 @@ import BarcodeScanner from "./BarcodeScanner.jsx";
 import { parseDate, formatMDY, addDays, blockStartFor, blockEndFor, today as todayDate } from "./dateUtils.js";
 import {
   MEAL_SECTIONS, sectionLabel, sectionForHour, unitOptions, defaultPortion,
-  displayServing, scaleMacros, sumMacros, roundTotals, matchScore, normalizeUnit,
+  displayServing, scaleMacros, macroColumns, sumMacros, roundTotals, matchScore, normalizeUnit,
 } from "./foodMath.js";
 import * as foodApi from "./foodApi.js";
 
@@ -171,12 +171,11 @@ export default function FoodTab({ targetsForDate, dailyEntryFor, onDayTotalsChan
       const e = entries[i];
       let food = e.food;
       if (!food.id) food = await foodApi.importExternalFood(food);
-      const m = scaleMacros(food, e.qty, e.unit);
       payload.push({
         date: dateStr, section, food_id: food.id,
         name: food.name, brand: food.brand || null,
         qty: e.qty, unit: normalizeUnit(e.unit) || "serving",
-        cal: m.cal, protein: m.protein, carbs: m.carbs, fat: m.fat,
+        ...macroColumns(food, e.qty, e.unit),
         sort_order: existing + i,
       });
       touched.push(food);
@@ -283,7 +282,7 @@ export default function FoodTab({ targetsForDate, dailyEntryFor, onDayTotalsChan
     // With the food still in the catalog, rescale from its real serving data.
     // Without it, all we can honestly do is scale the row's own snapshot.
     const macros = food
-      ? scaleMacros(food, qty, unit)
+      ? macroColumns(food, qty, unit)
       : (() => {
           const f = (Number(row.qty) || 1) === 0 ? 1 : qty / (Number(row.qty) || 1);
           return {
@@ -1523,6 +1522,8 @@ export const FOOD_STYLES = `
     .food-sheet { max-width: none; max-height: 100vh; height: 100vh; border-radius: 0; padding-top: env(safe-area-inset-top); }
     .food-sheet { max-height: 100dvh; height: 100dvh; }
     .food-row-edit .qty-input { width: 72px; }
+    .food-row-actions { gap: 8px; }
+    .food-row-edit { gap: 8px; flex-wrap: wrap; }
     /* Two columns of 16px fields don't fit a phone — one column each. */
     .food-custom-grid { grid-template-columns: 1fr !important; }
     .food-day-nav { flex-wrap: wrap; }
