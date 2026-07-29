@@ -1192,6 +1192,8 @@ function AddFoodSheet({
     setMode("custom");
   }, []);
 
+  const openScanner = useCallback(() => { setScanErr(""); setScanning(true); }, []);
+
   const mineList = useMemo(() => {
     const q = mineQuery.trim();
     if (!q) return catalog;
@@ -1207,13 +1209,18 @@ function AddFoodSheet({
         </div>
 
         <div className="toggle-group food-sheet-tabs">
-          <button className={"toggle-btn" + (mode === "search" ? " active" : "")} onClick={() => setMode("search")}>Search</button>
-          <button className={"toggle-btn" + (mode === "mine" || mode === "custom" ? " active" : "")} onClick={() => setMode("mine")}>My foods</button>
-          <button className={"toggle-btn" + (mode === "meals" ? " active" : "")} onClick={() => setMode("meals")}>My meals</button>
+          {/* Switching tabs drops a half-finished pick, which is what tapping
+              a different tab means. */}
+          <button className={"toggle-btn" + (mode === "search" && !selected ? " active" : "")}
+            onClick={() => { setSelected(null); setMode("search"); }}>Search</button>
+          <button className={"toggle-btn" + ((mode === "mine" || mode === "custom") && !selected ? " active" : "")}
+            onClick={() => { setSelected(null); setMode("mine"); }}>My foods</button>
+          <button className={"toggle-btn" + (mode === "meals" && !selected ? " active" : "")}
+            onClick={() => { setSelected(null); setMode("meals"); }}>My meals</button>
         </div>
 
         <div className="food-sheet-body">
-          {mode === "search" && !selected && (
+          {!selected && mode === "search" && (
             <>
               <div className="food-search-row">
                 <div className="food-search-box">
@@ -1226,7 +1233,7 @@ function AddFoodSheet({
                   />
                   {searching && <Loader2 size={14} className="spin" />}
                 </div>
-                <button className="scan-btn" onClick={() => { setScanErr(""); setScanning(true); }} title="Scan a barcode">
+                <button className="scan-btn" onClick={openScanner} title="Scan a barcode">
                   <ScanLine size={18} />
                   <span>Scan</span>
                 </button>
@@ -1262,9 +1269,13 @@ function AddFoodSheet({
             </>
           )}
 
-          {mode === "search" && selected && (
+          {/* Not tied to a tab: a food can be picked from search results, from
+              My foods, or straight off a barcode scan started in either. */}
+          {selected && (
             <div className="food-pick">
-              <button className="btn-ghost sm" onClick={() => setSelected(null)}><ChevronLeft size={12} /> Back to results</button>
+              <button className="btn-ghost sm" onClick={() => setSelected(null)}>
+                <ChevronLeft size={12} /> {mode === "mine" ? "Back to my foods" : "Back to results"}
+              </button>
               <div className="food-pick-name">
                 {selected.name}
                 {selected.brand && <span className="food-row-brand"> · {selected.brand}</span>}
@@ -1309,14 +1320,16 @@ function AddFoodSheet({
             </div>
           )}
 
-          {mode === "mine" && (
+          {!selected && mode === "mine" && (
             <>
               <div className="mine-head">
-                <button className="btn-primary sm" onClick={openCreate}><Plus size={13} /> Add a food</button>
+                <button className="btn-primary sm" onClick={openScanner}><ScanLine size={13} /> Scan a barcode</button>
+                <button className="btn-ghost sm" onClick={openCreate}><Plus size={13} /> Add by hand</button>
                 <span className="mine-count">
                   {catalog.length} food{catalog.length === 1 ? "" : "s"} in your list
                 </span>
               </div>
+              {scanErr && !scanning && <div className="form-error"><AlertCircle size={12} /> {scanErr}</div>}
 
               {catalog.length > 6 && (
                 <div className="food-search-box mine-filter">
@@ -1372,7 +1385,7 @@ function AddFoodSheet({
             </>
           )}
 
-          {mode === "meals" && (
+          {!selected && mode === "meals" && (
             <>
               {meals.length === 0 ? (
                 <div className="food-section-empty">
@@ -1398,7 +1411,7 @@ function AddFoodSheet({
             </>
           )}
 
-          {mode === "custom" && (
+          {!selected && mode === "custom" && (
             <div className="food-custom">
               <button className="btn-ghost sm" onClick={() => { setMode("mine"); setEditingFood(null); }}>
                 <ChevronLeft size={12} /> Back to my foods
