@@ -81,6 +81,23 @@ The "say what you ate" button sends your sentence to Claude
 Without it, everything else in the tab works and that one button reports that
 it's switched off.
 
+### Photograph the label
+
+The most accurate way to add a food, and the one to reach for when a database
+gets a serving wrong: **Photo of label** on the My foods tab (and inside the
+custom food form) opens the camera, reads the Nutrition Facts panel, and fills
+in the form.
+
+It reads what's printed and doesn't convert or infer — the serving comes back
+as the label states it ("1 stick", 32 g), which is exactly what barcode
+databases get wrong. When a figure is illegible it says so and leaves the form
+blank rather than guessing; retaking the photo costs seconds, a wrong number
+repeats for weeks.
+
+Photos are downscaled on the device before upload, so the multi-megabyte
+original never leaves your phone — a 4032x3024 camera shot goes up as roughly
+440KB. Runs on `FOOD_LABEL_MODEL`, default Claude Sonnet 5.
+
 ### Nutrition lookup for custom foods
 
 The same key powers **Look up nutrition** on the Custom food tab. Type a name

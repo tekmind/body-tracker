@@ -265,6 +265,7 @@ export function displayServing(food) {
   return {
     qty,
     unit,
+    grams: grams ? Math.round(grams * 10) / 10 : null,
     label: grams && !isMassUnit(unit) ? `${label} (${Math.round(grams)} g)` : label,
     isBaseUnit: unit === normalizeUnit(food.serving_unit) && qty === (Number(food.serving_qty) || 1),
     ...macros,
