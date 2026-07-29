@@ -102,14 +102,22 @@ function unitsMatch(a, b) {
 
 function altMatches(alt, unit) {
   const target = singular(unit);
-  const candidates = [alt.unit, alt.label];
-  return candidates.some(c => {
-    if (!c) return false;
-    const n = singular(c);
-    if (n === target) return true;
-    // "1 cup" / "1 cup, cooked" as a label should still answer to "cup".
-    return n.split(/[\s,]+/).some(word => word && singular(word) === target);
-  });
+
+  // The portion's declared unit matches outright. Volume names count here:
+  // when a food states what a cup of it weighs, that beats assuming a density.
+  if (alt.unit && singular(alt.unit) === target) return true;
+  if (!alt.label) return false;
+
+  // A measurement word must never match through the label. Portion labels
+  // routinely read "32 g" or "1 cup", and matching the "g" in one of those
+  // made "32 g" resolve to thirty-two portions instead of thirty-two grams.
+  // Weights and volumes belong to the conversion path below, not here.
+  if (isMassUnit(target) || isVolumeUnit(target)) return false;
+
+  if (singular(alt.label) === target) return true;
+  // Otherwise a noun inside the label counts: "1 cup, cooked" answers to
+  // "cup", "1 medium apple" to "apple".
+  return normalizeUnit(alt.label).split(/[\s,()]+/).some(w => w && singular(w) === target);
 }
 
 /**
@@ -129,15 +137,11 @@ export function servingFactor(food, qty, unit) {
   const u = normalizeUnit(unit);
   const alts = Array.isArray(food.alt_servings) ? food.alt_servings : [];
 
-  // "2 servings" means two of whatever the food calls a serving, even when
-  // that serving is itself "100 g".
-  if (singular(u) === "serving") return { factor: n, exact: true };
-
-  // No unit at all, or a bare count word ("3 each"): N of the base unit, so a
-  // food whose serving is "2 cookies" makes 3 cookies 1.5 servings.
-  if (!u || COUNT_UNITS.has(singular(u))) return { factor: n / baseQty, exact: true };
-
-  // A portion the food declares (cup, slice, can, medium…).
+  // A portion the food declares (cup, slice, can, medium…) — checked first,
+  // and that ordering is load-bearing. A packaged food's label serving comes
+  // through named "serving" ("1 serving = 32 g"), so short-circuiting the
+  // word "serving" to mean "one base serving" ahead of this silently returned
+  // the 100 g storage base and ignored the real 32 g portion.
   const alt = alts.find(a => altMatches(a, u));
   if (alt) {
     const altGrams = alt.grams != null ? Number(alt.grams) : null;
@@ -145,6 +149,15 @@ export function servingFactor(food, qty, unit) {
     const altQty = Number(alt.qty) || 1;
     return { factor: (n * altQty) / baseQty, exact: true };
   }
+
+  // "2 servings" means two of whatever the food calls a serving, even when
+  // that serving is itself "100 g". Only reached when the food declares no
+  // portion of its own by that name.
+  if (singular(u) === "serving") return { factor: n, exact: true };
+
+  // No unit at all, or a bare count word ("3 each"): N of the base unit, so a
+  // food whose serving is "2 cookies" makes 3 cookies 1.5 servings.
+  if (!u || COUNT_UNITS.has(singular(u))) return { factor: n / baseQty, exact: true };
 
   // Weight, converted through the base serving's own weight.
   const grams = toGrams(n, u);

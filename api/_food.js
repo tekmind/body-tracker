@@ -6,7 +6,7 @@
 // it's being ranked here or checked against your history there.
 export { tokenize } from "../src/foodMath.js";
 export { matchScore } from "../src/foodMath.js";
-import { matchScore } from "../src/foodMath.js";
+import { matchScore, isMassUnit, isVolumeUnit } from "../src/foodMath.js";
 
 export const USDA_SEARCH_URL = "https://api.nal.usda.gov/fdc/v1/foods/search";
 export const USDA_DETAIL_URL = "https://api.nal.usda.gov/fdc/v1/food";
@@ -249,11 +249,16 @@ export function normalizeOff(product) {
   const alt = [];
   const servingGrams = Number(product.serving_quantity);
   if (servingGrams > 0) {
+    // serving_size is free text: "32 g", "1 stick (32 g)", "2 bars (40g)".
+    // Pulling the real noun out of it turns a generic "1 serving" into
+    // "1 stick", and the leading count keeps the per-unit weight right when
+    // a serving is more than one of the thing.
+    const { qty, unit } = parseOffServing(product.serving_size);
     alt.push({
       label: (product.serving_size || `${servingGrams} g`).trim(),
-      qty: 1,
-      unit: "serving",
-      grams: round1(servingGrams),
+      qty,
+      unit,
+      grams: round1(servingGrams / qty),
     });
   }
 
@@ -272,6 +277,20 @@ export function normalizeOff(product) {
     fat: round1(Number(n.fat_100g) || 0),
     data_type: "Off",
   };
+}
+
+/**
+ * Read a count and a household unit out of Open Food Facts' free-text
+ * serving_size. "1 stick (32 g)" -> {qty: 1, unit: "stick"}; a bare "32 g"
+ * has no noun to find, so it stays a generic serving.
+ */
+function parseOffServing(servingSize) {
+  const raw = String(servingSize || "").trim();
+  const qtyMatch = raw.match(/^\s*(\d+(?:\.\d+)?)/);
+  const qty = qtyMatch ? Number(qtyMatch[1]) : 1;
+  const words = raw.toLowerCase().match(/[a-z]+/g) || [];
+  const noun = words.find(w => w.length > 2 && !isMassUnit(w) && !isVolumeUnit(w));
+  return { qty: qty > 0 ? qty : 1, unit: noun || "serving" };
 }
 
 const OFF_FIELDS = "code,product_name,brands,nutriments,serving_size,serving_quantity";
