@@ -1171,17 +1171,22 @@ function AddFoodSheet({
   }, []);
 
   const openEdit = useCallback((food) => {
+    // Show the food's real serving, not the per-100 g form it's stored in.
+    // The form asks for "one serving exactly as the label reads it", and
+    // pre-filling 100 g / 313 kcal against that instruction was its own kind
+    // of wrong answer.
+    const s = displayServing(food);
     setEditingFood(food);
     setCustom({
       name: food.name || "",
       brand: food.brand || "",
-      serving_qty: String(food.serving_qty ?? 1),
-      serving_unit: food.serving_unit || "serving",
-      serving_grams: food.serving_grams != null ? String(food.serving_grams) : "",
-      cal: String(food.cal ?? ""),
-      protein: String(food.protein ?? ""),
-      carbs: String(food.carbs ?? ""),
-      fat: String(food.fat ?? ""),
+      serving_qty: String(s.qty),
+      serving_unit: s.unit,
+      serving_grams: s.grams != null ? String(s.grams) : "",
+      cal: String(s.cal),
+      protein: String(s.protein),
+      carbs: String(s.carbs),
+      fat: String(s.fat),
     });
     setLookup(null);
     setMode("custom");
@@ -1462,7 +1467,19 @@ function AddFoodSheet({
                 {editingFood ? (
                   <button className="btn-primary" disabled={!customValid || saving}
                     onClick={async () => {
-                      const ok = await onUpdateFood(editingFood.id, customFields());
+                      const fields = customFields();
+                      // What you typed becomes the food's serving. Any portion
+                      // it already had under that same name has to go, or the
+                      // old one shadows the correction — the food would still
+                      // resolve "1 serving" to the 33 g it came with instead
+                      // of the 32 g just entered. Portions under other names
+                      // are kept: they're stored in grams, so they stay
+                      // correct against the new base.
+                      const kept = (editingFood.alt_servings || []).filter(a => {
+                        const u = normalizeUnit(a.unit || "");
+                        return u && u !== fields.serving_unit;
+                      });
+                      const ok = await onUpdateFood(editingFood.id, { ...fields, alt_servings: kept });
                       if (ok) { setEditingFood(null); setMode("mine"); }
                     }}>
                     {saving ? <Loader2 size={13} className="spin" /> : <Save size={13} />} Save changes
