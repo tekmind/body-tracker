@@ -100,9 +100,10 @@ original never leaves your phone — a 4032x3024 camera shot goes up as roughly
 
 ### Nutrition lookup for custom foods
 
-The same key powers **Look up nutrition** on the Custom food tab. Type a name
-(and brand, if it has one) and Claude searches the web, reads the nutrition
-label it finds, and fills in the form.
+The same key powers **Search the web** in the custom food form — the option for
+when you don't have the package in hand. Type a name (and brand, if it has one)
+and Claude searches the web, reads the nutrition label it finds, and fills in
+the form.
 
 It fills the form — it never saves. The numbers arrive editable, with the
 sources linked and a confidence rating, and the banner says to check them
@@ -115,9 +116,24 @@ numbers that are wrong.
 
 This runs on **Claude Sonnet 5** by default (`FOOD_LOOKUP_MODEL`) rather than
 Haiku: judging whether a page is a real nutrition label needs more than
-extraction. It costs a few cents per lookup including the web-search fee, and
-only runs when you press the button — unlike parsing, which runs several times
-a day.
+extraction. Both it and the label reader only run when you press the button —
+unlike parsing, which runs several times a day.
+
+### What the two lookups cost
+
+Counter-intuitively, the photo is the *cheaper* of the two, not the dearer one:
+
+| | Tokens | Search fee | Roughly |
+| --- | --- | --- | --- |
+| **Photo of label** | ~2,500 image + ~1,000 text | none | **~1c** |
+| **Search the web** | several thousand, mostly retrieved pages | $10 per 1,000 searches, and one lookup runs 2-4 | **~4-7c** |
+
+An image looks expensive because it's a photo, but a 1600px downscale is only
+about 2,500 tokens — comparable to a single web page, and a web lookup reads
+several of them *plus* pays a per-search fee. So the photo wins on both counts:
+cheaper, and reading the actual package instead of someone's copy of it.
+
+Both are pennies either way at personal-use volume.
 
 ### Which model, and what it costs
 

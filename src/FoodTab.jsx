@@ -1489,11 +1489,12 @@ function AddFoodSheet({
                 <button className="btn-ghost sm" onClick={runLookup} disabled={!custom.name.trim() || lookup?.busy}>
                   {lookup?.busy && lookup.source !== "label"
                     ? <Loader2 size={12} className="spin" /> : <Globe size={12} />}
-                  {lookup?.busy && lookup.source !== "label" ? "Searching the web…" : "Look it up"}
+                  {lookup?.busy && lookup.source !== "label" ? "Searching the web…" : "Search the web"}
                 </button>
                 <span className="lookup-bar-hint">
                   Photographing the Nutrition Facts panel is the most accurate option — it's the package itself, not a
-                  database's copy of it. Looking it up by name needs the name typed in first.
+                  database's copy of it. When you don't have the package to hand, search the web by name instead
+                  (type the name first).
                 </span>
               </div>
 
