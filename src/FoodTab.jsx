@@ -319,6 +319,34 @@ export default function FoodTab({ targetsForDate, dailyEntryFor, onDayTotalsChan
     setMealDraft(null);
   }, [mealDraft, dayRows, runWrite]);
 
+  /**
+   * Correcting a food detaches it from whichever database it came from.
+   * Otherwise the next time the same item is picked out of search results,
+   * importExternalFood would match on source + source_id and overwrite the
+   * correction with the database's numbers again.
+   */
+  const handleUpdateFood = useCallback(async (id, fields) => {
+    const existing = catalog.find(f => f.id === id);
+    const patch = existing?.source_id
+      ? { ...fields, source: "custom", source_id: null }
+      : fields;
+    return runWrite(async () => {
+      const updated = await foodApi.updateFoodItem(id, patch);
+      setCatalog(prev => prev.map(f => (f.id === id ? updated : f)));
+      return updated;
+    }, "Couldn't save that food");
+  }, [catalog, runWrite]);
+
+  // Logged rows carry their own macro snapshot and food_id is ON DELETE SET
+  // NULL, so removing a food from the catalog leaves past days untouched.
+  const handleDeleteFood = useCallback(async (food) => {
+    await runWrite(async () => {
+      await foodApi.deleteFoodItem(food.id);
+      setCatalog(prev => prev.filter(f => f.id !== food.id));
+      return true;
+    }, "Couldn't delete that food");
+  }, [runWrite]);
+
   const handleDeleteMeal = useCallback(async (meal) => {
     await runWrite(async () => {
       await foodApi.deleteMeal(meal.id);
@@ -761,6 +789,8 @@ export default function FoodTab({ targetsForDate, dailyEntryFor, onDayTotalsChan
           onAddMeal={handleAddMeal}
           onCreateCustom={handleCreateCustom}
           onDeleteMeal={handleDeleteMeal}
+          onUpdateFood={handleUpdateFood}
+          onDeleteFood={handleDeleteFood}
         />
       )}
     </div>
@@ -977,8 +1007,16 @@ const EMPTY_CUSTOM = {
   cal: "", protein: "", carbs: "", fat: "",
 };
 
-function AddFoodSheet({ section, catalog, meals, saving, onClose, onAdd, onAddMeal, onCreateCustom, onDeleteMeal }) {
-  const [mode, setMode] = useState("search"); // search | meals | custom
+function AddFoodSheet({
+  section, catalog, meals, saving, onClose, onAdd, onAddMeal, onCreateCustom,
+  onDeleteMeal, onUpdateFood, onDeleteFood,
+}) {
+  // "custom" isn't a tab — it's the form you land in from "Add a food" or from
+  // editing one, and backing out returns you to where you came from.
+  const [mode, setMode] = useState("search"); // search | mine | meals | custom
+  const [editingFood, setEditingFood] = useState(null);
+  const [mineQuery, setMineQuery] = useState("");
+  const [confirmDelFood, setConfirmDelFood] = useState(null);
   const [query, setQuery] = useState("");
   const [dbResults, setDbResults] = useState([]);
   const [warnings, setWarnings] = useState([]);
@@ -1112,6 +1150,49 @@ function AddFoodSheet({ section, catalog, meals, saving, onClose, onAdd, onAddMe
 
   const customValid = custom.name.trim() && num(custom.cal) != null && (num(custom.serving_qty) ?? 0) > 0;
 
+  const customFields = () => ({
+    name: custom.name.trim(),
+    brand: custom.brand.trim() || null,
+    serving_qty: num(custom.serving_qty) ?? 1,
+    serving_unit: normalizeUnit(custom.serving_unit) || "serving",
+    serving_grams: num(custom.serving_grams),
+    cal: num(custom.cal) ?? 0,
+    protein: num(custom.protein) ?? 0,
+    carbs: num(custom.carbs) ?? 0,
+    fat: num(custom.fat) ?? 0,
+  });
+
+  const openCreate = useCallback(() => {
+    setEditingFood(null);
+    setCustom(EMPTY_CUSTOM);
+    setCustomQty("1");
+    setLookup(null);
+    setMode("custom");
+  }, []);
+
+  const openEdit = useCallback((food) => {
+    setEditingFood(food);
+    setCustom({
+      name: food.name || "",
+      brand: food.brand || "",
+      serving_qty: String(food.serving_qty ?? 1),
+      serving_unit: food.serving_unit || "serving",
+      serving_grams: food.serving_grams != null ? String(food.serving_grams) : "",
+      cal: String(food.cal ?? ""),
+      protein: String(food.protein ?? ""),
+      carbs: String(food.carbs ?? ""),
+      fat: String(food.fat ?? ""),
+    });
+    setLookup(null);
+    setMode("custom");
+  }, []);
+
+  const mineList = useMemo(() => {
+    const q = mineQuery.trim();
+    if (!q) return catalog;
+    return catalog.filter(f => matchScore(q, f) > 0.3);
+  }, [catalog, mineQuery]);
+
   return (
     <div className="food-sheet-backdrop" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="food-sheet">
@@ -1122,8 +1203,8 @@ function AddFoodSheet({ section, catalog, meals, saving, onClose, onAdd, onAddMe
 
         <div className="toggle-group food-sheet-tabs">
           <button className={"toggle-btn" + (mode === "search" ? " active" : "")} onClick={() => setMode("search")}>Search</button>
+          <button className={"toggle-btn" + (mode === "mine" || mode === "custom" ? " active" : "")} onClick={() => setMode("mine")}>My foods</button>
           <button className={"toggle-btn" + (mode === "meals" ? " active" : "")} onClick={() => setMode("meals")}>My meals</button>
-          <button className={"toggle-btn" + (mode === "custom" ? " active" : "")} onClick={() => setMode("custom")}>Custom food</button>
         </div>
 
         <div className="food-sheet-body">
@@ -1166,7 +1247,11 @@ function AddFoodSheet({ section, catalog, meals, saving, onClose, onAdd, onAddMe
               {attribution.map((a, i) => <div className="food-attribution" key={i}>{a}</div>)}
               {query.trim().length >= 2 && !searching && !mine.length && !dbResults.length && !searchErr && (
                 <div className="food-section-empty">
-                  Nothing found. Add it as a custom food and it'll be there next time.
+                  <div>Nothing found for "{query.trim()}".</div>
+                  <button className="btn-primary sm" style={{ marginTop: 10 }}
+                    onClick={() => { openCreate(); setCustom({ ...EMPTY_CUSTOM, name: query.trim() }); }}>
+                    <Plus size={13} /> Add it as a custom food
+                  </button>
                 </div>
               )}
             </>
@@ -1219,6 +1304,69 @@ function AddFoodSheet({ section, catalog, meals, saving, onClose, onAdd, onAddMe
             </div>
           )}
 
+          {mode === "mine" && (
+            <>
+              <div className="mine-head">
+                <button className="btn-primary sm" onClick={openCreate}><Plus size={13} /> Add a food</button>
+                <span className="mine-count">
+                  {catalog.length} food{catalog.length === 1 ? "" : "s"} in your list
+                </span>
+              </div>
+
+              {catalog.length > 6 && (
+                <div className="food-search-box mine-filter">
+                  <Search size={14} />
+                  <input value={mineQuery} onChange={(e) => setMineQuery(e.target.value)} placeholder="Filter your foods…" />
+                </div>
+              )}
+
+              {catalog.length === 0 ? (
+                <div className="food-section-empty">
+                  Nothing here yet. Anything you log from a search gets saved here automatically, or add one by hand.
+                </div>
+              ) : mineList.length === 0 ? (
+                <div className="food-section-empty">No food matches "{mineQuery}".</div>
+              ) : mineList.map(f => {
+                const s = displayServing(f);
+                return (
+                  <div className="mine-row" key={f.id}>
+                    <button className="mine-pick" onClick={() => pick(f)} title={`Add ${f.name} to ${sectionLabel(section)}`}>
+                      <span className="food-result-name">
+                        {f.name}
+                        {f.brand && <span className="food-row-brand"> · {f.brand}</span>}
+                      </span>
+                      <span className="food-result-macros">
+                        {fmt(s.cal)} kcal / {s.label} · {fmt(s.protein)}p {fmt(s.carbs)}c {fmt(s.fat)}f
+                      </span>
+                    </button>
+                    <div className="mine-actions">
+                      <button className="icon-btn" title="Edit this food" onClick={() => openEdit(f)}>
+                        <Pencil size={12} />
+                      </button>
+                      <button
+                        className={"icon-btn danger" + (confirmDelFood === f.id ? " armed" : "")}
+                        title={confirmDelFood === f.id ? "Tap again to confirm" : "Delete this food"}
+                        onMouseLeave={() => { if (confirmDelFood === f.id) setConfirmDelFood(null); }}
+                        onClick={() => {
+                          if (confirmDelFood === f.id) { onDeleteFood(f); setConfirmDelFood(null); }
+                          else setConfirmDelFood(f.id);
+                        }}>
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+
+              {catalog.length > 0 && (
+                <div className="food-hint">
+                  Tap a food to log it, or the pencil to fix its nutrition. Days you've already logged keep the numbers
+                  they were logged with, so correcting a food never rewrites your history.
+                </div>
+              )}
+            </>
+          )}
+
           {mode === "meals" && (
             <>
               {meals.length === 0 ? (
@@ -1247,9 +1395,16 @@ function AddFoodSheet({ section, catalog, meals, saving, onClose, onAdd, onAddMe
 
           {mode === "custom" && (
             <div className="food-custom">
+              <button className="btn-ghost sm" onClick={() => { setMode("mine"); setEditingFood(null); }}>
+                <ChevronLeft size={12} /> Back to my foods
+              </button>
               <div className="form-note">
                 Enter the nutrition for one serving exactly as the label reads it. Filling in the gram weight is what
                 lets you log it later by weight ("4 oz") instead of by serving.
+                {editingFood?.source_id && (
+                  <> This one came from {editingFood.source === "usda" ? "USDA" : editingFood.source === "off" ? "Open Food Facts" : "a food database"} —
+                  saving changes makes it your own copy, so a later search can't overwrite your correction.</>
+                )}
               </div>
 
               <div className="lookup-bar">
@@ -1295,29 +1450,33 @@ function AddFoodSheet({ section, catalog, meals, saving, onClose, onAdd, onAddMe
                 <label>Protein (g)<input value={custom.protein} onChange={(e) => setCustom({ ...custom, protein: e.target.value })} inputMode="decimal" /></label>
                 <label>Carbs (g)<input value={custom.carbs} onChange={(e) => setCustom({ ...custom, carbs: e.target.value })} inputMode="decimal" /></label>
                 <label>Fat (g)<input value={custom.fat} onChange={(e) => setCustom({ ...custom, fat: e.target.value })} inputMode="decimal" /></label>
-                <label>How many now<input value={customQty} onChange={(e) => setCustomQty(e.target.value)} inputMode="decimal" /></label>
+                {/* Only when creating: editing a food shouldn't also log it. */}
+                {!editingFood && (
+                  <label>How many now<input value={customQty} onChange={(e) => setCustomQty(e.target.value)} inputMode="decimal" /></label>
+                )}
               </div>
               <div className="form-actions">
-                <button className="btn-ghost" onClick={onClose}><X size={13} /> Cancel</button>
-                <button className="btn-primary" disabled={!customValid || saving}
-                  onClick={() => onCreateCustom({
-                    fields: {
-                      name: custom.name.trim(),
-                      brand: custom.brand.trim() || null,
-                      serving_qty: num(custom.serving_qty) ?? 1,
-                      serving_unit: normalizeUnit(custom.serving_unit) || "serving",
-                      serving_grams: num(custom.serving_grams),
-                      alt_servings: [],
-                      cal: num(custom.cal) ?? 0,
-                      protein: num(custom.protein) ?? 0,
-                      carbs: num(custom.carbs) ?? 0,
-                      fat: num(custom.fat) ?? 0,
-                    },
-                    qty: num(customQty) ?? 1,
-                    unit: normalizeUnit(custom.serving_unit) || "serving",
-                  })}>
-                  {saving ? <Loader2 size={13} className="spin" /> : <Save size={13} />} Save & add
+                <button className="btn-ghost" onClick={() => { setMode("mine"); setEditingFood(null); }}>
+                  <X size={13} /> Cancel
                 </button>
+                {editingFood ? (
+                  <button className="btn-primary" disabled={!customValid || saving}
+                    onClick={async () => {
+                      const ok = await onUpdateFood(editingFood.id, customFields());
+                      if (ok) { setEditingFood(null); setMode("mine"); }
+                    }}>
+                    {saving ? <Loader2 size={13} className="spin" /> : <Save size={13} />} Save changes
+                  </button>
+                ) : (
+                  <button className="btn-primary" disabled={!customValid || saving}
+                    onClick={() => onCreateCustom({
+                      fields: { ...customFields(), alt_servings: [] },
+                      qty: num(customQty) ?? 1,
+                      unit: normalizeUnit(custom.serving_unit) || "serving",
+                    })}>
+                    {saving ? <Loader2 size={13} className="spin" /> : <Save size={13} />} Save & add
+                  </button>
+                )}
               </div>
             </div>
           )}
@@ -1412,11 +1571,14 @@ export const FOOD_STYLES = `
   .food-review-skip { margin-top: 9px; font-family: 'JetBrains Mono', monospace; font-size: 11.6px; color: #a03d33; line-height: 1.5; }
 
   .food-section { padding-bottom: 12px; }
-  /* On a narrow screen the section title and its buttons can't share a line,
-     so the buttons wrap. A lone item on a wrapped line ignores the parent's
-     space-between and sits left; flex:1 lets it claim the whole line so its
-     own flex-end alignment puts the buttons back on the right. */
-  .food-section .panel-head-actions { flex: 1 0 auto; justify-content: flex-end; }
+  /* On a narrow screen the title and its controls can't share a line, so the
+     controls wrap. A lone item on a wrapped line ignores the parent's
+     space-between and sits left; letting it claim the line restores its own
+     flex-end alignment. It has to stay shrinkable (1 1 auto, min-width 0) or
+     a control row wider than the panel — the week panel's toggle plus its
+     arrows — pushes out past the edge instead of wrapping inside itself. */
+  .food-section .panel-head-actions,
+  .food-week-panel .panel-head-actions { flex: 1 1 auto; min-width: 0; justify-content: flex-end; }
   .food-section-empty { font-family: 'JetBrains Mono', monospace; font-size: 12.4px; color: var(--text-faint); padding: 12px 2px 14px; }
   .food-rows { display: flex; flex-direction: column; }
   .food-row { display: flex; align-items: center; gap: 12px; padding: 9px 2px; border-bottom: 1px solid var(--border); }
@@ -1488,6 +1650,16 @@ export const FOOD_STYLES = `
   .food-pick-preview { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; background: var(--panel-2); border-radius: 12px; padding: 12px 14px; font-family: 'JetBrains Mono', monospace; font-size: 12.4px; color: var(--text-dim); }
   .fpp-cal { font-family: 'Space Grotesk', sans-serif; font-size: 20px; font-weight: 700; color: var(--text); }
   .fpp-warn { flex-basis: 100%; color: #a03d33; font-size: 11.4px; line-height: 1.5; }
+
+  .mine-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 4px 0 12px; }
+  .mine-count { font-family: 'JetBrains Mono', monospace; font-size: 11.2px; color: var(--text-faint); }
+  .mine-filter { margin-bottom: 6px; }
+  .mine-row { display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--border); }
+  .mine-row:last-of-type { border-bottom: none; }
+  .mine-pick { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 3px; background: transparent; border: none; padding: 11px 4px; text-align: left; cursor: pointer; color: var(--text); }
+  .mine-pick:hover { background: var(--panel-2); }
+  .mine-pick .food-result-name, .mine-pick .food-result-macros { max-width: 100%; }
+  .mine-actions { display: flex; gap: 6px; flex-shrink: 0; }
 
   .food-meal-row { display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--border); }
   .food-meal-pick { flex: 1; display: flex; flex-direction: column; align-items: flex-start; gap: 3px; background: transparent; border: none; padding: 12px 4px; text-align: left; cursor: pointer; color: var(--text); }
