@@ -5,7 +5,7 @@ import {
 } from "recharts";
 import {
   TrendingDown, TrendingUp, Minus, Flame, Footprints, Scale, Percent,
-  Plus, Pencil, Trash2, X, Save, Loader2, AlertCircle, Settings, Target, LayoutDashboard, AlertTriangle, Check, Circle, StickyNote, Dumbbell, Activity, Heart, CalendarDays, RefreshCw, Watch, Download, Utensils
+  Plus, Pencil, Trash2, X, Save, Loader2, AlertCircle, Settings, Target, LayoutDashboard, AlertTriangle, Check, Circle, StickyNote, Dumbbell, Activity, Heart, CalendarDays, RefreshCw, Watch, Download, Utensils, FlaskConical
 } from "lucide-react";
 import { supabase } from "./supabaseClient.js";
 import {
@@ -13,13 +13,14 @@ import {
   addDays, blockStartFor, blockEndFor, daysBetween,
 } from "./dateUtils.js";
 import FoodTab from "./FoodTab.jsx";
+import LabsTab from "./LabsTab.jsx";
 
 const STORAGE_KEY = "entries";
 const GOALS_KEY = "phase_goals";
 const DAILY_KEY = "daily_log";
 const HABITS_KEY = "habits_log";
 const HABITS_TARGETS_KEY = "habits_targets";
-const TAB_ORDER = ["dashboard", "daily", "food", "habits", "settings"];
+const TAB_ORDER = ["dashboard", "daily", "food", "labs", "habits", "settings"];
 const DEFAULT_HABIT_TARGETS = { walking: 5, conditioning: 3, weightLifting: 3, cardio: 3 };
 
 const HABITS = [
@@ -670,8 +671,16 @@ export default function Dashboard() {
   const [saving, setSaving] = useState(false);
   // Persisted in localStorage (not Supabase) so the last-open tab survives a
   // refresh without a network round-trip or a flash of the wrong tab.
-  const [tab, setTab] = useState(() => localStorage.getItem("bt_tab") || "dashboard"); // dashboard | daily | habits | settings
+  const [tab, setTab] = useState(() => localStorage.getItem("bt_tab") || "dashboard"); // dashboard | daily | food | labs | habits | settings
   useEffect(() => { localStorage.setItem("bt_tab", tab); }, [tab]);
+
+  // The nav scrolls, so the tab you just switched to can be off-screen —
+  // especially after a swipe, which changes tabs without touching the nav.
+  const tabBarRef = useRef(null);
+  useEffect(() => {
+    tabBarRef.current?.querySelector(".tab-btn.active")
+      ?.scrollIntoView({ inline: "center", block: "nearest", behavior: "smooth" });
+  }, [tab]);
 
   // Recharts only clears its hover tooltip on the next mousemove/touchmove
   // elsewhere — on touch devices that leaves it stuck open until you tap
@@ -2050,7 +2059,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <div className="tab-bar">
+      <div className="tab-bar" ref={tabBarRef}>
         <button className={"tab-btn " + (tab === "dashboard" ? "active" : "")} onClick={() => setTab("dashboard")}>
           <LayoutDashboard size={13} /> <span className="tab-label-full">Dashboard</span><span className="tab-label-short">Home</span>
         </button>
@@ -2059,6 +2068,9 @@ export default function Dashboard() {
         </button>
         <button className={"tab-btn " + (tab === "food" ? "active" : "")} onClick={() => setTab("food")}>
           <Utensils size={13} /> Food
+        </button>
+        <button className={"tab-btn " + (tab === "labs" ? "active" : "")} onClick={() => setTab("labs")}>
+          <FlaskConical size={13} /> Labs
         </button>
         <button className={"tab-btn " + (tab === "habits" ? "active" : "")} onClick={() => setTab("habits")}>
           <Dumbbell size={13} /> Habits
@@ -2475,6 +2487,8 @@ export default function Dashboard() {
           onDayTotalsChange={syncFoodCalories}
           onForceDailyCalories={forceFoodCalories}
         />
+      ) : tab === "labs" ? (
+        <LabsTab />
       ) : (
       <>
       {(pacing.calGoal != null || pacing.stepGoal != null) && (
@@ -2955,8 +2969,11 @@ const BASE_STYLES = `
   .hero-unit { font-size: 13.8px; font-weight: 500; color: var(--text-dim); margin-left: 2px; }
   .hero-lbl { font-family: 'JetBrains Mono', monospace; font-size: 10.3px; letter-spacing: 0.07em; text-transform: uppercase; color: var(--text-dim); margin-top: 3px; }
 
-  .tab-bar { display: flex; gap: 6px; margin-bottom: 14px; }
-  .tab-btn { display: inline-flex; align-items: center; gap: 6px; background: transparent; border: 1px solid var(--border); color: var(--text-dim); border-radius: 8px; padding: 7px 13px; font-family: 'JetBrains Mono', monospace; font-size: 12.6px; letter-spacing: 0.03em; cursor: pointer; }
+  /* The nav scrolls sideways rather than squeezing: tabs keep their type size
+     and their labels, and a seventh one later costs nothing. */
+  .tab-bar { display: flex; flex-wrap: nowrap; gap: 6px; margin-bottom: 14px; overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+  .tab-bar::-webkit-scrollbar { display: none; }
+  .tab-btn { flex: 0 0 auto; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; background: transparent; border: 1px solid var(--border); color: var(--text-dim); border-radius: 8px; padding: 7px 13px; font-family: 'JetBrains Mono', monospace; font-size: 12.6px; letter-spacing: 0.03em; cursor: pointer; }
   .tab-btn.active { background: var(--panel); color: var(--text); border-color: var(--text-dim); }
   .tab-btn:hover { color: var(--text); }
   .tab-label-short { display: none; }
@@ -3271,10 +3288,11 @@ const BASE_STYLES = `
     .stat-grid { grid-template-columns: repeat(2, 1fr); }
     .tab-label-full { display: none; }
     .tab-label-short { display: inline; }
-    /* Five tabs have to share a phone-width row, so the labels drop a couple
-       of points rather than wrapping or scrolling off the edge. */
-    div.dash .tab-bar { gap: 4px; }
-    div.dash .tab-btn { font-size: 13.5px; flex: 1; justify-content: center; gap: 4px; min-width: 0; padding-left: 2px; padding-right: 2px; }
+    /* More tabs than fit a phone-width row. They scroll instead of shrinking —
+       the type stays the size it is everywhere else, and the row keeps a
+       trailing sliver of the next tab so it reads as scrollable. */
+    div.dash .tab-bar { gap: 16px; padding-right: 24px; }
+    div.dash .tab-btn { flex: 0 0 auto; gap: 6px; padding-left: 2px; padding-right: 2px; }
     div.dash .tab-btn svg { width: 16px; height: 16px; flex-shrink: 0; }
     div.dash .header-top { align-items: center; }
     div.dash .stat-sub .cell-good, div.dash .stat-sub .cell-bad { white-space: nowrap; }
