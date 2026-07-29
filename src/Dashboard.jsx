@@ -543,13 +543,14 @@ function EntryForm({ form, setForm, onSave, onCancel, isEdit, error }) {
     <div className="entry-form">
       <div className="form-note">Targets and phase are set automatically from your Goal Settings (the latest goal on or before each week's date decides its phase). Calories and steps here are entered manually for the week — separate from the Daily tab, which tracks its own day-by-day pacing.</div>
       <div className="form-grid">
-        <label>Week<input value={form.wk} onChange={set("wk")} placeholder="e.g. 19" /></label>
+        <label>Week<input value={form.wk} onChange={set("wk")} placeholder="e.g. 19" inputMode="numeric" /></label>
+        {/* Dates keep the full keyboard — the numeric pads have no "/" key. */}
         <label>Date<input value={form.date} onChange={set("date")} placeholder="7/10/26" /></label>
-        <label>Weight (actual)<input value={form.aW} onChange={set("aW")} placeholder="lb" /></label>
-        <label>Muscle (actual)<input value={form.aM} onChange={set("aM")} placeholder="lb" /></label>
-        <label>Fat mass (actual)<input value={form.aF} onChange={set("aF")} placeholder="lb" /></label>
-        <label>Calories (actual)<input value={form.aCal} onChange={set("aCal")} placeholder="kcal" /></label>
-        <label>Steps<input value={form.steps} onChange={set("steps")} placeholder="steps" /></label>
+        <label>Weight (actual)<input value={form.aW} onChange={set("aW")} placeholder="lb" inputMode="decimal" /></label>
+        <label>Muscle (actual)<input value={form.aM} onChange={set("aM")} placeholder="lb" inputMode="decimal" /></label>
+        <label>Fat mass (actual)<input value={form.aF} onChange={set("aF")} placeholder="lb" inputMode="decimal" /></label>
+        <label>Calories (actual)<input value={form.aCal} onChange={set("aCal")} placeholder="kcal" inputMode="numeric" /></label>
+        <label>Steps<input value={form.steps} onChange={set("steps")} placeholder="steps" inputMode="numeric" /></label>
         <label className="notes-field">Notes<input value={form.notes} onChange={set("notes")} placeholder="optional" /></label>
       </div>
       {error && <div className="form-error"><AlertCircle size={12} /> {error}</div>}
@@ -572,14 +573,17 @@ function GoalForm({ form, setForm, onSave, onCancel, isEdit, error }) {
             {GOAL_PHASES.map(p => <option key={p} value={p}>{PHASE_LABEL[p]}</option>)}
           </select>
         </label>
+        {/* The two rates are the one place a minus sign gets typed — a cut's
+            fat rate is negative — and no iOS numeric pad offers one, so these
+            two deliberately keep the full keyboard. */}
         <label>Muscle rate (lb/wk)<input value={form.muscleRate} onChange={set("muscleRate")} placeholder="blank = same as last goal" /></label>
         <label>Fat rate (lb/wk)<input value={form.fatRate} onChange={set("fatRate")} placeholder="blank = same as last goal" /></label>
-        <label>Step goal (avg/day)<input value={form.stepGoal} onChange={set("stepGoal")} placeholder="blank = same as last goal" /></label>
-        <label>Calorie goal (kcal/day)<input value={form.calGoal} onChange={set("calGoal")} placeholder="blank = same as last goal" /></label>
-        <label>Protein goal (g/day)<input value={form.proteinGoal} onChange={set("proteinGoal")} placeholder="blank = same as last goal" /></label>
-        <label>Carb goal (g/day)<input value={form.carbGoal} onChange={set("carbGoal")} placeholder="blank = same as last goal" /></label>
-        <label>Fat goal (g/day)<input value={form.fatGoal} onChange={set("fatGoal")} placeholder="blank = same as last goal" /></label>
-        <label>Duration (weeks)<input value={form.durationWeeks} onChange={set("durationWeeks")} placeholder="e.g. 12 — generates the weeks" /></label>
+        <label>Step goal (avg/day)<input value={form.stepGoal} onChange={set("stepGoal")} placeholder="blank = same as last goal" inputMode="numeric" /></label>
+        <label>Calorie goal (kcal/day)<input value={form.calGoal} onChange={set("calGoal")} placeholder="blank = same as last goal" inputMode="numeric" /></label>
+        <label>Protein goal (g/day)<input value={form.proteinGoal} onChange={set("proteinGoal")} placeholder="blank = same as last goal" inputMode="decimal" /></label>
+        <label>Carb goal (g/day)<input value={form.carbGoal} onChange={set("carbGoal")} placeholder="blank = same as last goal" inputMode="decimal" /></label>
+        <label>Fat goal (g/day)<input value={form.fatGoal} onChange={set("fatGoal")} placeholder="blank = same as last goal" inputMode="decimal" /></label>
+        <label>Duration (weeks)<input value={form.durationWeeks} onChange={set("durationWeeks")} placeholder="e.g. 12 — generates the weeks" inputMode="numeric" /></label>
         <label className="notes-field">Notes<input value={form.notes} onChange={set("notes")} placeholder="optional — why the change" /></label>
       </div>
       {error && <div className="form-error"><AlertCircle size={12} /> {error}</div>}
@@ -597,11 +601,11 @@ function DailyEntryForm({ form, setForm, onSave, onCancel, isEdit, error }) {
     <div className="entry-form">
       <div className="form-grid daily-grid">
         <label>Date<input value={form.date} onChange={set("date")} placeholder="7/10/26" /></label>
-        <label>Calories<input value={form.cal} onChange={set("cal")} placeholder="kcal" /></label>
-        <label>Steps<input value={form.steps} onChange={set("steps")} placeholder="steps" /></label>
-        <label>Weight<input value={form.weight} onChange={set("weight")} placeholder="lb" /></label>
-        <label>Fat Mass<input value={form.fatMass} onChange={set("fatMass")} placeholder="lb" /></label>
-        <label>Muscle Mass<input value={form.muscleMass} onChange={set("muscleMass")} placeholder="lb" /></label>
+        <label>Calories<input value={form.cal} onChange={set("cal")} placeholder="kcal" inputMode="numeric" /></label>
+        <label>Steps<input value={form.steps} onChange={set("steps")} placeholder="steps" inputMode="numeric" /></label>
+        <label>Weight<input value={form.weight} onChange={set("weight")} placeholder="lb" inputMode="decimal" /></label>
+        <label>Fat Mass<input value={form.fatMass} onChange={set("fatMass")} placeholder="lb" inputMode="decimal" /></label>
+        <label>Muscle Mass<input value={form.muscleMass} onChange={set("muscleMass")} placeholder="lb" inputMode="decimal" /></label>
       </div>
       {error && <div className="form-error"><AlertCircle size={12} /> {error}</div>}
       <div className="form-actions">

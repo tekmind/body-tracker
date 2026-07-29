@@ -735,6 +735,7 @@ export default function FoodTab({ targetsForDate, dailyEntryFor, onDayTotalsChan
                             className="qty-input"
                             value={editingRow.qty}
                             autoFocus
+                            inputMode="decimal"
                             onChange={(e) => setEditingRow({ ...editingRow, qty: e.target.value })}
                             onKeyDown={(e) => { if (e.key === "Enter") handleSaveRowEdit(); }}
                           />
