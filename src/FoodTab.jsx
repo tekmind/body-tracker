@@ -9,8 +9,8 @@ import {
 import BarcodeScanner from "./BarcodeScanner.jsx";
 import { parseDate, formatMDY, addDays, blockStartFor, blockEndFor, today as todayDate } from "./dateUtils.js";
 import {
-  MEAL_SECTIONS, sectionLabel, sectionForHour, servingLabel, unitOptions, defaultPortion,
-  scaleMacros, sumMacros, roundTotals, matchScore, normalizeUnit,
+  MEAL_SECTIONS, sectionLabel, sectionForHour, unitOptions, defaultPortion,
+  displayServing, scaleMacros, sumMacros, roundTotals, matchScore, normalizeUnit,
 } from "./foodMath.js";
 import * as foodApi from "./foodApi.js";
 
@@ -384,8 +384,11 @@ export default function FoodTab({ targetsForDate, dailyEntryFor, onDayTotalsChan
           weekday: "long", hour: "numeric", minute: "2-digit",
         }),
         section: defaultSection,
+        // Send each food's real portion, not its per-100 g storage form —
+        // "1 can" is what someone actually says, so it's what the matcher
+        // should be comparing against.
         history: catalog.slice(0, 80).map(f => ({
-          id: f.id, name: f.name, brand: f.brand, serving: servingLabel(f),
+          id: f.id, name: f.name, brand: f.brand, serving: displayServing(f).label,
         })),
       });
 
@@ -617,11 +620,14 @@ export default function FoodTab({ targetsForDate, dailyEntryFor, onDayTotalsChan
                       if (pick) swapReviewEntry(i, pick);
                     }}>
                     <option value="">Wrong food?</option>
-                    {e.candidates.map((c, ci) => (
-                      <option key={ci} value={ci}>
-                        {c.name}{c.brand ? ` · ${c.brand}` : ""} — {c.cal} kcal/{servingLabel(c)}
-                      </option>
-                    ))}
+                    {e.candidates.map((c, ci) => {
+                      const s = displayServing(c);
+                      return (
+                        <option key={ci} value={ci}>
+                          {c.name}{c.brand ? ` · ${c.brand}` : ""} — {fmt(s.cal)} kcal/{s.label}
+                        </option>
+                      );
+                    })}
                   </select>
                 )}
                 {e.item.note && <span className="frr-note">{e.item.note}</span>}
@@ -1035,9 +1041,10 @@ function AddFoodSheet({ section, catalog, meals, saving, onClose, onAdd, onAddMe
       setUnit(p.unit);
     };
     apply(food);
-    // Search hits carry only the portions the search endpoint returned; the
-    // detail call is what gets "1 cup" onto a USDA food.
-    if (!food.id && food.source_id) {
+    // USDA and Open Food Facts search hits can be missing portions the detail
+    // endpoint knows about. Nutritionix already returns complete servings, so
+    // asking for detail there is a guaranteed wasted round trip.
+    if (!food.id && food.source_id && (food.source === "usda" || food.source === "off")) {
       setLoadingDetail(true);
       try {
         const full = await foodApi.fetchFoodDetail(food.source, food.source_id);
@@ -1138,7 +1145,10 @@ function AddFoodSheet({ section, catalog, meals, saving, onClose, onAdd, onAddMe
               <div className="food-pick-serving">
                 {loadingDetail
                   ? <><Loader2 size={12} className="spin" /> loading portions…</>
-                  : <>{fmt(selected.cal)} kcal per {servingLabel(selected)} · {fmt(selected.protein)}p / {fmt(selected.carbs)}c / {fmt(selected.fat)}f</>}
+                  : (() => {
+                      const s = displayServing(selected);
+                      return <>{fmt(s.cal)} kcal per {s.label} · {fmt(s.protein)}p / {fmt(s.carbs)}c / {fmt(s.fat)}f</>;
+                    })()}
               </div>
 
               <div className="food-pick-qty">
@@ -1256,6 +1266,8 @@ function AddFoodSheet({ section, catalog, meals, saving, onClose, onAdd, onAddMe
 }
 
 function FoodResult({ food, onPick, mine }) {
+  // Show the food's own portion, not the per-100 g figure it's stored as.
+  const s = displayServing(food);
   return (
     <button className="food-result" onClick={() => onPick(food)}>
       <span className="food-result-name">
@@ -1264,7 +1276,7 @@ function FoodResult({ food, onPick, mine }) {
         {mine && <span className="food-result-tag">yours</span>}
       </span>
       <span className="food-result-macros">
-        {fmt(food.cal)} kcal / {servingLabel(food)} · {fmt(food.protein)}p {fmt(food.carbs)}c {fmt(food.fat)}f
+        {fmt(s.cal)} kcal / {s.label} · {fmt(s.protein)}p {fmt(s.carbs)}c {fmt(s.fat)}f
       </span>
     </button>
   );
