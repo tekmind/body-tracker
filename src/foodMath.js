@@ -221,14 +221,28 @@ export function defaultPortion(food) {
   return { qty: Number(food.serving_qty) || 1, unit: normalizeUnit(food.serving_unit) || "serving" };
 }
 
-/** "100 g" / "1 slice (28 g)" — how a food's base portion reads in a list. */
-export function servingLabel(food) {
-  if (!food) return "";
-  const qty = Number(food.serving_qty) || 1;
-  const unit = food.serving_unit || "serving";
-  const base = `${round1(qty)} ${unit}`;
-  if (food.serving_grams && !isMassUnit(unit)) return `${base} (${round1(Number(food.serving_grams))} g)`;
-  return base;
+/**
+ * How a food should be *shown* and what the quantity box should start at.
+ *
+ * Nutrition databases report almost everything per 100 g, which is the right
+ * thing to store but a terrible thing to show: nobody eats 100 g of anything
+ * on purpose. When the food declares a real portion — a can, a slice, a cup,
+ * a label serving — that's what gets displayed and pre-filled, with macros
+ * scaled to match. Only foods that genuinely have no portion on file fall
+ * back to reading per-100 g.
+ */
+export function displayServing(food) {
+  const { qty, unit } = defaultPortion(food);
+  const macros = scaleMacros(food, qty, unit);
+  const grams = servingFactor(food, qty, unit).factor * (Number(food.serving_grams) || 0);
+  const label = `${round1(qty)} ${unit}`;
+  return {
+    qty,
+    unit,
+    label: grams && !isMassUnit(unit) ? `${label} (${Math.round(grams)} g)` : label,
+    isBaseUnit: unit === normalizeUnit(food.serving_unit) && qty === (Number(food.serving_qty) || 1),
+    ...macros,
+  };
 }
 
 // --- fuzzy name matching ---------------------------------------------------

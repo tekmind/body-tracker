@@ -10,6 +10,7 @@ import { matchScore } from "../src/foodMath.js";
 
 export const USDA_SEARCH_URL = "https://api.nal.usda.gov/fdc/v1/foods/search";
 export const USDA_DETAIL_URL = "https://api.nal.usda.gov/fdc/v1/food";
+export const USDA_BULK_URL = "https://api.nal.usda.gov/fdc/v1/foods";
 export const OFF_SEARCH_URL = "https://world.openfoodfacts.org/cgi/search.pl";
 export const OFF_PRODUCT_URL = "https://world.openfoodfacts.org/api/v2/product";
 
@@ -173,7 +174,37 @@ export async function searchUsda(query, limit) {
     const d = matchScore(query, b) - matchScore(query, a);
     return d !== 0 ? d : rankDataType(a.data_type) - rankDataType(b.data_type);
   });
-  return { foods: foods.slice(0, limit) };
+  const top = foods.slice(0, limit);
+  await hydrateUsdaPortions(top);
+  return { foods: top };
+}
+
+/**
+ * USDA's search response omits foodPortions — only the detail endpoint has
+ * them — which left generic foods with no portion but "100 g" until you'd
+ * already picked one. The bulk endpoint takes up to 20 ids at once, so the
+ * whole result page gets real servings ("1 cup", "1 medium") for one extra
+ * request. Best effort: a failure here just leaves those foods per-100 g.
+ */
+async function hydrateUsdaPortions(foods) {
+  const key = process.env.USDA_API_KEY;
+  const needy = foods.filter(f => f.source === "usda" && !f.alt_servings.length).slice(0, 20);
+  if (!key || !needy.length) return;
+  try {
+    const resp = await fetch(`${USDA_BULK_URL}?api_key=${encodeURIComponent(key)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fdcIds: needy.map(f => Number(f.source_id)), format: "full" }),
+      signal: timeoutSignal(9000),
+    });
+    if (!resp.ok) return;
+    const detail = await resp.json();
+    const byId = new Map((detail || []).map(d => [String(d.fdcId), d]));
+    for (const food of needy) {
+      const full = byId.get(String(food.source_id));
+      if (full) food.alt_servings = usdaPortions(full);
+    }
+  } catch { /* portions are a nicety; never fail a search over them */ }
 }
 
 // Whole foods before packaged ones — "chicken breast" should not lead with a

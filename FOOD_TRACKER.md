@@ -81,6 +81,27 @@ The "say what you ate" button sends your sentence to Claude
 Without it, everything else in the tab works and that one button reports that
 it's switched off.
 
+### Nutrition lookup for custom foods
+
+The same key powers **Look up nutrition** on the Custom food tab. Type a name
+(and brand, if it has one) and Claude searches the web, reads the nutrition
+label it finds, and fills in the form.
+
+It fills the form — it never saves. The numbers arrive editable, with the
+sources linked and a confidence rating, and the banner says to check them
+before saving. That's deliberate: a wrong custom food quietly skews every day
+it appears in from then on, so it's worth ten seconds of review.
+
+When nothing credible turns up it says so and leaves the form blank rather
+than guessing. A blank form you fill in from the package beats plausible
+numbers that are wrong.
+
+This runs on **Claude Sonnet 5** by default (`FOOD_LOOKUP_MODEL`) rather than
+Haiku: judging whether a page is a real nutrition label needs more than
+extraction. It costs a few cents per lookup including the web-search fee, and
+only runs when you press the button — unlike parsing, which runs several times
+a day.
+
 ### Which model, and what it costs
 
 Parsing runs on **Claude Haiku 4.5**, the cheapest tier. The task is

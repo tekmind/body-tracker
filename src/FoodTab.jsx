@@ -4,13 +4,13 @@ import {
 } from "recharts";
 import {
   Plus, X, Check, Loader2, AlertCircle, Mic, Sparkles, Search, ChevronLeft, ChevronRight,
-  Trash2, Pencil, Utensils, BookMarked, Undo2, Save, ScanLine,
+  Trash2, Pencil, Utensils, BookMarked, Undo2, Save, ScanLine, Globe,
 } from "lucide-react";
 import BarcodeScanner from "./BarcodeScanner.jsx";
 import { parseDate, formatMDY, addDays, blockStartFor, blockEndFor, today as todayDate } from "./dateUtils.js";
 import {
-  MEAL_SECTIONS, sectionLabel, sectionForHour, servingLabel, unitOptions, defaultPortion,
-  scaleMacros, sumMacros, roundTotals, matchScore, normalizeUnit,
+  MEAL_SECTIONS, sectionLabel, sectionForHour, unitOptions, defaultPortion,
+  displayServing, scaleMacros, sumMacros, roundTotals, matchScore, normalizeUnit,
 } from "./foodMath.js";
 import * as foodApi from "./foodApi.js";
 
@@ -384,8 +384,11 @@ export default function FoodTab({ targetsForDate, dailyEntryFor, onDayTotalsChan
           weekday: "long", hour: "numeric", minute: "2-digit",
         }),
         section: defaultSection,
+        // Send each food's real portion, not its per-100 g storage form —
+        // "1 can" is what someone actually says, so it's what the matcher
+        // should be comparing against.
         history: catalog.slice(0, 80).map(f => ({
-          id: f.id, name: f.name, brand: f.brand, serving: servingLabel(f),
+          id: f.id, name: f.name, brand: f.brand, serving: displayServing(f).label,
         })),
       });
 
@@ -617,11 +620,14 @@ export default function FoodTab({ targetsForDate, dailyEntryFor, onDayTotalsChan
                       if (pick) swapReviewEntry(i, pick);
                     }}>
                     <option value="">Wrong food?</option>
-                    {e.candidates.map((c, ci) => (
-                      <option key={ci} value={ci}>
-                        {c.name}{c.brand ? ` · ${c.brand}` : ""} — {c.cal} kcal/{servingLabel(c)}
-                      </option>
-                    ))}
+                    {e.candidates.map((c, ci) => {
+                      const s = displayServing(c);
+                      return (
+                        <option key={ci} value={ci}>
+                          {c.name}{c.brand ? ` · ${c.brand}` : ""} — {fmt(s.cal)} kcal/{s.label}
+                        </option>
+                      );
+                    })}
                   </select>
                 )}
                 {e.item.note && <span className="frr-note">{e.item.note}</span>}
@@ -989,6 +995,44 @@ function AddFoodSheet({ section, catalog, meals, saving, onClose, onAdd, onAddMe
   const [unit, setUnit] = useState("serving");
   const [custom, setCustom] = useState(EMPTY_CUSTOM);
   const [customQty, setCustomQty] = useState("1");
+  const [lookup, setLookup] = useState(null); // { busy, sources, note, confidence, error }
+
+  // Fills the form from a web search rather than saving anything — the person
+  // still reviews every number before it's stored, which matters because a
+  // wrong custom food quietly skews every day it appears in afterwards.
+  const runLookup = useCallback(async () => {
+    const name = custom.name.trim();
+    if (!name) return;
+    setLookup({ busy: true });
+    try {
+      const res = await foodApi.lookupNutrition({
+        name,
+        brand: custom.brand.trim(),
+        serving: custom.serving_unit && custom.serving_unit !== "serving"
+          ? `${custom.serving_qty} ${custom.serving_unit}` : "",
+      });
+      if (!res.nutrition) {
+        setLookup({ busy: false, error: res.error, sources: res.sources || [] });
+        return;
+      }
+      const n = res.nutrition;
+      setCustom(c => ({
+        ...c,
+        name: n.name || c.name,
+        brand: n.brand || c.brand,
+        serving_qty: String(n.serving_qty),
+        serving_unit: n.serving_unit,
+        serving_grams: n.serving_grams != null ? String(n.serving_grams) : "",
+        cal: String(n.cal),
+        protein: String(n.protein),
+        carbs: String(n.carbs),
+        fat: String(n.fat),
+      }));
+      setLookup({ busy: false, sources: res.sources || [], note: n.note, confidence: n.confidence });
+    } catch (e) {
+      setLookup({ busy: false, error: e.message });
+    }
+  }, [custom.name, custom.brand, custom.serving_qty, custom.serving_unit]);
 
   const mine = useMemo(() => {
     const q = query.trim();
@@ -1035,9 +1079,10 @@ function AddFoodSheet({ section, catalog, meals, saving, onClose, onAdd, onAddMe
       setUnit(p.unit);
     };
     apply(food);
-    // Search hits carry only the portions the search endpoint returned; the
-    // detail call is what gets "1 cup" onto a USDA food.
-    if (!food.id && food.source_id) {
+    // USDA and Open Food Facts search hits can be missing portions the detail
+    // endpoint knows about. Nutritionix already returns complete servings, so
+    // asking for detail there is a guaranteed wasted round trip.
+    if (!food.id && food.source_id && (food.source === "usda" || food.source === "off")) {
       setLoadingDetail(true);
       try {
         const full = await foodApi.fetchFoodDetail(food.source, food.source_id);
@@ -1138,7 +1183,10 @@ function AddFoodSheet({ section, catalog, meals, saving, onClose, onAdd, onAddMe
               <div className="food-pick-serving">
                 {loadingDetail
                   ? <><Loader2 size={12} className="spin" /> loading portions…</>
-                  : <>{fmt(selected.cal)} kcal per {servingLabel(selected)} · {fmt(selected.protein)}p / {fmt(selected.carbs)}c / {fmt(selected.fat)}f</>}
+                  : (() => {
+                      const s = displayServing(selected);
+                      return <>{fmt(s.cal)} kcal per {s.label} · {fmt(s.protein)}p / {fmt(s.carbs)}c / {fmt(s.fat)}f</>;
+                    })()}
               </div>
 
               <div className="food-pick-qty">
@@ -1204,6 +1252,40 @@ function AddFoodSheet({ section, catalog, meals, saving, onClose, onAdd, onAddMe
                 Enter the nutrition for one serving exactly as the label reads it. Filling in the gram weight is what
                 lets you log it later by weight ("4 oz") instead of by serving.
               </div>
+
+              <div className="lookup-bar">
+                <button className="btn-ghost sm" onClick={runLookup} disabled={!custom.name.trim() || lookup?.busy}>
+                  {lookup?.busy ? <Loader2 size={12} className="spin" /> : <Globe size={12} />}
+                  {lookup?.busy ? "Searching the web…" : "Look up nutrition"}
+                </button>
+                <span className="lookup-bar-hint">
+                  Type the name (and brand, if it has one) and this searches for the label.
+                </span>
+              </div>
+
+              {lookup && !lookup.busy && (lookup.error || lookup.sources?.length > 0) && (
+                <div className={"lookup-result" + (lookup.error ? " lookup-miss" : "")}>
+                  {lookup.error ? (
+                    <div className="lookup-line"><AlertCircle size={12} /> {lookup.error}</div>
+                  ) : (
+                    <div className="lookup-line">
+                      <Check size={12} />
+                      Filled in from the web — <strong>check the numbers before saving.</strong>
+                      {lookup.confidence && (
+                        <span className={"lookup-confidence lc-" + lookup.confidence}>{lookup.confidence} confidence</span>
+                      )}
+                    </div>
+                  )}
+                  {lookup.note && <div className="lookup-note">{lookup.note}</div>}
+                  {lookup.sources?.length > 0 && (
+                    <div className="lookup-sources">
+                      {lookup.sources.map((s, i) => (
+                        <a key={i} href={s.url} target="_blank" rel="noopener noreferrer">{s.title}</a>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
               <div className="form-grid food-custom-grid">
                 <label>Name<input value={custom.name} onChange={(e) => setCustom({ ...custom, name: e.target.value })} placeholder="e.g. Protein shake" /></label>
                 <label>Brand<input value={custom.brand} onChange={(e) => setCustom({ ...custom, brand: e.target.value })} placeholder="optional" /></label>
@@ -1256,6 +1338,8 @@ function AddFoodSheet({ section, catalog, meals, saving, onClose, onAdd, onAddMe
 }
 
 function FoodResult({ food, onPick, mine }) {
+  // Show the food's own portion, not the per-100 g figure it's stored as.
+  const s = displayServing(food);
   return (
     <button className="food-result" onClick={() => onPick(food)}>
       <span className="food-result-name">
@@ -1264,7 +1348,7 @@ function FoodResult({ food, onPick, mine }) {
         {mine && <span className="food-result-tag">yours</span>}
       </span>
       <span className="food-result-macros">
-        {fmt(food.cal)} kcal / {servingLabel(food)} · {fmt(food.protein)}p {fmt(food.carbs)}c {fmt(food.fat)}f
+        {fmt(s.cal)} kcal / {s.label} · {fmt(s.protein)}p {fmt(s.carbs)}c {fmt(s.fat)}f
       </span>
     </button>
   );
@@ -1407,6 +1491,21 @@ export const FOOD_STYLES = `
   .food-meal-name { font-size: 14.5px; font-weight: 600; }
   .food-meal-sub { font-family: 'JetBrains Mono', monospace; font-size: 11.2px; color: var(--text-faint); }
   .food-custom-grid { margin-top: 4px; }
+  .lookup-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+  .lookup-bar-hint { flex: 1; min-width: 160px; font-family: 'JetBrains Mono', monospace; font-size: 10.8px; color: var(--text-faint); line-height: 1.5; }
+  .lookup-result { background: #f4faf1; border: 1px solid #cfe6c4; border-radius: 12px; padding: 10px 13px; margin-bottom: 12px; }
+  .lookup-result.lookup-miss { background: #fdf1dd; border-color: #ecd3a4; }
+  .lookup-line { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; font-size: 12.8px; color: #3a6b2c; line-height: 1.5; }
+  .lookup-miss .lookup-line { color: #8a5b13; }
+  .lookup-line svg { flex-shrink: 0; }
+  .lookup-confidence { font-family: 'JetBrains Mono', monospace; font-size: 9.6px; letter-spacing: 0.05em; text-transform: uppercase; padding: 2px 7px; border-radius: 999px; }
+  .lc-high { background: rgba(54,135,39,0.15); color: #3a6b2c; }
+  .lc-medium { background: rgba(219,162,54,0.2); color: #8a5b13; }
+  .lc-low { background: rgba(199,58,47,0.14); color: #a03d33; }
+  .lookup-note { font-family: 'JetBrains Mono', monospace; font-size: 11.2px; color: var(--text-dim); margin-top: 6px; line-height: 1.5; }
+  .lookup-sources { display: flex; flex-wrap: wrap; gap: 6px 12px; margin-top: 8px; }
+  .lookup-sources a { font-family: 'JetBrains Mono', monospace; font-size: 10.8px; color: var(--cut); text-decoration: none; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lookup-sources a:hover { text-decoration: underline; }
 
   @media (max-width: 860px) {
     .macro-grid, .week-avg-grid { grid-template-columns: repeat(2, 1fr); }
