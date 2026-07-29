@@ -1419,7 +1419,13 @@ export const FOOD_STYLES = `
     .food-ai-actions { flex-wrap: wrap; }
     .food-ai-actions .btn-primary { width: 100%; justify-content: center; margin-left: 0; }
     .food-sheet-backdrop { padding: 0; }
-    .food-sheet { max-width: none; max-height: 100vh; height: 100%; border-radius: 0; padding-top: env(safe-area-inset-top); }
+    /* dvh, not vh: an open keyboard doesn't shrink vh, which pushed the Add
+       button underneath it. Plain vh stays as the fallback for iOS < 16.4. */
+    .food-sheet { max-width: none; max-height: 100vh; height: 100vh; border-radius: 0; padding-top: env(safe-area-inset-top); }
+    .food-sheet { max-height: 100dvh; height: 100dvh; }
+    .food-row-edit .qty-input { width: 72px; }
+    /* Two columns of 16px fields don't fit a phone — one column each. */
+    .food-custom-grid { grid-template-columns: 1fr !important; }
     .food-day-nav { flex-wrap: wrap; }
     .food-jump-today { margin-left: 0; }
     .food-week-nav { flex-wrap: wrap; }

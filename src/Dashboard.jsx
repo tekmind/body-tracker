@@ -3229,8 +3229,12 @@ const BASE_STYLES = `
 
   .entry-form { background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin-bottom: 14px; }
   .form-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
-  .form-grid label { display: flex; flex-direction: column; gap: 4px; font-family: 'JetBrains Mono', monospace; font-size: 10.9px; color: var(--text-dim); letter-spacing: 0.04em; text-transform: uppercase; }
-  .form-grid input, .form-grid select { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; color: var(--text); padding: 7px 8px; font-family: 'Inter', sans-serif; font-size: 14.4px; }
+  /* min-width: 0 on both the cell and the field: a grid item defaults to
+     min-width:auto, so an input's intrinsic width (roughly 20 characters)
+     sets a floor the 1fr column can't go below, and the last column spills
+     off a narrow screen instead of shrinking. */
+  .form-grid label { display: flex; flex-direction: column; gap: 4px; min-width: 0; font-family: 'JetBrains Mono', monospace; font-size: 10.9px; color: var(--text-dim); letter-spacing: 0.04em; text-transform: uppercase; }
+  .form-grid input, .form-grid select { width: 100%; min-width: 0; box-sizing: border-box; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; color: var(--text); padding: 7px 8px; font-family: 'Inter', sans-serif; font-size: 14.4px; }
   .form-grid input:focus, .form-grid select:focus { outline: 2px solid var(--cut); outline-offset: 1px; }
   .notes-field { grid-column: span 4; }
   .form-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
@@ -3383,4 +3387,16 @@ const BASE_STYLES = `
   .dash .gstat-val.gstat-down { color: #2b6e1e; }
   .dash .gstat-val.gstat-up { color: #a5342a; }
   .dash .chart-legend { font-family: 'Inter', sans-serif; font-size: 12.1px; }
+
+  /* Safari on iOS zooms the whole page whenever you focus a field whose text
+     is smaller than 16px, and never zooms back out — so tapping a search box
+     or a form input left the layout shoved off-screen. Bumping every field to
+     16px on touch devices is the only fix that doesn't involve disabling
+     pinch-zoom, which would break accessibility. Kept last in the sheet and
+     scoped as div.dash so it outranks the per-component font sizes above.
+     The width clause covers iPads with a keyboard attached, which report
+     pointer:fine yet still zoom when you tap a field. */
+  @media (pointer: coarse), (max-width: 900px) {
+    div.dash input, div.dash select, div.dash textarea { font-size: 16px; }
+  }
 `;
