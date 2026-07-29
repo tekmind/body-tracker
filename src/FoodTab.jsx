@@ -4,8 +4,9 @@ import {
 } from "recharts";
 import {
   Plus, X, Check, Loader2, AlertCircle, Mic, Sparkles, Search, ChevronLeft, ChevronRight,
-  Trash2, Pencil, Utensils, BookMarked, Undo2, Save,
+  Trash2, Pencil, Utensils, BookMarked, Undo2, Save, ScanLine,
 } from "lucide-react";
+import BarcodeScanner from "./BarcodeScanner.jsx";
 import { parseDate, formatMDY, addDays, blockStartFor, blockEndFor, today as todayDate } from "./dateUtils.js";
 import {
   MEAL_SECTIONS, sectionLabel, sectionForHour, servingLabel, unitOptions, defaultPortion,
@@ -976,8 +977,12 @@ function AddFoodSheet({ section, catalog, meals, saving, onClose, onAdd, onAddMe
   const [query, setQuery] = useState("");
   const [dbResults, setDbResults] = useState([]);
   const [warnings, setWarnings] = useState([]);
+  const [attribution, setAttribution] = useState([]);
   const [searching, setSearching] = useState(false);
   const [searchErr, setSearchErr] = useState("");
+  const [scanning, setScanning] = useState(false);
+  const [scanBusy, setScanBusy] = useState(false);
+  const [scanErr, setScanErr] = useState("");
   const [selected, setSelected] = useState(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [qty, setQty] = useState("1");
@@ -1008,7 +1013,11 @@ function AddFoodSheet({ section, catalog, meals, saving, onClose, onAdd, onAddMe
       setSearchErr("");
       try {
         const res = await foodApi.searchFoodDatabase(q, { signal: controller.signal });
-        if (!cancelled) { setDbResults(res.foods || []); setWarnings(res.warnings || []); }
+        if (!cancelled) {
+          setDbResults(res.foods || []);
+          setWarnings(res.warnings || []);
+          setAttribution(res.attribution || []);
+        }
       } catch (e) {
         if (!cancelled && e.name !== "AbortError") setSearchErr(e.message);
       } finally {
@@ -1039,6 +1048,22 @@ function AddFoodSheet({ section, catalog, meals, saving, onClose, onAdd, onAddMe
     }
   }, []);
 
+  // A scanned package is just a picked food — same quantity step, same add
+  // button — so the scanner hands off into exactly the flow search uses.
+  const handleScan = useCallback(async (code) => {
+    setScanBusy(true);
+    setScanErr("");
+    try {
+      const food = await foodApi.lookupBarcode(code);
+      setScanning(false);
+      pick(food);
+    } catch (e) {
+      setScanErr(e.message);
+    } finally {
+      setScanBusy(false);
+    }
+  }, [pick]);
+
   const preview = selected ? scaleMacros(selected, num(qty) ?? 0, unit) : null;
 
   const customValid = custom.name.trim() && num(custom.cal) != null && (num(custom.serving_qty) ?? 0) > 0;
@@ -1060,16 +1085,23 @@ function AddFoodSheet({ section, catalog, meals, saving, onClose, onAdd, onAddMe
         <div className="food-sheet-body">
           {mode === "search" && !selected && (
             <>
-              <div className="food-search-box">
-                <Search size={14} />
-                <input
-                  autoFocus
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Search your foods and the food database…"
-                />
-                {searching && <Loader2 size={14} className="spin" />}
+              <div className="food-search-row">
+                <div className="food-search-box">
+                  <Search size={14} />
+                  <input
+                    autoFocus
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder="Search your foods and the food database…"
+                  />
+                  {searching && <Loader2 size={14} className="spin" />}
+                </div>
+                <button className="scan-btn" onClick={() => { setScanErr(""); setScanning(true); }} title="Scan a barcode">
+                  <ScanLine size={18} />
+                  <span>Scan</span>
+                </button>
               </div>
+              {scanErr && !scanning && <div className="form-error"><AlertCircle size={12} /> {scanErr}</div>}
 
               {mine.length > 0 && (
                 <div className="food-result-group">
@@ -1087,6 +1119,7 @@ function AddFoodSheet({ section, catalog, meals, saving, onClose, onAdd, onAddMe
 
               {searchErr && <div className="form-error"><AlertCircle size={12} /> {searchErr}</div>}
               {warnings.map((w, i) => <div className="food-hint" key={i}>{w}</div>)}
+              {attribution.map((a, i) => <div className="food-attribution" key={i}>{a}</div>)}
               {query.trim().length >= 2 && !searching && !mine.length && !dbResults.length && !searchErr && (
                 <div className="food-section-empty">
                   Nothing found. Add it as a custom food and it'll be there next time.
@@ -1209,6 +1242,15 @@ function AddFoodSheet({ section, catalog, meals, saving, onClose, onAdd, onAddMe
           )}
         </div>
       </div>
+
+      {scanning && (
+        <BarcodeScanner
+          busy={scanBusy}
+          error={scanErr}
+          onDetected={handleScan}
+          onClose={() => setScanning(false)}
+        />
+      )}
     </div>
   );
 }
@@ -1322,8 +1364,25 @@ export const FOOD_STYLES = `
   .food-sheet-tabs { margin: 0 18px 12px; align-self: flex-start; }
   .food-sheet-body { flex: 1; overflow-y: auto; padding: 0 18px 20px; -webkit-overflow-scrolling: touch; }
 
-  .food-search-box { display: flex; align-items: center; gap: 8px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; color: var(--text-faint); }
-  .food-search-box input { flex: 1; background: transparent; border: none; outline: none; color: var(--text); font-family: 'Inter', sans-serif; font-size: 14.5px; }
+  .food-search-row { display: flex; align-items: stretch; gap: 8px; }
+  .food-search-box { flex: 1; display: flex; align-items: center; gap: 8px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; color: var(--text-faint); min-width: 0; }
+  .food-search-box input { flex: 1; min-width: 0; background: transparent; border: none; outline: none; color: var(--text); font-family: 'Inter', sans-serif; font-size: 14.5px; }
+  .scan-btn { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; flex-shrink: 0; padding: 6px 12px; border-radius: 12px; border: 1px solid var(--border); background: var(--panel-2); color: var(--text-dim); font-family: 'JetBrains Mono', monospace; font-size: 9.6px; letter-spacing: 0.05em; text-transform: uppercase; cursor: pointer; }
+  .scan-btn:hover { color: var(--text); border-color: var(--text-dim); }
+  .food-attribution { font-family: 'JetBrains Mono', monospace; font-size: 10.6px; color: var(--text-faint); margin-top: 14px; padding-bottom: 4px; }
+
+  .scanner-backdrop { position: fixed; inset: 0; z-index: 70; background: rgba(12,13,16,0.88); display: flex; align-items: center; justify-content: center; padding: 16px; }
+  .scanner-frame { width: 100%; max-width: 520px; background: var(--panel); border-radius: 18px; overflow: hidden; }
+  .scanner-head { display: flex; align-items: center; justify-content: space-between; padding: 13px 15px; font-family: 'Inter', sans-serif; font-size: 14.5px; font-weight: 600; }
+  .scanner-head span { display: flex; align-items: center; gap: 7px; }
+  .scanner-video-wrap { position: relative; background: #000; aspect-ratio: 4 / 3; }
+  .scanner-video { width: 100%; height: 100%; object-fit: cover; display: block; }
+  /* A window to aim through — barcodes read best filling the middle band. */
+  .scanner-reticle { position: absolute; left: 8%; right: 8%; top: 32%; height: 36%; border: 2px solid rgba(255,255,255,0.85); border-radius: 12px; box-shadow: 0 0 0 9999px rgba(0,0,0,0.28); }
+  .scanner-overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 9px; background: rgba(0,0,0,0.55); color: #fff; font-family: 'JetBrains Mono', monospace; font-size: 12.4px; }
+  .scanner-error { display: flex; align-items: center; gap: 7px; padding: 11px 15px; background: #fcebe9; color: #a03d33; font-size: 12.8px; line-height: 1.5; }
+  .scanner-error svg { flex-shrink: 0; }
+  .scanner-hint { font-family: 'JetBrains Mono', monospace; font-size: 11.2px; color: var(--text-faint); padding: 11px 15px 14px; line-height: 1.5; }
   .food-result-group { margin-top: 16px; }
   .food-result-head { font-family: 'JetBrains Mono', monospace; font-size: 10.6px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-faint); margin-bottom: 6px; }
   .food-result { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; width: 100%; text-align: left; background: transparent; border: none; border-bottom: 1px solid var(--border); padding: 10px 4px; cursor: pointer; color: var(--text); }
@@ -1360,7 +1419,13 @@ export const FOOD_STYLES = `
     .food-ai-actions { flex-wrap: wrap; }
     .food-ai-actions .btn-primary { width: 100%; justify-content: center; margin-left: 0; }
     .food-sheet-backdrop { padding: 0; }
-    .food-sheet { max-width: none; max-height: 100vh; height: 100%; border-radius: 0; padding-top: env(safe-area-inset-top); }
+    /* dvh, not vh: an open keyboard doesn't shrink vh, which pushed the Add
+       button underneath it. Plain vh stays as the fallback for iOS < 16.4. */
+    .food-sheet { max-width: none; max-height: 100vh; height: 100vh; border-radius: 0; padding-top: env(safe-area-inset-top); }
+    .food-sheet { max-height: 100dvh; height: 100dvh; }
+    .food-row-edit .qty-input { width: 72px; }
+    /* Two columns of 16px fields don't fit a phone — one column each. */
+    .food-custom-grid { grid-template-columns: 1fr !important; }
     .food-day-nav { flex-wrap: wrap; }
     .food-jump-today { margin-left: 0; }
     .food-week-nav { flex-wrap: wrap; }

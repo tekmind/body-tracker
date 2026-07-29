@@ -18,10 +18,24 @@
 // where the log changes.
 
 import Anthropic from "@anthropic-ai/sdk";
-import { searchUsda, searchOff, matchScore, readJsonBody } from "./_food.js";
+import { searchUsda, searchOff, searchNutritionix, matchScore, readJsonBody } from "./_food.js";
 
-const MODEL = "claude-opus-5";
+// Haiku is the cheapest tier and this is a well-scoped extraction task: a
+// strict JSON schema, a short sentence, and a list of ids to match against.
+// Roughly a tenth the cost of running it on Opus. Override with
+// FOOD_PARSE_MODEL if matching quality ever disappoints — no code change.
+const MODEL = process.env.FOOD_PARSE_MODEL || "claude-haiku-4-5";
 const MAX_ITEMS = 12;
+
+// output_config.effort is rejected outright by the older/cheaper models, and
+// server-side refusal fallback only exists on the frontier ones. Both are sent
+// only where they apply, so switching models via the env var can't start
+// 400ing (or, worse, silently cost a wasted round trip on every request).
+const SUPPORTS_EFFORT = new Set([
+  "claude-opus-5", "claude-opus-4-8", "claude-opus-4-7", "claude-opus-4-6",
+  "claude-sonnet-5", "claude-sonnet-4-6", "claude-fable-5",
+]);
+const SUPPORTS_REFUSAL_FALLBACK = new Set(["claude-opus-5", "claude-fable-5"]);
 
 const SECTIONS = ["breakfast", "lunch", "snack_early", "snack_late", "dinner", "dessert"];
 
@@ -106,10 +120,15 @@ function buildUserMessage({ transcript, localTime, section, history }) {
   return lines.join("\n");
 }
 
-// Server-side fallback re-runs a declined request on another model inside the
-// same call. It's a beta, so a rejected beta flag falls back to the plain
-// endpoint rather than failing the user's meal entry.
+// On the frontier models, safety classifiers can decline a request outright;
+// server-side fallback re-runs it on another model inside the same call. It's
+// a beta, so a rejected beta flag falls back to the plain endpoint rather than
+// failing someone's dinner. Models that can't refuse this way skip it entirely
+// — attempting it would just buy a guaranteed 400 and a retry on every meal.
 async function callClaude(client, params) {
+  if (!SUPPORTS_REFUSAL_FALLBACK.has(params.model)) {
+    return client.messages.create(params);
+  }
   try {
     return await client.beta.messages.create({
       ...params,
@@ -154,8 +173,8 @@ export default async function handler(req, res) {
       max_tokens: 4096,
       system: SYSTEM,
       output_config: {
-        effort: "low",
         format: { type: "json_schema", schema: PARSE_SCHEMA },
+        ...(SUPPORTS_EFFORT.has(MODEL) ? { effort: "low" } : {}),
       },
       messages: [{ role: "user", content: buildUserMessage({ ...body, transcript }) }],
     });
@@ -192,13 +211,15 @@ export default async function handler(req, res) {
   // Only the items history didn't already answer need a database round trip.
   const needsLookup = items.filter(i => !i.history_id);
   const results = await Promise.all(needsLookup.map(async (item) => {
-    const [usda, off] = await Promise.allSettled([
+    const settled = await Promise.allSettled([
       searchUsda(item.query, 8),
+      searchNutritionix(item.query, 3),
       searchOff(item.query, 4),
     ]);
     const foods = [];
-    if (usda.status === "fulfilled" && !usda.value.error) foods.push(...usda.value.foods);
-    if (off.status === "fulfilled") foods.push(...off.value.foods);
+    for (const r of settled) {
+      if (r.status === "fulfilled" && !r.value.error) foods.push(...r.value.foods);
+    }
     foods.sort((a, b) => matchScore(item.query, b) - matchScore(item.query, a));
     return foods.slice(0, 5);
   }));

@@ -21,17 +21,56 @@ Until this runs, the Food tab shows a banner telling you to run it.
 
 ## 2. USDA FoodData Central key (food search)
 
-Search hits two databases: **USDA FoodData Central** for generic whole foods
-("white rice", "chicken breast") and **Open Food Facts** for packaged products.
-Open Food Facts needs no key; USDA needs a free one.
+Search hits three databases at once and merges them, because they cover
+different ground:
+
+| Source | Good at | Key needed |
+| --- | --- | --- |
+| **USDA FoodData Central** | Generic whole foods, and — via the Survey (FNDDS) set — everyday prepared foods like "pizza, cheese, thin crust" | Free, required |
+| **Nutritionix** | Restaurant menu items and grocery brands, which USDA barely covers | Free tier, optional |
+| **Open Food Facts** | Packaged products worldwide, and by far the best barcode coverage | None |
+
+Any of them failing, or having no key, still returns the others' results.
 
 1. Get a key at <https://fdc.nal.usda.gov/api-key-signup.html> (instant, no cost).
 2. Add it to your Vercel project as `USDA_API_KEY` (Settings → Environment
    Variables), and to your local `.env` if you run `npm run dev`.
 3. Redeploy.
 
-Without the key, search silently falls back to Open Food Facts alone and says
-so in the results — fine for barcoded packages, poor for generic foods.
+Without the key, search says so in the results and falls back to the other
+sources — fine for barcoded packages, poor for generic foods.
+
+### Nutritionix (optional, recommended)
+
+Sign up at <https://developer.nutritionix.com/> and add `NUTRITIONIX_APP_ID`
+and `NUTRITIONIX_APP_KEY`. The free tier is **500 requests/day**, which is
+generous for one person but is a daily cap rather than a monthly pool. Their
+terms require visible attribution wherever their data appears; the search
+sheet shows it automatically, and only when one of their results is on screen.
+
+This is what closes most of the gap against a commercial tracker — restaurant
+menus are the category USDA has essentially nothing for.
+
+### Why not FatSecret
+
+FatSecret has the largest free food database of the lot, but its OAuth 2.0
+requires **IP allowlisting** — you register up to 15 static addresses against
+your key and requests from anywhere else are rejected. Vercel's serverless
+functions egress from dynamic IPs, so this can't work without standing up a
+separate always-on proxy with a static IP. Not worth the infrastructure for a
+personal app; revisit if this ever runs somewhere with a fixed address.
+
+## 2b. Barcode scanning
+
+The **Scan** button next to the search box reads a package barcode with the
+camera and looks it up against Open Food Facts, then Nutritionix, then USDA's
+branded set.
+
+No key and no service needed. Two decoders are used because **no browser on
+iOS implements the Barcode Detection API** — Chrome on Android gets the fast
+native path, and everything else (including Safari on your iPhone) falls back
+to ZXing compiled to JavaScript. ZXing is a ~450KB chunk loaded on demand the
+first time you open the scanner, so it never affects normal startup.
 
 ## 3. Anthropic API key (voice entry)
 
@@ -41,6 +80,24 @@ The "say what you ate" button sends your sentence to Claude
 
 Without it, everything else in the tab works and that one button reports that
 it's switched off.
+
+### Which model, and what it costs
+
+Parsing runs on **Claude Haiku 4.5**, the cheapest tier. The task is
+schema-constrained extraction — split a sentence into foods, quantities, and
+units, and match against a list of ids — which doesn't need a frontier model.
+Ballpark **a third of a cent per spoken meal**, so a few dollars a year at
+several entries a day.
+
+To change it, set `FOOD_PARSE_MODEL` in the Vercel environment variables (e.g.
+`claude-sonnet-5`) and redeploy — no code change. `api/food-parse.js` sends
+per-model parameters like `effort` only to the models that accept them, so
+switching tiers can't start throwing 400s.
+
+Two things make a cheap model safe here: a `history_id` the model invents that
+isn't in the list you sent gets discarded server-side and falls through to a
+database search, and every parse lands in a review card with a per-item "wrong
+food?" picker and undo-all before you move on.
 
 ## How things fit together
 
