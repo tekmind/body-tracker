@@ -429,9 +429,12 @@ export default function LabsTab() {
 
       {err && <div className="banner-error"><AlertCircle size={13} /> {err}</div>}
 
-      {/* ---------------- Add + summary ---------------- */}
-      <div className="panel labs-head-panel">
-        <div className="panel-head">
+      {/* ---------------- Add + summary ----------------
+           The summary cards aren't in a panel: on the Home tab cards sit
+           straight on the page background, and the Food tab's day tiles do
+           the same. Inside a panel they were white cards on white. */}
+      <div className="labs-head">
+        <div className="panel-head labs-head-row">
           <h2 className="panel-title"><FlaskConical size={14} /> Lab results</h2>
           <div className="panel-head-actions labs-head-actions">
             <button className="btn-primary sm" onClick={() => fileRef.current?.click()} disabled={busy}>
@@ -450,45 +453,49 @@ export default function LabsTab() {
           style={{ display: "none" }}
           onChange={(e) => { handleFiles(e.target.files); e.target.value = ""; }}
         />
+      </div>
 
-        {panels.length === 0 ? (
+      {panels.length === 0 ? (
+        <div className="panel labs-empty-panel">
           <div className="labs-empty">
             <p>Nothing here yet. Pick the PDFs out of your <strong>labs</strong> folder — or photograph the results page — and they'll be read into rows you can check before anything is saved.</p>
             <p className="labs-empty-sub">Several files at once is fine; you review them one at a time.</p>
           </div>
-        ) : (
-          <div className="labs-summary">
-            <div className="labs-summary-tile">
-              <div className="labs-summary-label">Latest draw</div>
-              <div className="labs-summary-value">{latestPanel?.date || "–"}</div>
-              <div className="labs-summary-sub">{latestPanel?.lab_name || latestPanel?.panel_name || " "}</div>
-            </div>
-            <div className="labs-summary-tile">
-              <div className="labs-summary-label">Reports</div>
-              <div className="labs-summary-value">{panels.length}</div>
-              <div className="labs-summary-sub">{results.length} results</div>
-            </div>
-            <div className={"labs-summary-tile" + (latestFlagged.length ? " labs-tile-off" : " labs-tile-ok")}>
-              <div className="labs-summary-label">Out of range</div>
-              <div className="labs-summary-value">{latestFlagged.length}</div>
-              <div className="labs-summary-sub">on the latest draw</div>
-            </div>
+        </div>
+      ) : (
+        <div className="labs-summary">
+          <div className="labs-summary-tile">
+            <div className="labs-summary-label">Latest draw</div>
+            <div className="labs-summary-value">{latestPanel?.date || "–"}</div>
+            <div className="labs-summary-sub">{latestPanel?.lab_name || latestPanel?.panel_name || " "}</div>
           </div>
-        )}
+          <div className="labs-summary-tile">
+            <div className="labs-summary-label">Reports</div>
+            <div className="labs-summary-value">{panels.length}</div>
+            <div className="labs-summary-sub">{results.length} results</div>
+          </div>
+          {/* Tinted like the Food tab's macro tiles and the Home hero cards —
+              out of range is the one status here worth colouring. */}
+          <div className={"labs-summary-tile" + (latestFlagged.length ? " labs-tile-off" : " labs-tile-ok")}>
+            <div className="labs-summary-label">Out of range</div>
+            <div className="labs-summary-value">{latestFlagged.length}</div>
+            <div className="labs-summary-sub">on the latest draw</div>
+          </div>
+        </div>
+      )}
 
-        {latestFlagged.length > 0 && (
-          <div className="labs-flag-strip">
-            {latestFlagged.map(r => (
-              <button key={r.id} className={"labs-flag-chip" + flagClass(r.flag, r.marker)} onClick={() => setTrendKey(r.marker)}>
-                <span className="lfc-name">{markerDisplayName(r.marker, r.name)}</span>
-                <span className="lfc-value">
-                  {fmtValue(r.value)} {r.unit || ""} {r.flag === "high" ? <ArrowUp size={11} /> : <ArrowDown size={11} />}
-                </span>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
+      {latestFlagged.length > 0 && (
+        <div className="labs-flag-strip">
+          {latestFlagged.map(r => (
+            <button key={r.id} className={"labs-flag-chip" + flagClass(r.flag, r.marker)} onClick={() => setTrendKey(r.marker)}>
+              <span className="lfc-name">{markerDisplayName(r.marker, r.name)}</span>
+              <span className="lfc-value">
+                {fmtValue(r.value)} {r.unit || ""} {r.flag === "high" ? <ArrowUp size={11} /> : <ArrowDown size={11} />}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
 
       {panels.length > 0 && (
         <>
@@ -947,39 +954,46 @@ export const LAB_STYLES = `
 
   .labs-search-box { display: flex; align-items: center; gap: 8px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; color: var(--text-faint); min-width: 0; }
   .labs-search-box input { flex: 1; min-width: 0; background: transparent; border: none; outline: none; color: var(--text); font-family: 'Inter', sans-serif; font-size: 14.5px; }
-  .labs-empty-row { font-family: 'JetBrains Mono', monospace; font-size: 12.4px; color: var(--text-faint); padding: 12px 2px 14px; }
+  .labs-empty-row { font-family: 'Inter', sans-serif; font-size: 13.2px; color: var(--text-faint); padding: 12px 2px 14px; }
 
   .labs-note { background: #f4faf1; border: 1px solid #cfe6c4; border-radius: 12px; padding: 10px 13px; margin-bottom: 12px; }
   .labs-note.labs-note-warn { background: #fdf1dd; border-color: #ecd3a4; }
-  .labs-note-line { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; font-size: 12.8px; color: #3a6b2c; line-height: 1.5; }
+  .labs-note-line { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; font-size: 13.2px; color: #2b6e1e; line-height: 1.5; }
   .labs-note-warn .labs-note-line { color: #8a5b13; }
   .labs-note-line svg { flex-shrink: 0; }
-  .labs-conf { font-family: 'JetBrains Mono', monospace; font-size: 9.6px; letter-spacing: 0.05em; text-transform: uppercase; padding: 2px 7px; border-radius: 999px; }
-  .labs-conf-high { background: rgba(54,135,39,0.15); color: #3a6b2c; }
+  .labs-conf { font-family: 'Inter', sans-serif; font-size: 10.4px; letter-spacing: 0.05em; text-transform: uppercase; padding: 2px 7px; border-radius: 999px; }
+  .labs-conf-high { background: rgba(54,135,39,0.15); color: #2b6e1e; }
   .labs-conf-medium { background: rgba(219,162,54,0.2); color: #8a5b13; }
-  .labs-conf-low { background: rgba(199,58,47,0.14); color: #a03d33; }
-  .labs-note-detail { font-family: 'JetBrains Mono', monospace; font-size: 11.2px; color: var(--text-dim); margin-top: 6px; line-height: 1.5; }
+  .labs-conf-low { background: rgba(199,58,47,0.14); color: #a5342a; }
+  .labs-note-detail { font-family: 'Inter', sans-serif; font-size: 12.6px; color: var(--text-dim); margin-top: 6px; line-height: 1.5; }
 
-  .labs-head-panel { padding-bottom: 16px; }
+  .labs-head { margin-bottom: 12px; }
+  .labs-head-row { margin-bottom: 0; }
   .labs-head-actions { gap: 10px; flex: 1 1 auto; min-width: 0; justify-content: flex-end; }
+  .labs-empty-panel { padding-bottom: 18px; }
   .labs-empty { font-size: 13.8px; line-height: 1.6; color: var(--text-dim); padding: 6px 2px 2px; }
   .labs-empty p { margin: 0 0 8px; }
-  .labs-empty-sub { font-family: 'JetBrains Mono', monospace; font-size: 11.6px; color: var(--text-faint); }
+  .labs-empty-sub { font-family: 'Inter', sans-serif; font-size: 12.6px; color: var(--text-faint); }
 
-  .labs-summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 6px; }
+  .labs-summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 14px; }
   /* min-width: 0 — a grid item defaults to auto, and the nowrap sub-line
-     under it then pushes the third tile past the panel edge. */
-  .labs-summary-tile { min-width: 0; background: var(--panel-2); border: 1px solid var(--border); border-radius: 14px; padding: 13px 14px; }
-  .labs-summary-tile.labs-tile-ok { background: #eef6ea; border-color: #cfe6c4; }
-  .labs-summary-tile.labs-tile-off { background: #fcebe9; border-color: #eec4be; }
-  .labs-summary-label { font-family: 'JetBrains Mono', monospace; font-size: 10.4px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-dim); }
-  .labs-summary-value { font-family: 'Space Grotesk', sans-serif; font-size: 24px; font-weight: 700; line-height: 1.2; margin-top: 5px; }
-  .labs-summary-sub { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-faint); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+     under it then pushes the third card past the grid's edge. */
+  .labs-summary-tile { min-width: 0; background: var(--panel); border: 1px solid var(--border); border-radius: 18px; padding: 14px 15px; box-shadow: 0 1px 2px rgba(20, 22, 27, 0.05), 0 4px 16px rgba(20, 22, 27, 0.05); }
+  /* Home's hero-card tints, the same pair the Food tab's macro tiles use. */
+  .labs-summary-tile.labs-tile-ok { background: #ddefd4; border-color: #cfe6c4; }
+  .labs-summary-tile.labs-tile-off { background: #f8ddd9; border-color: #eec4be; }
+  .labs-tile-ok .labs-summary-label, .labs-tile-ok .labs-summary-value { color: #2b6e1e; }
+  .labs-tile-ok .labs-summary-sub { color: rgba(43, 110, 30, 0.72); }
+  .labs-tile-off .labs-summary-label, .labs-tile-off .labs-summary-value { color: #a5342a; }
+  .labs-tile-off .labs-summary-sub { color: rgba(165, 52, 42, 0.72); }
+  .labs-summary-label { font-family: 'Inter', sans-serif; font-size: 13.2px; font-weight: 600; letter-spacing: 0.01em; color: var(--text-dim); }
+  .labs-summary-value { font-family: 'Inter', sans-serif; letter-spacing: -0.02em; font-size: 30px; font-weight: 700; line-height: 1.1; margin-top: 6px; }
+  .labs-summary-sub { font-family: 'Inter', sans-serif; font-size: 13.2px; color: var(--text-dim); margin-top: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-  .labs-flag-strip { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
-  .labs-flag-chip { display: inline-flex; align-items: center; gap: 8px; border-radius: 999px; padding: 6px 13px; border: 1px solid #eec4be; background: #fcebe9; color: #a03d33; font-family: 'Inter', sans-serif; font-size: 12.8px; cursor: pointer; }
-  .labs-flag-chip.lab-flag-ok { border-color: #cfe6c4; background: #eef6ea; color: #3a6b2c; }
-  .lfc-value { display: inline-flex; align-items: center; gap: 3px; font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 600; }
+  .labs-flag-strip { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+  .labs-flag-chip { display: inline-flex; align-items: center; gap: 8px; border-radius: 999px; padding: 6px 13px; border: 1px solid #eec4be; background: #f8ddd9; color: #a5342a; font-family: 'Inter', sans-serif; font-size: 13.2px; cursor: pointer; }
+  .labs-flag-chip.lab-flag-ok { border-color: #cfe6c4; background: #ddefd4; color: #2b6e1e; }
+  .lfc-value { display: inline-flex; align-items: center; gap: 3px; font-family: 'Inter', sans-serif; font-size: 13px; font-weight: 700; letter-spacing: -0.01em; }
 
   .labs-view-toggle { display: inline-flex; margin-bottom: 14px; }
 
@@ -987,31 +1001,31 @@ export const LAB_STYLES = `
   .labs-panel { padding: 0; overflow: hidden; }
   .labs-panel-head { display: flex; align-items: center; gap: 10px; width: 100%; background: transparent; border: none; padding: 14px 16px; cursor: pointer; color: var(--text); text-align: left; }
   .labs-panel-head:hover { background: var(--panel-2); }
-  .labs-panel-date { font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 600; flex-shrink: 0; }
+  .labs-panel-date { font-family: 'Inter', sans-serif; font-size: 13.5px; font-weight: 600; flex-shrink: 0; }
   .labs-panel-name { flex: 1; min-width: 0; font-size: 14.2px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .labs-panel-lab { font-weight: 400; color: var(--text-faint); }
-  .labs-panel-counts { display: flex; align-items: center; gap: 8px; flex-shrink: 0; font-family: 'JetBrains Mono', monospace; font-size: 11.2px; color: var(--text-faint); }
-  .labs-panel-flagged { background: #fcebe9; color: #a03d33; padding: 2px 8px; border-radius: 999px; }
+  .labs-panel-counts { display: flex; align-items: center; gap: 8px; flex-shrink: 0; font-family: 'Inter', sans-serif; font-size: 12.6px; color: var(--text-faint); }
+  .labs-panel-flagged { background: #f8ddd9; color: #a5342a; padding: 2px 8px; border-radius: 999px; font-weight: 600; }
   .labs-panel-body { padding: 0 16px 14px; }
-  .labs-panel-note { font-family: 'JetBrains Mono', monospace; font-size: 11.4px; color: var(--text-faint); line-height: 1.55; padding-bottom: 10px; }
+  .labs-panel-note { font-family: 'Inter', sans-serif; font-size: 12.6px; color: var(--text-faint); line-height: 1.55; padding-bottom: 10px; }
   .labs-panel-foot { display: flex; align-items: center; gap: 10px; padding-top: 12px; }
-  .labs-file { display: inline-flex; align-items: center; gap: 5px; flex: 1; min-width: 0; font-family: 'JetBrains Mono', monospace; font-size: 10.8px; color: var(--text-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .labs-file { display: inline-flex; align-items: center; gap: 5px; flex: 1; min-width: 0; font-family: 'Inter', sans-serif; font-size: 12.2px; color: var(--text-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   .labs-group { margin-bottom: 4px; }
-  .labs-group-head { font-family: 'JetBrains Mono', monospace; font-size: 10.4px; letter-spacing: 0.07em; text-transform: uppercase; color: var(--text-faint); padding: 12px 2px 5px; }
+  .labs-group-head { font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-faint); padding: 13px 2px 5px; }
   .labs-result-row { display: flex; align-items: center; gap: 12px; padding: 8px 2px; border-bottom: 1px solid var(--border); }
   .labs-result-row:last-child { border-bottom: none; }
   .lrr-name { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 1px; background: transparent; border: none; padding: 0; text-align: left; cursor: pointer; color: var(--text); font-size: 14px; }
   .lrr-name:hover { color: var(--cut); }
-  .lrr-asprinted { font-family: 'JetBrains Mono', monospace; font-size: 10.6px; color: var(--text-faint); }
-  .lrr-value { display: inline-flex; align-items: center; gap: 3px; flex-shrink: 0; min-width: 96px; justify-content: flex-end; font-family: 'Space Grotesk', sans-serif; font-size: 15px; font-weight: 700; }
-  .lrr-unit { font-family: 'JetBrains Mono', monospace; font-size: 10.8px; font-weight: 500; color: var(--text-faint); }
-  .lrr-value.lab-flag-off { color: #a03d33; }
-  .lrr-value.lab-flag-ok { color: #3a6b2c; }
-  .lrr-range { flex-shrink: 0; min-width: 92px; text-align: right; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-faint); }
+  .lrr-asprinted { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--text-faint); }
+  .lrr-value { display: inline-flex; align-items: center; gap: 3px; flex-shrink: 0; min-width: 96px; justify-content: flex-end; font-family: 'Inter', sans-serif; letter-spacing: -0.02em; font-size: 17px; font-weight: 700; }
+  .lrr-unit { font-family: 'Inter', sans-serif; font-size: 12px; font-weight: 500; color: var(--text-faint); letter-spacing: 0; }
+  .lrr-value.lab-flag-off { color: #a5342a; }
+  .lrr-value.lab-flag-ok { color: #2b6e1e; }
+  .lrr-range { flex-shrink: 0; min-width: 92px; text-align: right; font-family: 'Inter', sans-serif; font-size: 12.6px; color: var(--text-faint); }
   .lrr-actions { display: flex; gap: 4px; flex-shrink: 0; }
   .lrr-edit { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-  .lrr-edit input { width: 68px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 7px; color: var(--text); padding: 5px 7px; font-family: 'JetBrains Mono', monospace; font-size: 12px; outline: none; }
+  .lrr-edit input { width: 68px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 7px; color: var(--text); padding: 5px 7px; font-family: 'Inter', sans-serif; font-size: 12px; outline: none; }
 
   .labs-marker-panel { padding-bottom: 12px; }
   .labs-marker-search { margin-bottom: 6px; }
@@ -1021,17 +1035,17 @@ export const LAB_STYLES = `
   .labs-marker-row:hover { background: var(--panel-2); }
   .lmr-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
   .lmr-name { font-size: 14.2px; font-weight: 500; }
-  .lmr-meta { font-family: 'JetBrains Mono', monospace; font-size: 10.8px; color: var(--text-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .lmr-value { flex-shrink: 0; min-width: 88px; text-align: right; font-family: 'Space Grotesk', sans-serif; font-size: 15.5px; font-weight: 700; }
-  .lmr-value.lab-flag-off { color: #a03d33; }
-  .lmr-value.lab-flag-ok { color: #3a6b2c; }
-  .lmr-unit { font-family: 'JetBrains Mono', monospace; font-size: 10.6px; font-weight: 500; color: var(--text-faint); }
-  .lmr-delta { flex-shrink: 0; min-width: 56px; text-align: right; font-family: 'JetBrains Mono', monospace; font-size: 11.6px; color: var(--text-dim); }
+  .lmr-meta { font-family: 'Inter', sans-serif; font-size: 12.2px; color: var(--text-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lmr-value { flex-shrink: 0; min-width: 88px; text-align: right; font-family: 'Inter', sans-serif; letter-spacing: -0.02em; font-size: 17px; font-weight: 700; }
+  .lmr-value.lab-flag-off { color: #a5342a; }
+  .lmr-value.lab-flag-ok { color: #2b6e1e; }
+  .lmr-unit { font-family: 'Inter', sans-serif; font-size: 12px; font-weight: 500; color: var(--text-faint); letter-spacing: 0; }
+  .lmr-delta { flex-shrink: 0; min-width: 56px; text-align: right; font-family: 'Inter', sans-serif; font-size: 13px; font-weight: 600; color: var(--text-dim); }
   .lmr-delta-none { color: var(--text-faint); }
   .lmr-chev { flex-shrink: 0; color: var(--text-faint); }
 
   .labs-queue { display: flex; align-items: center; gap: 8px; margin: 0 18px 12px; padding: 8px 10px; background: var(--panel-2); border-radius: 10px; }
-  .labs-queue-label { flex: 1; min-width: 0; font-family: 'JetBrains Mono', monospace; font-size: 11.4px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .labs-queue-label { flex: 1; min-width: 0; font-family: 'Inter', sans-serif; font-size: 12.6px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .labs-queue-name { color: var(--text-faint); }
   .labs-queue-dots { display: flex; gap: 4px; flex-shrink: 0; }
   .lqd { width: 7px; height: 7px; border-radius: 999px; background: var(--border); }
@@ -1041,11 +1055,11 @@ export const LAB_STYLES = `
   .lqd-at { box-shadow: 0 0 0 2px rgba(20,22,27,0.18); }
 
   .labs-parsing { display: flex; align-items: center; gap: 12px; padding: 18px 4px; font-size: 13.5px; }
-  .labs-parsing-sub { font-family: 'JetBrains Mono', monospace; font-size: 11.4px; color: var(--text-faint); margin-top: 3px; line-height: 1.5; }
+  .labs-parsing-sub { font-family: 'Inter', sans-serif; font-size: 12.6px; color: var(--text-faint); margin-top: 3px; line-height: 1.5; }
 
   .labs-meta-grid { grid-template-columns: repeat(3, 1fr); margin-bottom: 4px; }
   .labs-draft-head { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 14px 2px 8px; font-size: 13.2px; border-bottom: 1px solid var(--border); }
-  .labs-draft-unknown { flex: 1; min-width: 180px; font-family: 'JetBrains Mono', monospace; font-size: 10.8px; color: var(--text-faint); line-height: 1.5; }
+  .labs-draft-unknown { flex: 1; min-width: 180px; font-family: 'Inter', sans-serif; font-size: 12.2px; color: var(--text-faint); line-height: 1.5; }
   .labs-add-row { margin-left: auto; }
   .labs-draft-rows { display: flex; flex-direction: column; }
   .labs-draft-row { display: flex; align-items: flex-start; gap: 10px; flex-wrap: wrap; padding: 9px 2px; border-bottom: 1px solid var(--border); }
@@ -1059,29 +1073,30 @@ export const LAB_STYLES = `
   .ldf-val { flex: 1 1 68px; }
   .ldf-unit { flex: 1 1 68px; }
   .ldf-ref { flex: 1 1 56px; }
-  .labs-draft-mapped { flex-basis: 100%; padding-left: 28px; font-family: 'JetBrains Mono', monospace; font-size: 10.6px; color: var(--text-faint); line-height: 1.5; }
+  .labs-draft-mapped { flex-basis: 100%; padding-left: 28px; font-family: 'Inter', sans-serif; font-size: 12.2px; color: var(--text-faint); line-height: 1.5; }
   .ldm-text { color: var(--text-dim); }
   .labs-sheet-error { margin-top: 14px; margin-bottom: 0; }
   .labs-draft-actions { display: flex; align-items: center; justify-content: flex-end; gap: 12px; padding-top: 16px; }
 
   .labs-trend-chart { padding: 6px 0 4px; }
-  .labs-trend-legend { font-family: 'JetBrains Mono', monospace; font-size: 10.8px; color: var(--text-faint); line-height: 1.55; padding: 8px 2px 0; }
+  .labs-trend-legend { font-family: 'Inter', sans-serif; font-size: 12.6px; color: var(--text-faint); line-height: 1.55; padding: 8px 2px 0; }
   .labs-trend-rows { display: flex; flex-direction: column; margin-top: 12px; }
   .labs-trend-row { display: flex; align-items: center; gap: 12px; padding: 9px 2px; border-bottom: 1px solid var(--border); }
   .labs-trend-row:last-child { border-bottom: none; }
-  .ltr-date { flex-shrink: 0; min-width: 66px; font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--text-dim); }
-  .ltr-value { flex-shrink: 0; min-width: 84px; font-family: 'Space Grotesk', sans-serif; font-size: 15px; font-weight: 700; }
-  .ltr-value.lab-flag-off { color: #a03d33; }
-  .ltr-value.lab-flag-ok { color: #3a6b2c; }
-  .ltr-unit { font-family: 'JetBrains Mono', monospace; font-size: 10.6px; font-weight: 500; color: var(--text-faint); }
-  .ltr-range { flex-shrink: 0; min-width: 88px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-faint); }
-  .ltr-as { flex: 1; min-width: 0; font-family: 'JetBrains Mono', monospace; font-size: 10.6px; color: var(--text-faint); text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ltr-date { flex-shrink: 0; min-width: 66px; font-family: 'Inter', sans-serif; font-size: 13.2px; color: var(--text-dim); }
+  .ltr-value { flex-shrink: 0; min-width: 84px; font-family: 'Inter', sans-serif; letter-spacing: -0.02em; font-size: 17px; font-weight: 700; }
+  .ltr-value.lab-flag-off { color: #a5342a; }
+  .ltr-value.lab-flag-ok { color: #2b6e1e; }
+  .ltr-unit { font-family: 'Inter', sans-serif; font-size: 12px; font-weight: 500; color: var(--text-faint); letter-spacing: 0; }
+  .ltr-range { flex-shrink: 0; min-width: 88px; font-family: 'Inter', sans-serif; font-size: 12.6px; color: var(--text-faint); }
+  .ltr-as { flex: 1; min-width: 0; font-family: 'Inter', sans-serif; font-size: 12px; color: var(--text-faint); text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   @media (max-width: 860px) {
-    .labs-summary { gap: 8px; }
-    .labs-summary-tile { padding: 10px 11px; }
-    .labs-summary-value { font-size: 17px; }
-    .labs-summary-sub { font-size: 10px; }
+    /* Two columns rather than smaller type — the same trade the Home tab's
+       stat grid makes at this width. The out-of-range card takes the whole
+       second row, which is the one you want to read first anyway. */
+    .labs-summary { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+    .labs-summary-tile:last-child { grid-column: 1 / -1; }
     .labs-meta-grid { grid-template-columns: repeat(2, 1fr); }
   }
 

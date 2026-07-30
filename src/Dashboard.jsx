@@ -14,6 +14,7 @@ import {
 } from "./dateUtils.js";
 import FoodTab from "./FoodTab.jsx";
 import LabsTab from "./LabsTab.jsx";
+import { carbGoalFrom, macroCalories, bufferRangeLabel, calBandFor } from "./foodMath.js";
 
 const STORAGE_KEY = "entries";
 const GOALS_KEY = "phase_goals";
@@ -562,7 +563,54 @@ function EntryForm({ form, setForm, onSave, onCancel, isEdit, error }) {
   );
 }
 
-function GoalForm({ form, setForm, onSave, onCancel, isEdit, error }) {
+/**
+ * Spells out the two goals that aren't typed in directly: carbs, which are
+ * whatever calories protein and fat leave behind, and the amber alert bands.
+ * `goal` is the goal as it will actually be saved — blank fields resolved
+ * against the previous goal — so the numbers here match what the Food tab
+ * will show rather than only what's on screen.
+ */
+function GoalMacroNote({ goal }) {
+  if (!goal) return null;
+  const { calGoal, proteinGoal, fatGoal, calBuffer, proteinBuffer } = goal;
+  const carbs = carbGoalFrom(calGoal, proteinGoal, fatGoal);
+  const spent = macroCalories(proteinGoal, fatGoal);
+  const over = calGoal != null && spent > calGoal;
+
+  return (
+    <div className={"goal-macro-note" + (over ? " goal-macro-note-warn" : "")}>
+      {carbs == null ? (
+        <span>Carbs are worked out from the other three — set a calorie, protein and fat goal and the number appears here.</span>
+      ) : over ? (
+        <span>
+          <strong>{proteinGoal}g protein and {fatGoal}g fat come to {spent.toLocaleString()} kcal</strong>, which is
+          already past the {calGoal.toLocaleString()} calorie goal — that leaves nothing for carbs. Raise calories or
+          lower one of the other two.
+        </span>
+      ) : (
+        <span>
+          <strong>Carbs: {carbs}g/day</strong> — what's left of {calGoal.toLocaleString()} kcal after {proteinGoal}g
+          protein and {fatGoal}g fat. It follows the calorie goal, so there's nothing to type in.
+        </span>
+      )}
+      {(calBuffer > 0 || proteinBuffer > 0) && (
+        <span className="goal-macro-buffers">
+          {calBuffer > 0 && calGoal != null && (() => {
+            const band = calBandFor(goal.phase);
+            const range = bufferRangeLabel(calGoal, { band, buffer: calBuffer });
+            if (band === "ceiling") return <>On a cut, calories stay green under {calGoal.toLocaleString()}, turn amber {range}, and red above that. </>;
+            if (band === "floor") return <>On a gain, calories go green at {calGoal.toLocaleString()} and over, amber {range}, and red below that. </>;
+            return <>On maintain, calories are amber {range} — the buffer splits either side — with green below and red above. </>;
+          })()}
+          {proteinBuffer > 0 && proteinGoal != null &&
+            <>Protein is the same in every phase: amber {bufferRangeLabel(proteinGoal, { band: "floor", buffer: proteinBuffer })}, green once you reach {proteinGoal}g.</>}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function GoalForm({ form, setForm, onSave, onCancel, isEdit, error, preview }) {
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
   return (
     <div className="entry-form">
@@ -581,11 +629,13 @@ function GoalForm({ form, setForm, onSave, onCancel, isEdit, error }) {
         <label>Step goal (avg/day)<input value={form.stepGoal} onChange={set("stepGoal")} placeholder="blank = same as last goal" inputMode="numeric" /></label>
         <label>Calorie goal (kcal/day)<input value={form.calGoal} onChange={set("calGoal")} placeholder="blank = same as last goal" inputMode="numeric" /></label>
         <label>Protein goal (g/day)<input value={form.proteinGoal} onChange={set("proteinGoal")} placeholder="blank = same as last goal" inputMode="decimal" /></label>
-        <label>Carb goal (g/day)<input value={form.carbGoal} onChange={set("carbGoal")} placeholder="blank = same as last goal" inputMode="decimal" /></label>
         <label>Fat goal (g/day)<input value={form.fatGoal} onChange={set("fatGoal")} placeholder="blank = same as last goal" inputMode="decimal" /></label>
+        <label>Calorie alert buffer<input value={form.calBuffer} onChange={set("calBuffer")} placeholder="e.g. 100 — blank = no amber band" inputMode="numeric" /></label>
+        <label>Protein alert buffer (g)<input value={form.proteinBuffer} onChange={set("proteinBuffer")} placeholder="e.g. 20 — blank = no amber band" inputMode="numeric" /></label>
         <label>Duration (weeks)<input value={form.durationWeeks} onChange={set("durationWeeks")} placeholder="e.g. 12 — generates the weeks" inputMode="numeric" /></label>
         <label className="notes-field">Notes<input value={form.notes} onChange={set("notes")} placeholder="optional — why the change" /></label>
       </div>
+      <GoalMacroNote goal={preview} />
       {error && <div className="form-error"><AlertCircle size={12} /> {error}</div>}
       <div className="form-actions">
         <button className="btn-ghost" onClick={onCancel}><X size={13} /> Cancel</button>
@@ -705,7 +755,7 @@ export default function Dashboard() {
   const [goals, setGoals] = useState([]);
   const [goalFormOpen, setGoalFormOpen] = useState(false);
   const [goalEditIndex, setGoalEditIndex] = useState(null);
-  const [goalForm, setGoalForm] = useState({ date: "", phase: "Cut", muscleRate: "", fatRate: "", stepGoal: "", calGoal: "", proteinGoal: "", carbGoal: "", fatGoal: "", durationWeeks: "", notes: "" });
+  const [goalForm, setGoalForm] = useState({ date: "", phase: "Cut", muscleRate: "", fatRate: "", stepGoal: "", calGoal: "", proteinGoal: "", fatGoal: "", calBuffer: "", proteinBuffer: "", durationWeeks: "", notes: "" });
   const [goalSaving, setGoalSaving] = useState(false);
   const [goalErrMsg, setGoalErrMsg] = useState("");
 
@@ -1502,11 +1552,28 @@ export default function Dashboard() {
 
   const targetsForDate = useCallback((dateStr) => {
     const goal = goalOnDate(goals, parseDate(dateStr));
+    const cal = goal?.calGoal ?? null;
+    const protein = goal?.proteinGoal ?? null;
+    const fat = goal?.fatGoal ?? null;
+    const calBand = calBandFor(goal?.phase);
     return {
-      cal: goal?.calGoal ?? null,
-      protein: goal?.proteinGoal ?? null,
-      carbs: goal?.carbGoal ?? null,
-      fat: goal?.fatGoal ?? null,
+      cal, protein, fat,
+      phase: goal?.phase ?? null,
+      // Carbs aren't stored — they're the calories protein and fat leave over.
+      carbs: carbGoalFrom(cal, protein, fat),
+      // Which side of the goal the amber band sits on. Calories (and carbs,
+      // being a slice of the same budget) flip with the phase; protein is
+      // always a floor and fat always a ceiling.
+      bands: { cal: calBand, carbs: calBand, protein: "floor", fat: "ceiling" },
+      // Widths of the amber band, per macro. Only calories and protein have
+      // one so far; carbs and fat stay two-state until they're given a buffer,
+      // which is a form field away (see GoalForm).
+      buffers: {
+        cal: goal?.calBuffer ?? null,
+        protein: goal?.proteinBuffer ?? null,
+        carbs: goal?.carbBuffer ?? null,
+        fat: goal?.fatBuffer ?? null,
+      },
     };
   }, [goals]);
 
@@ -1739,8 +1806,12 @@ export default function Dashboard() {
       stepGoal: inherit(f.stepGoal, "stepGoal", null),
       calGoal: inherit(f.calGoal, "calGoal", null),
       proteinGoal: inherit(f.proteinGoal, "proteinGoal", null),
-      carbGoal: inherit(f.carbGoal, "carbGoal", null),
+      // No carbGoal: carbs are derived from the other three (see
+      // carbGoalFrom in foodMath.js). Goals saved before that change keep a
+      // stale carbGoal field, which is simply no longer read.
       fatGoal: inherit(f.fatGoal, "fatGoal", null),
+      calBuffer: inherit(f.calBuffer, "calBuffer", null),
+      proteinBuffer: inherit(f.proteinBuffer, "proteinBuffer", null),
       durationWeeks: num(f.durationWeeks),
       notes: f.notes || "",
     };
@@ -1748,7 +1819,7 @@ export default function Dashboard() {
   function openAddGoal() {
     const today = new Date();
     const mm = today.getMonth() + 1, dd = today.getDate(), yy = String(today.getFullYear()).slice(2);
-    setGoalForm({ date: `${mm}/${dd}/${yy}`, phase: "Cut", muscleRate: "", fatRate: "", stepGoal: "", calGoal: "", proteinGoal: "", carbGoal: "", fatGoal: "", durationWeeks: "", notes: "" });
+    setGoalForm({ date: `${mm}/${dd}/${yy}`, phase: "Cut", muscleRate: "", fatRate: "", stepGoal: "", calGoal: "", proteinGoal: "", fatGoal: "", calBuffer: "", proteinBuffer: "", durationWeeks: "", notes: "" });
     setGoalEditIndex(null);
     setGoalFormOpen(true);
   }
@@ -1757,7 +1828,8 @@ export default function Dashboard() {
     setGoalForm({
       date: g.date, phase: g.phase, muscleRate: g.muscleRate, fatRate: g.fatRate,
       stepGoal: g.stepGoal ?? "", calGoal: g.calGoal ?? "",
-      proteinGoal: g.proteinGoal ?? "", carbGoal: g.carbGoal ?? "", fatGoal: g.fatGoal ?? "",
+      proteinGoal: g.proteinGoal ?? "", fatGoal: g.fatGoal ?? "",
+      calBuffer: g.calBuffer ?? "", proteinBuffer: g.proteinBuffer ?? "",
       durationWeeks: g.durationWeeks ?? "", notes: g.notes || "",
     });
     setGoalEditIndex(idx);
@@ -2116,6 +2188,7 @@ export default function Dashboard() {
 
             {goalFormOpen && (
               <GoalForm form={goalForm} setForm={setGoalForm} isEdit={goalEditIndex != null} error={goalFormErr}
+                preview={buildGoal(goalForm)}
                 onCancel={() => { setGoalFormOpen(false); setGoalEditIndex(null); setGoalFormErr(""); }}
                 onSave={handleSaveGoal} />
             )}
@@ -2123,7 +2196,7 @@ export default function Dashboard() {
             <div className="table-wrap">
               <table>
                 <thead>
-                  <tr><th>Date range</th><th>Phase</th><th>Status</th><th>Muscle rate</th><th>Fat rate</th><th>Step goal</th><th>Calorie goal</th><th>Protein</th><th>Carbs</th><th>Fat</th><th>Duration</th><th>Notes</th><th></th></tr>
+                  <tr><th>Date range</th><th>Phase</th><th>Status</th><th>Muscle rate</th><th>Fat rate</th><th>Step goal</th><th>Calorie goal</th><th>Protein</th><th>Carbs<span className="th-note">derived</span></th><th>Fat</th><th>Duration</th><th>Notes</th><th></th></tr>
                 </thead>
                 <tbody>
                   {goals.length === 0 && (
@@ -2140,9 +2213,25 @@ export default function Dashboard() {
                         <td>{g.muscleRate > 0 ? "+" : ""}{g.muscleRate} lb/wk</td>
                         <td>{g.fatRate > 0 ? "+" : ""}{g.fatRate} lb/wk</td>
                         <td>{g.stepGoal != null ? g.stepGoal.toLocaleString() + "/day" : "–"}</td>
-                        <td>{g.calGoal != null ? g.calGoal.toLocaleString() + "/day" : "–"}</td>
-                        <td>{g.proteinGoal != null ? g.proteinGoal + "g" : "–"}</td>
-                        <td>{g.carbGoal != null ? g.carbGoal + "g" : "–"}</td>
+                        <td>
+                          {g.calGoal != null ? g.calGoal.toLocaleString() + "/day" : "–"}
+                          {g.calBuffer > 0 && (
+                            <span className="goal-buffer-tag">
+                              {calBandFor(g.phase) === "ceiling" ? `+${g.calBuffer}`
+                                : calBandFor(g.phase) === "floor" ? `-${g.calBuffer}`
+                                : `±${Math.round(g.calBuffer / 2)}`}
+                            </span>
+                          )}
+                        </td>
+                        <td>
+                          {g.proteinGoal != null ? g.proteinGoal + "g" : "–"}
+                          {g.proteinBuffer > 0 && <span className="goal-buffer-tag">-{g.proteinBuffer}</span>}
+                        </td>
+                        <td className="goal-derived-cell">
+                          {carbGoalFrom(g.calGoal, g.proteinGoal, g.fatGoal) != null
+                            ? carbGoalFrom(g.calGoal, g.proteinGoal, g.fatGoal) + "g"
+                            : "–"}
+                        </td>
                         <td>{g.fatGoal != null ? g.fatGoal + "g" : "–"}</td>
                         <td>{g.durationWeeks != null ? g.durationWeeks + " wk" : "–"}</td>
                         <td className="notes-cell">
@@ -2446,6 +2535,7 @@ export default function Dashboard() {
       ) : tab === "food" ? (
         <FoodTab
           targetsForDate={targetsForDate}
+          pacing={{ recCal: pacing.recCal, daysRemaining: pacing.daysRemaining }}
           dailyEntryFor={dailyEntryFor}
           onDayTotalsChange={syncFoodCalories}
           onForceDailyCalories={forceFoodCalories}
@@ -2942,6 +3032,15 @@ const BASE_STYLES = `
   .tab-label-short { display: none; }
 
   .goal-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 14px; }
+  .goal-macro-note { display: flex; flex-direction: column; gap: 5px; margin: 2px 0 4px; padding: 10px 13px; border-radius: 12px; background: var(--panel-2); font-size: 13px; line-height: 1.55; color: var(--text-dim); }
+  .goal-macro-note strong { color: var(--text); }
+  .goal-macro-note-warn { background: #fdf1dd; color: #8a5b13; }
+  .goal-macro-note-warn strong { color: #8a5b13; }
+  .goal-macro-buffers { color: var(--text-faint); }
+  .goal-buffer-tag { margin-left: 6px; padding: 1px 6px; border-radius: 999px; background: #fdf1dd; color: #8a5b13; font-size: 11px; font-weight: 600; white-space: nowrap; }
+  .th-note { margin-left: 5px; font-weight: 400; text-transform: none; letter-spacing: 0; opacity: 0.65; }
+  .goal-derived-cell { font-style: italic; }
+
   .settings-note { font-family: 'JetBrains Mono', monospace; font-size: 12.6px; color: var(--text-faint); margin-bottom: 14px; line-height: 1.5; }
 
   .pacing-panel { padding-bottom: 18px; }

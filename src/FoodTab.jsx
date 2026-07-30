@@ -12,22 +12,30 @@ import { parseDate, formatMDY, addDays, blockStartFor, blockEndFor, today as tod
 import {
   MEAL_SECTIONS, sectionLabel, sectionForHour, unitOptions, defaultPortion,
   displayServing, scaleMacros, macroColumns, sumMacros, roundTotals, matchScore, normalizeUnit,
+  carbGoalFrom, macroStatus, bufferRangeLabel,
 } from "./foodMath.js";
 import * as foodApi from "./foodApi.js";
 
+// `band` says what kind of number each goal is, which is what decides where an
+// amber buffer sits — see macroStatus() in foodMath.js. These are the fallbacks
+// for a date with no goal; when there is one, the calorie and carb bands come
+// from its phase instead (a cut's calorie goal is a ceiling, a gain's is a
+// floor) — see targetsForDate in Dashboard.jsx.
 const MACROS = [
-  { key: "cal", label: "Calories", unit: "", goalKey: "cal", color: "#c4534a", goodWhen: "under" },
-  { key: "protein", label: "Protein", unit: "g", goalKey: "protein", color: "#5b8dee", goodWhen: "over" },
-  { key: "carbs", label: "Carbs", unit: "g", goalKey: "carbs", color: "#dba236", goodWhen: "under" },
-  { key: "fat", label: "Fat", unit: "g", goalKey: "fat", color: "#4caf7d", goodWhen: "under" },
+  { key: "cal", label: "Calories", unit: "", goalKey: "cal", color: "#c4534a", band: "window" },
+  { key: "protein", label: "Protein", unit: "g", goalKey: "protein", color: "#5b8dee", band: "floor" },
+  { key: "carbs", label: "Carbs", unit: "g", goalKey: "carbs", color: "#dba236", band: "window" },
+  { key: "fat", label: "Fat", unit: "g", goalKey: "fat", color: "#4caf7d", band: "ceiling" },
 ];
+
+const STATUS_CLASS = { good: " macro-good", warn: " macro-warn", bad: " macro-bad" };
 
 const CHART_THEME = { grid: "#e7e6e0", tick: "#70747c", font: "Inter" };
 
 // One status green/red across the tab: the tile tints, the tile bars, and the
 // week chart's bars. The tint backgrounds live in FOOD_STYLES (CSS can't read
 // these) — keep the two in step.
-const STATUS = { good: "#3f8f2b", bad: "#c4534a" };
+const STATUS = { good: "#3f8f2b", warn: "#dba236", bad: "#c4534a" };
 const WEEKDAY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 const fmt = (n) => (n == null ? "–" : Math.round(n * 10) / 10 === Math.round(n) ? Math.round(n).toLocaleString() : (Math.round(n * 10) / 10).toLocaleString());
@@ -45,7 +53,10 @@ const num = (v) => {
  */
 const targetOf = (v) => {
   const n = num(v);
-  return n != null && n > 0 ? n : null;
+  // Zero passes: it's what a paced calorie budget leaves for carbs once
+  // protein and fat are paid for, and "0g, you're 178g over" is the truth.
+  // Only a blank or negative goal counts as no target.
+  return n != null && n >= 0 ? n : null;
 };
 
 function weekDateStrings(start) {
@@ -62,7 +73,7 @@ function bestLocalMatch(query, catalog) {
   return bestScore >= 0.7 ? best : null;
 }
 
-export default function FoodTab({ targetsForDate, dailyEntryFor, onDayTotalsChange, onForceDailyCalories }) {
+export default function FoodTab({ targetsForDate, pacing, dailyEntryFor, onDayTotalsChange, onForceDailyCalories }) {
   const [dateStr, setDateStr] = useState(() => formatMDY(new Date()));
   const [weekStart, setWeekStart] = useState(() => blockStartFor(todayDate()));
   const [rows, setRows] = useState([]);
@@ -72,6 +83,9 @@ export default function FoodTab({ targetsForDate, dailyEntryFor, onDayTotalsChan
   const [err, setErr] = useState("");
   const [saving, setSaving] = useState(false);
   const [confirmDel, setConfirmDel] = useState(null);
+  // Compare today against the pacing number instead of the flat daily goal.
+  const [pacingOn, setPacingOn] = useState(() => localStorage.getItem("bt_food_pacing") === "1");
+  useEffect(() => { localStorage.setItem("bt_food_pacing", pacingOn ? "1" : "0"); }, [pacingOn]);
 
   // Sheet / inline editors
   const [sheetSection, setSheetSection] = useState(null);
@@ -151,9 +165,28 @@ export default function FoodTab({ targetsForDate, dailyEntryFor, onDayTotalsChan
 
   const dayRows = useMemo(() => rows.filter(r => r.date === dateStr), [rows, dateStr]);
   const dayTotals = useMemo(() => roundTotals(sumMacros(dayRows)), [dayRows]);
-  const targets = useMemo(() => targetsForDate(dateStr), [targetsForDate, dateStr]);
+  const goalTargets = useMemo(() => targetsForDate(dateStr), [targetsForDate, dateStr]);
+
   const selectedDate = useMemo(() => parseDate(dateStr) || todayDate(), [dateStr]);
   const isToday = formatMDY(new Date()) === dateStr;
+
+  // Pacing only means something for today: it's "what's left of this week's
+  // budget, spread over the days still to come". On any other day the flat
+  // goal is the only sensible thing to compare against, so the toggle has no
+  // effect there and the control says why.
+  const pacingAvailable = isToday && pacing?.recCal != null;
+  const pacedCal = pacingOn && pacingAvailable ? pacing.recCal : null;
+  const targets = useMemo(() => {
+    if (pacedCal == null) return goalTargets;
+    // Only the calorie number moves. Protein and fat are the numbers you aim
+    // for every day either way; carbs absorb whatever calories are left, so
+    // they follow the paced figure on their own.
+    return {
+      ...goalTargets,
+      cal: pacedCal,
+      carbs: carbGoalFrom(pacedCal, goalTargets.protein, goalTargets.fat),
+    };
+  }, [goalTargets, pacedCal]);
   const dailyEntry = dailyEntryFor(dateStr);
 
   const defaultSection = useMemo(
@@ -566,12 +599,30 @@ export default function FoodTab({ targetsForDate, dailyEntryFor, onDayTotalsChan
               Jump to today
             </button>
           )}
+          {/* Compare today against the flat daily goal, or against what's left
+              of the week spread over the days still to come. */}
+          <div className="toggle-group food-pace-toggle">
+            <button className={"toggle-btn" + (!pacingOn ? " active" : "")}
+              onClick={() => setPacingOn(false)} title="Compare against the daily goal">
+              Daily goal
+            </button>
+            <button className={"toggle-btn" + (pacingOn ? " active" : "")}
+              disabled={!pacingAvailable}
+              onClick={() => setPacingOn(true)}
+              title={pacingAvailable
+                ? "Compare against what's left of this week, spread over the days still to come"
+                : isToday ? "No calorie goal for this week yet" : "Pacing only applies to today"}>
+              Pacing
+            </button>
+          </div>
         </div>
       </div>
 
       <div className="macro-grid">
         {MACROS.map(m => (
-          <MacroTile key={m.key} macro={m} value={dayTotals[m.key]} target={targets[m.goalKey]} />
+          <MacroTile key={m.key} macro={m} value={dayTotals[m.key]} target={targets[m.goalKey]}
+            band={goalTargets.bands?.[m.goalKey]} buffer={goalTargets.buffers?.[m.goalKey]}
+            paced={pacedCal != null && (m.key === "cal" || m.key === "carbs")} />
         ))}
       </div>
 
@@ -585,6 +636,28 @@ export default function FoodTab({ targetsForDate, dailyEntryFor, onDayTotalsChan
           <button className="btn-ghost sm" onClick={() => onForceDailyCalories(dateStr, dayTotals.cal)}>
             Use {fmt(dayTotals.cal)}
           </button>
+        </div>
+      )}
+      {pacedCal != null && (
+        <div className="food-pace-note">
+          <Sparkles size={12} />
+          <span>
+            Pacing: <strong>{fmt(pacedCal)} kcal</strong> today
+            {goalTargets.cal != null && <> instead of the {fmt(goalTargets.cal)} daily goal</>}
+            {pacing?.daysRemaining != null && <> — this week's remaining budget over {pacing.daysRemaining} day{pacing.daysRemaining === 1 ? "" : "s"}</>}
+            . Protein and fat targets don't move; carbs follow the calorie number.
+            {targets.carbs === 0 && <> Today that budget is fully spent on protein and fat, so there's nothing left for carbs.</>}
+          </span>
+        </div>
+      )}
+      {pacingOn && !pacingAvailable && (
+        <div className="food-pace-note food-pace-note-off">
+          <AlertCircle size={12} />
+          <span>
+            {isToday
+              ? "Pacing needs a calorie goal for this week — set one on the Goal Settings tab."
+              : "Pacing only applies to today, so this day is shown against its flat daily goal."}
+          </span>
         </div>
       )}
       {!targets.cal && (
@@ -826,22 +899,27 @@ function sortCatalog(a, b) {
 
 // ---------------------------------------------------------------------------
 
-function MacroTile({ macro, value, target: rawTarget }) {
+function MacroTile({ macro, value, target: rawTarget, band: dateBand, buffer, paced }) {
   const target = targetOf(rawTarget);
-  const pct = target ? Math.min(100, (value / target) * 100) : 0;
-  const over = target ? value > target : false;
-  // Protein is a floor, not a ceiling — hitting it is the good outcome.
-  const good = target ? (macro.goodWhen === "over" ? value >= target : !over) : null;
+  // A zero target with anything eaten is a full bar, not an empty one.
+  const pct = target > 0 ? Math.min(100, (value / target) * 100)
+    : target === 0 && value > 0 ? 100 : 0;
   const remaining = target != null ? target - value : null;
 
-  // `good` already accounts for direction: calories, carbs and fat are
-  // ceilings, protein is a floor. So one tint rule covers all four — under
-  // your calorie target is green, under your protein target is red.
-  const tint = good === true ? " macro-good" : good === false ? " macro-bad" : "";
+  // Three states now: green, amber inside the goal's buffer, red outside it.
+  // The band handles direction, so one call covers all four macros — and it
+  // comes from the goal in force, which is what makes a gain phase read the
+  // opposite way round from a cut.
+  const band = dateBand || macro.band;
+  const status = macroStatus(value, target, { band, buffer });
+  const amber = bufferRangeLabel(target, { band, buffer });
 
   return (
-    <div className={"macro-tile" + tint}>
-      <div className="macro-tile-label">{macro.label}</div>
+    <div className={"macro-tile" + (STATUS_CLASS[status] || "")}>
+      <div className="macro-tile-label">
+        {macro.label}
+        {paced && <span className="macro-paced-tag">pace</span>}
+      </div>
       <div className="macro-tile-value">
         {fmt(value)}<span className="macro-tile-unit">{macro.unit}</span>
         {target != null && <span className="macro-tile-target">/ {fmt(target)}{macro.unit}</span>}
@@ -852,9 +930,10 @@ function MacroTile({ macro, value, target: rawTarget }) {
       <div className="macro-tile-sub">
         {target == null
           ? "no target set"
-          : macro.goodWhen === "over"
+          : band === "floor"
             ? (remaining > 0 ? `${fmt(remaining)}${macro.unit} to go` : `${fmt(-remaining)}${macro.unit} over`)
             : (remaining >= 0 ? `${fmt(remaining)}${macro.unit} left` : `${fmt(-remaining)}${macro.unit} over`)}
+        {status === "warn" && amber && <span className="macro-tile-amber">amber {amber}</span>}
       </div>
     </div>
   );
@@ -903,6 +982,20 @@ function WeekPanel({ weekStart, setWeekStart, rows, targetsForDate, onPickDay })
 
   // Targets can change mid-week when a phase flips, so average the per-day
   // target across the same days the actuals came from.
+  // Buffers are per-goal like the targets; the week compares against the
+  // buffer in force on the most recent day it counted.
+  const avgBuffers = useMemo(() => {
+    const last = counted[counted.length - 1];
+    return last ? (targetsForDate(last.date).buffers || {}) : {};
+  }, [counted, targetsForDate]);
+
+  // Bands come from the same day as the buffers — a week that straddles a
+  // phase change is judged by the phase it ended in.
+  const avgBands = useMemo(() => {
+    const last = counted[counted.length - 1];
+    return last ? (targetsForDate(last.date).bands || {}) : {};
+  }, [counted, targetsForDate]);
+
   const avgTargets = useMemo(() => {
     if (!counted.length) return {};
     const out = {};
@@ -957,10 +1050,9 @@ function WeekPanel({ weekStart, setWeekStart, rows, targetsForDate, onPickDay })
           {MACROS.map(m => {
             const v = averages[m.key];
             const t = targetOf(avgTargets[m.key]);
-            const good = t == null ? null : (m.goodWhen === "over" ? v >= t : v <= t);
+            const status = macroStatus(v, t, { band: avgBands[m.key] || m.band, buffer: avgBuffers[m.key] });
             return (
-              <div key={m.key}
-                className={"week-avg-tile" + (good === true ? " macro-good" : good === false ? " macro-bad" : "")}>
+              <div key={m.key} className={"week-avg-tile" + (STATUS_CLASS[status] || "")}>
                 <div className="week-avg-label">{m.label} avg</div>
                 <div className="week-avg-value">{fmt(v)}<span className="macro-tile-unit">{m.unit}</span></div>
                 <div className="week-avg-sub">
@@ -989,8 +1081,8 @@ function WeekPanel({ weekStart, setWeekStart, rows, targetsForDate, onPickDay })
           )}
           <Bar dataKey={metric} radius={[4, 4, 0, 0]} maxBarSize={38}>
             {days.map((d, i) => {
-              const good = target == null ? null : (macro.goodWhen === "over" ? d[metric] >= target : d[metric] <= target);
-              const color = !d.logged ? "#e0dfd8" : good === false ? STATUS.bad : good === true ? STATUS.good : macro.color;
+              const status = macroStatus(d[metric], target, { band: avgBands[metric] || macro.band, buffer: avgBuffers[metric] });
+              const color = !d.logged ? "#e0dfd8" : STATUS[status] || macro.color;
               return <Cell key={i} fill={color} />;
             })}
           </Bar>
@@ -1647,22 +1739,42 @@ export const FOOD_STYLES = `
   .food-day-date { font-family: 'Inter', sans-serif; font-size: 14px; color: var(--text-dim); }
   .food-today-pill { font-family: 'Inter', sans-serif; font-size: 10px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--good); background: rgba(54,135,39,0.13); padding: 2px 8px; border-radius: 999px; }
   .food-jump-today { margin-left: auto; }
+  .food-pace-toggle { margin-left: auto; flex-shrink: 0; }
+  .food-jump-today + .food-pace-toggle { margin-left: 0; }
+  .macro-paced-tag { margin-left: 6px; padding: 1px 6px; border-radius: 999px; background: rgba(20,22,27,0.08); font-size: 10.6px; font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase; vertical-align: 1px; }
+  .macro-warn .macro-paced-tag { background: rgba(138, 91, 19, 0.14); }
+  .macro-good .macro-paced-tag { background: rgba(43, 110, 30, 0.14); }
+  .macro-bad .macro-paced-tag { background: rgba(165, 52, 42, 0.14); }
+  .macro-tile-amber { flex-basis: 100%; font-size: 12px; color: rgba(138, 91, 19, 0.85); }
+
+  .food-pace-note { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 14px; padding: 10px 13px; border-radius: 12px; background: var(--panel-2); font-size: 13px; line-height: 1.55; color: var(--text-dim); }
+  .food-pace-note svg { flex-shrink: 0; margin-top: 3px; }
+  .food-pace-note strong { color: var(--text); }
+  .food-pace-note-off { background: #fdf1dd; color: #8a5b13; }
+  .food-pace-note-off strong { color: #8a5b13; }
 
   .macro-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 14px; }
   .macro-tile { background: var(--panel); border: 1px solid var(--border); border-radius: 18px; padding: 14px 15px; box-shadow: 0 1px 2px rgba(20, 22, 27, 0.05), 0 4px 16px rgba(20, 22, 27, 0.05); min-width: 0; }
   /* Tinted the way the Home tab tints its hero cards: coloured background,
      status-coloured text, no separate badge. --tint-bar is the one thing the
      card's own colour can't express — the fill has to sit ON the tint. */
-  /* --tint-bar mirrors STATUS.good / STATUS.bad in this file. */
+  /* --tint-bar mirrors STATUS.good / STATUS.warn / STATUS.bad in this file. */
   .macro-tile.macro-good, .week-avg-tile.macro-good { --tint-bar: #3f8f2b; background: #ddefd4; border-color: #cfe6c4; }
   .macro-tile.macro-bad, .week-avg-tile.macro-bad { --tint-bar: #c4534a; background: #f8ddd9; border-color: #eec4be; }
+  /* Amber is the app's existing warning pair (see .food-conflict), used here
+     for "inside the goal's alert buffer" — close enough to matter, not yet
+     wrong. */
+  .macro-tile.macro-warn, .week-avg-tile.macro-warn { --tint-bar: #dba236; background: #fdf1dd; border-color: #ecd3a4; }
   .macro-good .macro-tile-label, .macro-good .macro-tile-value, .macro-good .macro-tile-sub,
   .macro-good .week-avg-label, .macro-good .week-avg-value, .macro-good .week-avg-sub { color: #2b6e1e; }
   .macro-bad .macro-tile-label, .macro-bad .macro-tile-value, .macro-bad .macro-tile-sub,
   .macro-bad .week-avg-label, .macro-bad .week-avg-value, .macro-bad .week-avg-sub { color: #a5342a; }
+  .macro-warn .macro-tile-label, .macro-warn .macro-tile-value, .macro-warn .macro-tile-sub,
+  .macro-warn .week-avg-label, .macro-warn .week-avg-value, .macro-warn .week-avg-sub { color: #8a5b13; }
   /* The unit and the "/ target" suffix keep their own weight, just re-tinted. */
   .macro-good .macro-tile-unit, .macro-good .macro-tile-target { color: rgba(43, 110, 30, 0.72); }
   .macro-bad .macro-tile-unit, .macro-bad .macro-tile-target { color: rgba(165, 52, 42, 0.72); }
+  .macro-warn .macro-tile-unit, .macro-warn .macro-tile-target { color: rgba(138, 91, 19, 0.72); }
   .macro-tile-label { font-family: 'Inter', sans-serif; font-size: 13.2px; font-weight: 600; letter-spacing: 0.01em; color: var(--text-dim); margin-bottom: 8px; }
   .macro-tile-value { font-family: 'Inter', sans-serif; letter-spacing: -0.02em; font-size: 30px; font-weight: 700; line-height: 1; white-space: nowrap; }
   .macro-tile-unit { font-size: 14px; font-weight: 500; color: var(--text-dim); margin-left: 1px; }
@@ -1839,6 +1951,7 @@ export const FOOD_STYLES = `
     /* Two columns of 16px fields don't fit a phone — one column each. */
     .food-custom-grid { grid-template-columns: 1fr !important; }
     .food-day-nav { flex-wrap: wrap; }
+    .food-pace-toggle { margin-left: 0; }
     .food-jump-today { margin-left: 0; }
     .food-week-nav { flex-wrap: wrap; }
     .frr-cal { margin-left: 0; }

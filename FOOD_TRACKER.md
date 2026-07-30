@@ -174,10 +174,70 @@ food?" picker and undo-all before you move on.
 
 ## Targets
 
-Protein / carb / fat targets sit next to the calorie and step goals on the
+Calorie, **protein** and **fat** targets sit next to the step goal on the
 **Goal Settings** tab, per phase, and inherit from the previous goal when left
 blank — same as the existing fields. The day tiles and the weekly bar chart
 compare against whichever goal was in force on that date.
+
+**Carbs aren't set — they're derived.** Protein and fat are the numbers you
+aim for; carbs are whatever calories are left once those two are paid for:
+
+```
+carbs = (calorie goal - protein x 4 - fat x 9) / 4
+```
+
+So a 2,100 kcal goal with 150 g protein and 60 g fat leaves 240 g of carbs, and
+raising the calorie goal raises carbs on its own. The goal form shows the number
+as you type, and warns if protein and fat between them already cost more than
+the calorie goal — which leaves nothing for carbs. Goals saved before this
+change keep their old stored carb number; it's simply no longer read.
+
+### Alert buffers
+
+Without a buffer a macro is either green or red. A buffer adds an amber band —
+"close enough to matter, not yet wrong". Where the band sits depends on what
+kind of number the goal is, and for calories that **depends on the phase**:
+
+| Phase | Calorie goal is | A 50 buffer on a 2,100 goal |
+| --- | --- | --- |
+| **Cut** | a ceiling — under it is where you want to be | green under 2,100, amber 2,100–2,150, red above |
+| **Gain** | a floor — over it is where you want to be | green at 2,100 and above, amber 2,050–2,100, red below |
+| **Maintain** | a number to land on | amber 2,075–2,125, the buffer split either side, green below and red above |
+
+So the same buffer number means "how far the wrong way before it's red", and
+which way is wrong flips with the phase.
+
+**Carbs follow the calorie band**, because they're a slice of the same budget.
+Without that, a gain day would show green for being over on calories and red
+for being over on carbs at the same time.
+
+**Protein doesn't move with the phase.** It's a floor in every phase — a number
+to reach, not a limit — so a 20 g buffer on 150 g is amber from 130 g, green the
+moment you hit 150 g, and red under 130 g whether you're cutting or gaining.
+Fat stays a ceiling for the same reason.
+
+Calorie and protein buffers have fields on the Goal Settings tab, and the form
+spells out the resulting bands for the phase you've picked. Fat and carbs keep
+plain two-state colouring until they're given a buffer — the maths already
+handles them (`macroStatus` in `src/foodMath.js`), so it's a form field away.
+
+## Daily goal vs pacing
+
+The **Daily goal / Pacing** toggle above the macro tiles switches what today is
+compared against:
+
+- **Daily goal** — the flat number from Goal Settings, every day.
+- **Pacing** — what's left of this week's calorie budget spread over the days
+  still to come, the same number the Dashboard's pacing panel shows. Eat under
+  early in the week and today's allowance goes up; overshoot and it comes down.
+
+Only the calorie number moves. Protein and fat are what you aim for every day
+either way, and carbs follow the paced calorie figure through the same
+derivation — so a tight pacing day can leave no carb allowance at all, which
+the tile says outright rather than pretending there's no target.
+
+Pacing only means anything for today, so the toggle is greyed out on any other
+day and those days always show the flat goal.
 
 ## Calories flow into the Daily tab
 
