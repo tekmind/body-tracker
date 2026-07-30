@@ -23,6 +23,11 @@ const MACROS = [
 ];
 
 const CHART_THEME = { grid: "#e7e6e0", tick: "#70747c", font: "Inter" };
+
+// One status green/red across the tab: the tile tints, the tile bars, and the
+// week chart's bars. The tint backgrounds live in FOOD_STYLES (CSS can't read
+// these) — keep the two in step.
+const STATUS = { good: "#3f8f2b", bad: "#c4534a" };
 const WEEKDAY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 const fmt = (n) => (n == null ? "–" : Math.round(n * 10) / 10 === Math.round(n) ? Math.round(n).toLocaleString() : (Math.round(n * 10) / 10).toLocaleString());
@@ -30,6 +35,17 @@ const num = (v) => {
   if (v === "" || v == null) return null;
   const n = Number(String(v).trim());
   return Number.isFinite(n) ? n : null;
+};
+
+/**
+ * A usable target, or null. Blank goal fields reach the Food tab as "" rather
+ * than null, and a target of zero isn't one — both mean "not set", and every
+ * part of a tile has to agree on that or the tint and the text contradict
+ * each other.
+ */
+const targetOf = (v) => {
+  const n = num(v);
+  return n != null && n > 0 ? n : null;
 };
 
 function weekDateStrings(start) {
@@ -527,8 +543,10 @@ export default function FoodTab({ targetsForDate, dailyEntryFor, onDayTotalsChan
 
       {err && <div className="banner-error"><AlertCircle size={13} /> {err}</div>}
 
-      {/* ---------------- Day header + macro totals ---------------- */}
-      <div className="panel food-day-panel">
+      {/* ---------------- Day header + macro totals ----------------
+           Not wrapped in a panel: these are cards on the page background,
+           the same arrangement as the Home tab's stat grid. */}
+      <div className="food-day-head">
         <div className="food-day-nav">
           <button className="icon-btn" title="Previous day"
             onClick={() => setDateStr(formatMDY(addDays(selectedDate, -1)))}>
@@ -549,32 +567,32 @@ export default function FoodTab({ targetsForDate, dailyEntryFor, onDayTotalsChan
             </button>
           )}
         </div>
-
-        <div className="macro-grid">
-          {MACROS.map(m => (
-            <MacroTile key={m.key} macro={m} value={dayTotals[m.key]} target={targets[m.goalKey]} />
-          ))}
-        </div>
-
-        {manualCalConflict != null && (
-          <div className="food-conflict">
-            <AlertCircle size={13} />
-            <span>
-              The Daily tab has <strong>{fmt(manualCalConflict)}</strong> kcal typed in by hand for this day, so it
-              wasn't replaced. What's logged here adds up to <strong>{fmt(dayTotals.cal)}</strong>.
-            </span>
-            <button className="btn-ghost sm" onClick={() => onForceDailyCalories(dateStr, dayTotals.cal)}>
-              Use {fmt(dayTotals.cal)}
-            </button>
-          </div>
-        )}
-        {!targets.cal && (
-          <div className="food-hint">
-            No calorie or macro targets for this date yet — set them per phase on the Goal Settings tab and the bars
-            here start comparing against them.
-          </div>
-        )}
       </div>
+
+      <div className="macro-grid">
+        {MACROS.map(m => (
+          <MacroTile key={m.key} macro={m} value={dayTotals[m.key]} target={targets[m.goalKey]} />
+        ))}
+      </div>
+
+      {manualCalConflict != null && (
+        <div className="food-conflict">
+          <AlertCircle size={13} />
+          <span>
+            The Daily tab has <strong>{fmt(manualCalConflict)}</strong> kcal typed in by hand for this day, so it
+            wasn't replaced. What's logged here adds up to <strong>{fmt(dayTotals.cal)}</strong>.
+          </span>
+          <button className="btn-ghost sm" onClick={() => onForceDailyCalories(dateStr, dayTotals.cal)}>
+            Use {fmt(dayTotals.cal)}
+          </button>
+        </div>
+      )}
+      {!targets.cal && (
+        <div className="food-hint food-hint-loose">
+          No calorie or macro targets for this date yet — set them per phase on the Goal Settings tab and the bars
+          here start comparing against them.
+        </div>
+      )}
 
       {/* ---------------- Voice / text entry ---------------- */}
       <div className="panel food-ai-panel">
@@ -808,28 +826,34 @@ function sortCatalog(a, b) {
 
 // ---------------------------------------------------------------------------
 
-function MacroTile({ macro, value, target }) {
+function MacroTile({ macro, value, target: rawTarget }) {
+  const target = targetOf(rawTarget);
   const pct = target ? Math.min(100, (value / target) * 100) : 0;
   const over = target ? value > target : false;
   // Protein is a floor, not a ceiling — hitting it is the good outcome.
   const good = target ? (macro.goodWhen === "over" ? value >= target : !over) : null;
   const remaining = target != null ? target - value : null;
 
+  // `good` already accounts for direction: calories, carbs and fat are
+  // ceilings, protein is a floor. So one tint rule covers all four — under
+  // your calorie target is green, under your protein target is red.
+  const tint = good === true ? " macro-good" : good === false ? " macro-bad" : "";
+
   return (
-    <div className={"macro-tile" + (good === true ? " macro-good" : good === false ? " macro-bad" : "")}>
+    <div className={"macro-tile" + tint}>
       <div className="macro-tile-label">{macro.label}</div>
       <div className="macro-tile-value">
         {fmt(value)}<span className="macro-tile-unit">{macro.unit}</span>
         {target != null && <span className="macro-tile-target">/ {fmt(target)}{macro.unit}</span>}
       </div>
       <div className="macro-bar">
-        <div className="macro-bar-fill" style={{ width: `${pct}%`, background: macro.color }} />
+        <div className="macro-bar-fill" style={{ width: `${pct}%` }} />
       </div>
       <div className="macro-tile-sub">
         {target == null
           ? "no target set"
           : macro.goodWhen === "over"
-            ? (remaining > 0 ? `${fmt(remaining)}${macro.unit} to go` : `${fmt(-remaining)}${macro.unit} over — good`)
+            ? (remaining > 0 ? `${fmt(remaining)}${macro.unit} to go` : `${fmt(-remaining)}${macro.unit} over`)
             : (remaining >= 0 ? `${fmt(remaining)}${macro.unit} left` : `${fmt(-remaining)}${macro.unit} over`)}
       </div>
     </div>
@@ -932,14 +956,16 @@ function WeekPanel({ weekStart, setWeekStart, rows, targetsForDate, onPickDay })
         <div className="week-avg-grid">
           {MACROS.map(m => {
             const v = averages[m.key];
-            const t = avgTargets[m.key];
+            const t = targetOf(avgTargets[m.key]);
             const good = t == null ? null : (m.goodWhen === "over" ? v >= t : v <= t);
             return (
               <div key={m.key}
                 className={"week-avg-tile" + (good === true ? " macro-good" : good === false ? " macro-bad" : "")}>
                 <div className="week-avg-label">{m.label} avg</div>
                 <div className="week-avg-value">{fmt(v)}<span className="macro-tile-unit">{m.unit}</span></div>
-                <div className="week-avg-sub">{t == null ? "no target" : `target ${fmt(t)}${m.unit}`}</div>
+                <div className="week-avg-sub">
+                  {t == null ? "no target" : <>target {fmt(t)}{m.unit} · {v > t ? "+" : ""}{fmt(v - t)}{m.unit}</>}
+                </div>
               </div>
             );
           })}
@@ -964,7 +990,7 @@ function WeekPanel({ weekStart, setWeekStart, rows, targetsForDate, onPickDay })
           <Bar dataKey={metric} radius={[4, 4, 0, 0]} maxBarSize={38}>
             {days.map((d, i) => {
               const good = target == null ? null : (macro.goodWhen === "over" ? d[metric] >= target : d[metric] <= target);
-              const color = !d.logged ? "#e0dfd8" : good === false ? "#c4534a" : good === true ? "#4caf7d" : macro.color;
+              const color = !d.logged ? "#e0dfd8" : good === false ? STATUS.bad : good === true ? STATUS.good : macro.color;
               return <Cell key={i} fill={color} />;
             })}
           </Bar>
@@ -1614,35 +1640,49 @@ function FoodResult({ food, onPick, mine }) {
 export const FOOD_STYLES = `
   .food-view { display: block; }
 
-  .food-day-panel { padding-bottom: 16px; }
-  .food-day-nav { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+  .food-day-head { margin-bottom: 12px; }
+  .food-day-nav { display: flex; align-items: center; gap: 10px; }
   .food-day-label { display: flex; align-items: baseline; gap: 8px; }
   .food-day-dow { font-family: 'Inter', sans-serif; font-size: 19px; font-weight: 700; }
-  .food-day-date { font-family: 'JetBrains Mono', monospace; font-size: 14px; color: var(--text-dim); }
-  .food-today-pill { font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--good); background: rgba(54,135,39,0.13); padding: 2px 8px; border-radius: 999px; }
+  .food-day-date { font-family: 'Inter', sans-serif; font-size: 14px; color: var(--text-dim); }
+  .food-today-pill { font-family: 'Inter', sans-serif; font-size: 10px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--good); background: rgba(54,135,39,0.13); padding: 2px 8px; border-radius: 999px; }
   .food-jump-today { margin-left: auto; }
 
-  .macro-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
-  .macro-tile { background: var(--panel-2); border: 1px solid var(--border); border-radius: 14px; padding: 14px; }
-  .macro-tile.macro-good { background: #eef6ea; border-color: #cfe6c4; }
-  .macro-tile.macro-bad { background: #fcebe9; border-color: #eec4be; }
-  .macro-tile-label { font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-dim); margin-bottom: 8px; }
-  .macro-tile-value { font-family: 'Space Grotesk', sans-serif; font-size: 27px; font-weight: 700; line-height: 1; white-space: nowrap; }
+  .macro-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 14px; }
+  .macro-tile { background: var(--panel); border: 1px solid var(--border); border-radius: 18px; padding: 14px 15px; box-shadow: 0 1px 2px rgba(20, 22, 27, 0.05), 0 4px 16px rgba(20, 22, 27, 0.05); min-width: 0; }
+  /* Tinted the way the Home tab tints its hero cards: coloured background,
+     status-coloured text, no separate badge. --tint-bar is the one thing the
+     card's own colour can't express — the fill has to sit ON the tint. */
+  /* --tint-bar mirrors STATUS.good / STATUS.bad in this file. */
+  .macro-tile.macro-good, .week-avg-tile.macro-good { --tint-bar: #3f8f2b; background: #ddefd4; border-color: #cfe6c4; }
+  .macro-tile.macro-bad, .week-avg-tile.macro-bad { --tint-bar: #c4534a; background: #f8ddd9; border-color: #eec4be; }
+  .macro-good .macro-tile-label, .macro-good .macro-tile-value, .macro-good .macro-tile-sub,
+  .macro-good .week-avg-label, .macro-good .week-avg-value, .macro-good .week-avg-sub { color: #2b6e1e; }
+  .macro-bad .macro-tile-label, .macro-bad .macro-tile-value, .macro-bad .macro-tile-sub,
+  .macro-bad .week-avg-label, .macro-bad .week-avg-value, .macro-bad .week-avg-sub { color: #a5342a; }
+  /* The unit and the "/ target" suffix keep their own weight, just re-tinted. */
+  .macro-good .macro-tile-unit, .macro-good .macro-tile-target { color: rgba(43, 110, 30, 0.72); }
+  .macro-bad .macro-tile-unit, .macro-bad .macro-tile-target { color: rgba(165, 52, 42, 0.72); }
+  .macro-tile-label { font-family: 'Inter', sans-serif; font-size: 13.2px; font-weight: 600; letter-spacing: 0.01em; color: var(--text-dim); margin-bottom: 8px; }
+  .macro-tile-value { font-family: 'Inter', sans-serif; letter-spacing: -0.02em; font-size: 30px; font-weight: 700; line-height: 1; white-space: nowrap; }
   .macro-tile-unit { font-size: 14px; font-weight: 500; color: var(--text-dim); margin-left: 1px; }
-  .macro-tile-target { font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 500; color: var(--text-faint); margin-left: 6px; }
-  .macro-bar { height: 5px; border-radius: 999px; background: rgba(20,22,27,0.09); margin: 10px 0 7px; overflow: hidden; }
-  .macro-bar-fill { height: 100%; border-radius: 999px; transition: width 0.25s ease; }
-  .macro-tile-sub { font-family: 'JetBrains Mono', monospace; font-size: 11.4px; color: var(--text-dim); }
+  .macro-tile-target { font-family: 'Inter', sans-serif; font-size: 13.2px; font-weight: 500; color: var(--text-faint); margin-left: 6px; }
+  .macro-bar { height: 5px; border-radius: 999px; background: rgba(20,22,27,0.11); margin: 10px 0 7px; overflow: hidden; }
+  /* Falls back to the neutral text colour when there's no target to be
+     over or under, which is the only state with no status to show. */
+  .macro-bar-fill { height: 100%; border-radius: 999px; background: var(--tint-bar, var(--text-dim)); transition: width 0.25s ease, background 0.25s ease; }
+  .macro-tile-sub { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; font-family: 'Inter', sans-serif; font-size: 13.2px; color: var(--text-dim); }
 
-  .food-conflict { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; margin-top: 14px; padding: 10px 13px; border-radius: 12px; background: #fdf1dd; border: 1px solid #ecd3a4; color: #8a5b13; font-size: 13px; line-height: 1.5; }
+  .food-conflict { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; margin-bottom: 14px; padding: 10px 13px; border-radius: 12px; background: #fdf1dd; border: 1px solid #ecd3a4; color: #8a5b13; font-size: 13px; line-height: 1.5; }
   .food-conflict svg { flex-shrink: 0; color: #b07d17; }
   .food-conflict span { flex: 1; min-width: 200px; }
-  .food-hint { font-family: 'JetBrains Mono', monospace; font-size: 11.6px; color: var(--text-faint); line-height: 1.55; margin-top: 12px; padding-bottom: 4px; }
-  .food-hint-inline { font-family: 'JetBrains Mono', monospace; font-size: 11.4px; color: var(--text-faint); flex: 1; }
+  .food-hint-loose { margin: 0 2px 14px; }
+  .food-hint { font-family: 'Inter', sans-serif; font-size: 12.6px; color: var(--text-faint); line-height: 1.55; margin-top: 12px; padding-bottom: 4px; }
+  .food-hint-inline { font-family: 'Inter', sans-serif; font-size: 12.6px; color: var(--text-faint); flex: 1; }
 
   .food-ai-panel { padding-bottom: 16px; }
   .food-ai-row { display: flex; gap: 12px; align-items: stretch; margin-top: 6px; }
-  .mic-btn { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px; min-width: 132px; padding: 14px 12px; border-radius: 14px; border: 1px solid var(--border); background: var(--panel-2); color: var(--text-dim); font-family: 'JetBrains Mono', monospace; font-size: 11.4px; line-height: 1.3; text-align: center; cursor: pointer; }
+  .mic-btn { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px; min-width: 132px; padding: 14px 12px; border-radius: 14px; border: 1px solid var(--border); background: var(--panel-2); color: var(--text-dim); font-family: 'Inter', sans-serif; font-size: 13.2px; font-weight: 600; line-height: 1.3; text-align: center; cursor: pointer; }
   .mic-btn:hover { color: var(--text); border-color: var(--text-dim); }
   .mic-btn.listening { background: rgba(199,58,47,0.1); border-color: var(--bad); color: var(--bad); animation: micpulse 1.4s ease-in-out infinite; }
   @keyframes micpulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.62; } }
@@ -1656,16 +1696,16 @@ export const FOOD_STYLES = `
   .food-review-head strong { flex: 1; font-family: 'Inter', sans-serif; font-weight: 600; }
   .food-review-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 8px 0; border-bottom: 1px solid #e4f0dc; font-size: 13px; }
   .food-review-row:last-child { border-bottom: none; }
-  .frr-qty { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--text-dim); min-width: 72px; }
+  .frr-qty { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--text-dim); min-width: 72px; }
   .frr-name { font-weight: 600; }
   .frr-brand { font-weight: 400; color: var(--text-faint); }
-  .frr-src { font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase; padding: 2px 7px; border-radius: 999px; }
+  .frr-src { font-family: 'Inter', sans-serif; font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase; padding: 2px 7px; border-radius: 999px; }
   .frr-history { background: rgba(54,135,39,0.14); color: #3a6b2c; }
   .frr-database { background: rgba(91,141,238,0.14); color: #3a5fa8; }
-  .frr-cal { margin-left: auto; font-family: 'Space Grotesk', sans-serif; font-weight: 600; }
-  .frr-swap { font-family: 'JetBrains Mono', monospace; font-size: 11px; max-width: 200px; border: 1px solid var(--border); border-radius: 7px; padding: 3px 6px; background: var(--panel); color: var(--text-dim); }
-  .frr-note { flex-basis: 100%; font-family: 'JetBrains Mono', monospace; font-size: 11.2px; color: var(--text-faint); }
-  .food-review-skip { margin-top: 9px; font-family: 'JetBrains Mono', monospace; font-size: 11.6px; color: #a03d33; line-height: 1.5; }
+  .frr-cal { margin-left: auto; font-family: 'Inter', sans-serif; letter-spacing: -0.02em; font-weight: 600; }
+  .frr-swap { font-family: 'Inter', sans-serif; font-size: 11px; max-width: 200px; border: 1px solid var(--border); border-radius: 7px; padding: 3px 6px; background: var(--panel); color: var(--text-dim); }
+  .frr-note { flex-basis: 100%; font-family: 'Inter', sans-serif; font-size: 11.2px; color: var(--text-faint); }
+  .food-review-skip { margin-top: 9px; font-family: 'Inter', sans-serif; font-size: 11.6px; color: #a03d33; line-height: 1.5; }
 
   .food-section { padding-bottom: 12px; }
   /* On a narrow screen the title and its controls can't share a line, so the
@@ -1676,20 +1716,20 @@ export const FOOD_STYLES = `
      arrows — pushes out past the edge instead of wrapping inside itself. */
   .food-section .panel-head-actions,
   .food-week-panel .panel-head-actions { flex: 1 1 auto; min-width: 0; justify-content: flex-end; }
-  .food-section-empty { font-family: 'JetBrains Mono', monospace; font-size: 12.4px; color: var(--text-faint); padding: 12px 2px 14px; }
+  .food-section-empty { font-family: 'Inter', sans-serif; font-size: 13.2px; color: var(--text-faint); padding: 12px 2px 14px; }
   .food-rows { display: flex; flex-direction: column; }
   .food-row { display: flex; align-items: center; gap: 12px; padding: 9px 2px; border-bottom: 1px solid var(--border); }
   .food-row:last-child { border-bottom: none; }
   .food-row-main { flex: 1; min-width: 0; }
   .food-row-name { font-size: 14.2px; font-weight: 500; }
   .food-row-brand { color: var(--text-faint); font-weight: 400; font-size: 12.6px; }
-  .food-row-qty { font-family: 'JetBrains Mono', monospace; font-size: 11.8px; color: var(--text-dim); margin-top: 2px; }
+  .food-row-qty { font-family: 'Inter', sans-serif; font-size: 13px; color: var(--text-dim); margin-top: 2px; }
   .food-row-edit { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
   .food-row-edit .qty-input { width: 58px; }
-  .food-row-edit input, .food-row-edit select { background: var(--panel-2); border: 1px solid var(--border); border-radius: 7px; color: var(--text); padding: 4px 7px; font-family: 'JetBrains Mono', monospace; font-size: 12px; outline: none; }
+  .food-row-edit input, .food-row-edit select { background: var(--panel-2); border: 1px solid var(--border); border-radius: 7px; color: var(--text); padding: 4px 7px; font-family: 'Inter', sans-serif; font-size: 12px; outline: none; }
   .food-row-macros { display: flex; flex-direction: column; align-items: flex-end; flex-shrink: 0; }
-  .frm-cal { font-family: 'Space Grotesk', sans-serif; font-size: 16px; font-weight: 700; }
-  .frm-sub { font-family: 'JetBrains Mono', monospace; font-size: 10.6px; color: var(--text-faint); margin-top: 2px; white-space: nowrap; }
+  .frm-cal { font-family: 'Inter', sans-serif; letter-spacing: -0.02em; font-size: 17px; font-weight: 700; }
+  .frm-sub { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--text-faint); margin-top: 3px; white-space: nowrap; }
   .food-row-actions { display: flex; gap: 4px; flex-shrink: 0; }
   .food-meal-draft { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 10px 0 4px; }
   .food-meal-draft input { flex: 1; min-width: 180px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; color: var(--text); padding: 8px 10px; font-family: 'Inter', sans-serif; font-size: 13.5px; outline: none; }
@@ -1697,12 +1737,10 @@ export const FOOD_STYLES = `
   .food-week-panel { padding-bottom: 14px; }
   .food-week-nav { display: flex; align-items: center; gap: 5px; }
   .week-avg-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 8px 0 16px; }
-  .week-avg-tile { background: var(--panel-2); border: 1px solid var(--border); border-radius: 12px; padding: 12px; }
-  .week-avg-tile.macro-good { background: #eef6ea; border-color: #cfe6c4; }
-  .week-avg-tile.macro-bad { background: #fcebe9; border-color: #eec4be; }
-  .week-avg-label { font-family: 'JetBrains Mono', monospace; font-size: 10.4px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--text-dim); }
-  .week-avg-value { font-family: 'Space Grotesk', sans-serif; font-size: 23px; font-weight: 700; line-height: 1.2; margin-top: 5px; }
-  .week-avg-sub { font-family: 'JetBrains Mono', monospace; font-size: 10.8px; color: var(--text-faint); margin-top: 2px; }
+  .week-avg-tile { background: transparent; border: 1px solid var(--border); border-radius: 14px; padding: 13px 15px; min-width: 0; }
+  .week-avg-label { font-family: 'Inter', sans-serif; font-size: 13.2px; font-weight: 600; letter-spacing: 0.01em; color: var(--text-dim); }
+  .week-avg-value { font-family: 'Inter', sans-serif; letter-spacing: -0.02em; font-size: 26px; font-weight: 700; line-height: 1.2; margin-top: 6px; }
+  .week-avg-sub { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; font-family: 'Inter', sans-serif; font-size: 13.2px; color: var(--text-dim); margin-top: 6px; }
 
   .food-sheet-backdrop { position: fixed; inset: 0; z-index: 60; background: rgba(20,22,27,0.42); display: flex; align-items: flex-end; justify-content: center; padding: 24px 16px; }
   .food-sheet { width: 100%; max-width: 640px; max-height: 88vh; display: flex; flex-direction: column; background: var(--panel); border-radius: 20px; box-shadow: 0 18px 50px rgba(20,22,27,0.28); overflow: hidden; }
@@ -1714,9 +1752,9 @@ export const FOOD_STYLES = `
   .food-search-row { display: flex; align-items: stretch; gap: 8px; }
   .food-search-box { flex: 1; display: flex; align-items: center; gap: 8px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; color: var(--text-faint); min-width: 0; }
   .food-search-box input { flex: 1; min-width: 0; background: transparent; border: none; outline: none; color: var(--text); font-family: 'Inter', sans-serif; font-size: 14.5px; }
-  .scan-btn { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; flex-shrink: 0; padding: 6px 12px; border-radius: 12px; border: 1px solid var(--border); background: var(--panel-2); color: var(--text-dim); font-family: 'JetBrains Mono', monospace; font-size: 9.6px; letter-spacing: 0.05em; text-transform: uppercase; cursor: pointer; }
+  .scan-btn { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; flex-shrink: 0; padding: 6px 12px; border-radius: 12px; border: 1px solid var(--border); background: var(--panel-2); color: var(--text-dim); font-family: 'Inter', sans-serif; font-size: 9.6px; letter-spacing: 0.05em; text-transform: uppercase; cursor: pointer; }
   .scan-btn:hover { color: var(--text); border-color: var(--text-dim); }
-  .food-attribution { font-family: 'JetBrains Mono', monospace; font-size: 10.6px; color: var(--text-faint); margin-top: 14px; padding-bottom: 4px; }
+  .food-attribution { font-family: 'Inter', sans-serif; font-size: 10.6px; color: var(--text-faint); margin-top: 14px; padding-bottom: 4px; }
 
   .scanner-backdrop { position: fixed; inset: 0; z-index: 70; background: rgba(12,13,16,0.88); display: flex; align-items: center; justify-content: center; padding: 16px; }
   .scanner-frame { width: 100%; max-width: 520px; background: var(--panel); border-radius: 18px; overflow: hidden; }
@@ -1726,30 +1764,30 @@ export const FOOD_STYLES = `
   .scanner-video { width: 100%; height: 100%; object-fit: cover; display: block; }
   /* A window to aim through — barcodes read best filling the middle band. */
   .scanner-reticle { position: absolute; left: 8%; right: 8%; top: 32%; height: 36%; border: 2px solid rgba(255,255,255,0.85); border-radius: 12px; box-shadow: 0 0 0 9999px rgba(0,0,0,0.28); }
-  .scanner-overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 9px; background: rgba(0,0,0,0.55); color: #fff; font-family: 'JetBrains Mono', monospace; font-size: 12.4px; }
+  .scanner-overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 9px; background: rgba(0,0,0,0.55); color: #fff; font-family: 'Inter', sans-serif; font-size: 12.4px; }
   .scanner-error { display: flex; align-items: center; gap: 7px; padding: 11px 15px; background: #fcebe9; color: #a03d33; font-size: 12.8px; line-height: 1.5; }
   .scanner-error svg { flex-shrink: 0; }
-  .scanner-hint { font-family: 'JetBrains Mono', monospace; font-size: 11.2px; color: var(--text-faint); padding: 11px 15px 14px; line-height: 1.5; }
+  .scanner-hint { font-family: 'Inter', sans-serif; font-size: 11.2px; color: var(--text-faint); padding: 11px 15px 14px; line-height: 1.5; }
   .food-result-group { margin-top: 16px; }
-  .food-result-head { font-family: 'JetBrains Mono', monospace; font-size: 10.6px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-faint); margin-bottom: 6px; }
+  .food-result-head { font-family: 'Inter', sans-serif; font-size: 10.6px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-faint); margin-bottom: 6px; }
   .food-result { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; width: 100%; text-align: left; background: transparent; border: none; border-bottom: 1px solid var(--border); padding: 10px 4px; cursor: pointer; color: var(--text); }
   .food-result:hover { background: var(--panel-2); }
   .food-result-name { font-size: 14px; font-weight: 500; }
-  .food-result-tag { margin-left: 7px; font-family: 'JetBrains Mono', monospace; font-size: 9.4px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--good); background: rgba(54,135,39,0.13); padding: 1px 6px; border-radius: 999px; }
-  .food-result-macros { font-family: 'JetBrains Mono', monospace; font-size: 11.2px; color: var(--text-faint); }
+  .food-result-tag { margin-left: 7px; font-family: 'Inter', sans-serif; font-size: 9.4px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--good); background: rgba(54,135,39,0.13); padding: 1px 6px; border-radius: 999px; }
+  .food-result-macros { font-family: 'Inter', sans-serif; font-size: 12.6px; color: var(--text-faint); }
 
   .food-pick { padding-top: 6px; }
   .food-pick-name { font-family: 'Inter', sans-serif; font-size: 17px; font-weight: 700; margin: 12px 0 4px; }
-  .food-pick-serving { display: flex; align-items: center; gap: 6px; font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--text-dim); }
+  .food-pick-serving { display: flex; align-items: center; gap: 6px; font-family: 'Inter', sans-serif; font-size: 13.2px; color: var(--text-dim); }
   .food-pick-qty { display: grid; grid-template-columns: 1fr 1.4fr; gap: 12px; margin: 16px 0; }
-  .food-pick-qty label { display: flex; flex-direction: column; gap: 5px; font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--text-dim); }
+  .food-pick-qty label { display: flex; flex-direction: column; gap: 5px; font-family: 'Inter', sans-serif; font-size: 13.2px; font-weight: 600; letter-spacing: 0.01em; color: var(--text-dim); }
   .food-pick-qty input, .food-pick-qty select { background: var(--panel-2); border: 1px solid var(--border); border-radius: 9px; color: var(--text); padding: 9px 11px; font-family: 'Inter', sans-serif; font-size: 15px; outline: none; }
-  .food-pick-preview { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; background: var(--panel-2); border-radius: 12px; padding: 12px 14px; font-family: 'JetBrains Mono', monospace; font-size: 12.4px; color: var(--text-dim); }
-  .fpp-cal { font-family: 'Space Grotesk', sans-serif; font-size: 20px; font-weight: 700; color: var(--text); }
+  .food-pick-preview { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; background: var(--panel-2); border-radius: 12px; padding: 12px 14px; font-family: 'Inter', sans-serif; font-size: 12.4px; color: var(--text-dim); }
+  .fpp-cal { font-family: 'Inter', sans-serif; letter-spacing: -0.02em; font-size: 20px; font-weight: 700; color: var(--text); }
   .fpp-warn { flex-basis: 100%; color: #a03d33; font-size: 11.4px; line-height: 1.5; }
 
   .mine-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 4px 0 12px; }
-  .mine-count { font-family: 'JetBrains Mono', monospace; font-size: 11.2px; color: var(--text-faint); }
+  .mine-count { font-family: 'Inter', sans-serif; font-size: 12.6px; color: var(--text-faint); }
   .mine-filter { margin-bottom: 6px; }
   .mine-row { display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--border); }
   .mine-row:last-of-type { border-bottom: none; }
@@ -1762,22 +1800,22 @@ export const FOOD_STYLES = `
   .food-meal-pick { flex: 1; display: flex; flex-direction: column; align-items: flex-start; gap: 3px; background: transparent; border: none; padding: 12px 4px; text-align: left; cursor: pointer; color: var(--text); }
   .food-meal-pick:hover { background: var(--panel-2); }
   .food-meal-name { font-size: 14.5px; font-weight: 600; }
-  .food-meal-sub { font-family: 'JetBrains Mono', monospace; font-size: 11.2px; color: var(--text-faint); }
+  .food-meal-sub { font-family: 'Inter', sans-serif; font-size: 12.6px; color: var(--text-faint); }
   .food-custom-grid { margin-top: 4px; }
   .lookup-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
-  .lookup-bar-hint { flex: 1; min-width: 160px; font-family: 'JetBrains Mono', monospace; font-size: 10.8px; color: var(--text-faint); line-height: 1.5; }
+  .lookup-bar-hint { flex: 1; min-width: 160px; font-family: 'Inter', sans-serif; font-size: 12.6px; color: var(--text-faint); line-height: 1.5; }
   .lookup-result { background: #f4faf1; border: 1px solid #cfe6c4; border-radius: 12px; padding: 10px 13px; margin-bottom: 12px; }
   .lookup-result.lookup-miss { background: #fdf1dd; border-color: #ecd3a4; }
   .lookup-line { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; font-size: 12.8px; color: #3a6b2c; line-height: 1.5; }
   .lookup-miss .lookup-line { color: #8a5b13; }
   .lookup-line svg { flex-shrink: 0; }
-  .lookup-confidence { font-family: 'JetBrains Mono', monospace; font-size: 9.6px; letter-spacing: 0.05em; text-transform: uppercase; padding: 2px 7px; border-radius: 999px; }
+  .lookup-confidence { font-family: 'Inter', sans-serif; font-size: 9.6px; letter-spacing: 0.05em; text-transform: uppercase; padding: 2px 7px; border-radius: 999px; }
   .lc-high { background: rgba(54,135,39,0.15); color: #3a6b2c; }
   .lc-medium { background: rgba(219,162,54,0.2); color: #8a5b13; }
   .lc-low { background: rgba(199,58,47,0.14); color: #a03d33; }
-  .lookup-note { font-family: 'JetBrains Mono', monospace; font-size: 11.2px; color: var(--text-dim); margin-top: 6px; line-height: 1.5; }
+  .lookup-note { font-family: 'Inter', sans-serif; font-size: 11.2px; color: var(--text-dim); margin-top: 6px; line-height: 1.5; }
   .lookup-sources { display: flex; flex-wrap: wrap; gap: 6px 12px; margin-top: 8px; }
-  .lookup-sources a { font-family: 'JetBrains Mono', monospace; font-size: 10.8px; color: var(--cut); text-decoration: none; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lookup-sources a { font-family: 'Inter', sans-serif; font-size: 10.8px; color: var(--cut); text-decoration: none; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .lookup-sources a:hover { text-decoration: underline; }
 
   @media (max-width: 860px) {
