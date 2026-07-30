@@ -23,6 +23,11 @@ const MACROS = [
 ];
 
 const CHART_THEME = { grid: "#e7e6e0", tick: "#70747c", font: "Inter" };
+
+// One status green/red across the tab: the tile tints, the tile bars, and the
+// week chart's bars. The tint backgrounds live in FOOD_STYLES (CSS can't read
+// these) — keep the two in step.
+const STATUS = { good: "#3f8f2b", bad: "#c4534a" };
 const WEEKDAY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 const fmt = (n) => (n == null ? "–" : Math.round(n * 10) / 10 === Math.round(n) ? Math.round(n).toLocaleString() : (Math.round(n * 10) / 10).toLocaleString());
@@ -30,6 +35,17 @@ const num = (v) => {
   if (v === "" || v == null) return null;
   const n = Number(String(v).trim());
   return Number.isFinite(n) ? n : null;
+};
+
+/**
+ * A usable target, or null. Blank goal fields reach the Food tab as "" rather
+ * than null, and a target of zero isn't one — both mean "not set", and every
+ * part of a tile has to agree on that or the tint and the text contradict
+ * each other.
+ */
+const targetOf = (v) => {
+  const n = num(v);
+  return n != null && n > 0 ? n : null;
 };
 
 function weekDateStrings(start) {
@@ -810,33 +826,35 @@ function sortCatalog(a, b) {
 
 // ---------------------------------------------------------------------------
 
-function MacroTile({ macro, value, target }) {
+function MacroTile({ macro, value, target: rawTarget }) {
+  const target = targetOf(rawTarget);
   const pct = target ? Math.min(100, (value / target) * 100) : 0;
   const over = target ? value > target : false;
   // Protein is a floor, not a ceiling — hitting it is the good outcome.
   const good = target ? (macro.goodWhen === "over" ? value >= target : !over) : null;
   const remaining = target != null ? target - value : null;
 
+  // `good` already accounts for direction: calories, carbs and fat are
+  // ceilings, protein is a floor. So one tint rule covers all four — under
+  // your calorie target is green, under your protein target is red.
+  const tint = good === true ? " macro-good" : good === false ? " macro-bad" : "";
+
   return (
-    <div className="macro-tile">
+    <div className={"macro-tile" + tint}>
       <div className="macro-tile-label">{macro.label}</div>
       <div className="macro-tile-value">
         {fmt(value)}<span className="macro-tile-unit">{macro.unit}</span>
         {target != null && <span className="macro-tile-target">/ {fmt(target)}{macro.unit}</span>}
       </div>
       <div className="macro-bar">
-        <div className="macro-bar-fill" style={{ width: `${pct}%`, background: macro.color }} />
+        <div className="macro-bar-fill" style={{ width: `${pct}%` }} />
       </div>
       <div className="macro-tile-sub">
-        {target == null ? "no target set" : (
-          /* Home puts the good/bad read in a pill on a white card rather than
-             tinting the whole card; these tiles now do the same. */
-          <span className={"macro-pill " + (good ? "macro-pill-good" : "macro-pill-bad")}>
-            {macro.goodWhen === "over"
-              ? (remaining > 0 ? `${fmt(remaining)}${macro.unit} to go` : `${fmt(-remaining)}${macro.unit} over`)
-              : (remaining >= 0 ? `${fmt(remaining)}${macro.unit} left` : `${fmt(-remaining)}${macro.unit} over`)}
-          </span>
-        )}
+        {target == null
+          ? "no target set"
+          : macro.goodWhen === "over"
+            ? (remaining > 0 ? `${fmt(remaining)}${macro.unit} to go` : `${fmt(-remaining)}${macro.unit} over`)
+            : (remaining >= 0 ? `${fmt(remaining)}${macro.unit} left` : `${fmt(-remaining)}${macro.unit} over`)}
       </div>
     </div>
   );
@@ -938,19 +956,15 @@ function WeekPanel({ weekStart, setWeekStart, rows, targetsForDate, onPickDay })
         <div className="week-avg-grid">
           {MACROS.map(m => {
             const v = averages[m.key];
-            const t = avgTargets[m.key];
+            const t = targetOf(avgTargets[m.key]);
             const good = t == null ? null : (m.goodWhen === "over" ? v >= t : v <= t);
             return (
-              <div className="week-avg-tile" key={m.key}>
+              <div key={m.key}
+                className={"week-avg-tile" + (good === true ? " macro-good" : good === false ? " macro-bad" : "")}>
                 <div className="week-avg-label">{m.label} avg</div>
                 <div className="week-avg-value">{fmt(v)}<span className="macro-tile-unit">{m.unit}</span></div>
                 <div className="week-avg-sub">
-                  {t == null ? "no target" : <>target {fmt(t)}{m.unit}</>}
-                  {t != null && (
-                    <span className={"macro-pill " + (good ? "macro-pill-good" : "macro-pill-bad")}>
-                      {v > t ? "+" : ""}{fmt(v - t)}{m.unit}
-                    </span>
-                  )}
+                  {t == null ? "no target" : <>target {fmt(t)}{m.unit} · {v > t ? "+" : ""}{fmt(v - t)}{m.unit}</>}
                 </div>
               </div>
             );
@@ -976,7 +990,7 @@ function WeekPanel({ weekStart, setWeekStart, rows, targetsForDate, onPickDay })
           <Bar dataKey={metric} radius={[4, 4, 0, 0]} maxBarSize={38}>
             {days.map((d, i) => {
               const good = target == null ? null : (macro.goodWhen === "over" ? d[metric] >= target : d[metric] <= target);
-              const color = !d.logged ? "#e0dfd8" : good === false ? "#c4534a" : good === true ? "#4caf7d" : macro.color;
+              const color = !d.logged ? "#e0dfd8" : good === false ? STATUS.bad : good === true ? STATUS.good : macro.color;
               return <Cell key={i} fill={color} />;
             })}
           </Bar>
@@ -1636,17 +1650,28 @@ export const FOOD_STYLES = `
 
   .macro-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 14px; }
   .macro-tile { background: var(--panel); border: 1px solid var(--border); border-radius: 18px; padding: 14px 15px; box-shadow: 0 1px 2px rgba(20, 22, 27, 0.05), 0 4px 16px rgba(20, 22, 27, 0.05); min-width: 0; }
+  /* Tinted the way the Home tab tints its hero cards: coloured background,
+     status-coloured text, no separate badge. --tint-bar is the one thing the
+     card's own colour can't express — the fill has to sit ON the tint. */
+  /* --tint-bar mirrors STATUS.good / STATUS.bad in this file. */
+  .macro-tile.macro-good, .week-avg-tile.macro-good { --tint-bar: #3f8f2b; background: #ddefd4; border-color: #cfe6c4; }
+  .macro-tile.macro-bad, .week-avg-tile.macro-bad { --tint-bar: #c4534a; background: #f8ddd9; border-color: #eec4be; }
+  .macro-good .macro-tile-label, .macro-good .macro-tile-value, .macro-good .macro-tile-sub,
+  .macro-good .week-avg-label, .macro-good .week-avg-value, .macro-good .week-avg-sub { color: #2b6e1e; }
+  .macro-bad .macro-tile-label, .macro-bad .macro-tile-value, .macro-bad .macro-tile-sub,
+  .macro-bad .week-avg-label, .macro-bad .week-avg-value, .macro-bad .week-avg-sub { color: #a5342a; }
+  /* The unit and the "/ target" suffix keep their own weight, just re-tinted. */
+  .macro-good .macro-tile-unit, .macro-good .macro-tile-target { color: rgba(43, 110, 30, 0.72); }
+  .macro-bad .macro-tile-unit, .macro-bad .macro-tile-target { color: rgba(165, 52, 42, 0.72); }
   .macro-tile-label { font-family: 'Inter', sans-serif; font-size: 13.2px; font-weight: 600; letter-spacing: 0.01em; color: var(--text-dim); margin-bottom: 8px; }
   .macro-tile-value { font-family: 'Inter', sans-serif; letter-spacing: -0.02em; font-size: 30px; font-weight: 700; line-height: 1; white-space: nowrap; }
   .macro-tile-unit { font-size: 14px; font-weight: 500; color: var(--text-dim); margin-left: 1px; }
   .macro-tile-target { font-family: 'Inter', sans-serif; font-size: 13.2px; font-weight: 500; color: var(--text-faint); margin-left: 6px; }
-  .macro-bar { height: 5px; border-radius: 999px; background: rgba(20,22,27,0.09); margin: 10px 0 7px; overflow: hidden; }
-  .macro-bar-fill { height: 100%; border-radius: 999px; transition: width 0.25s ease; }
+  .macro-bar { height: 5px; border-radius: 999px; background: rgba(20,22,27,0.11); margin: 10px 0 7px; overflow: hidden; }
+  /* Falls back to the neutral text colour when there's no target to be
+     over or under, which is the only state with no status to show. */
+  .macro-bar-fill { height: 100%; border-radius: 999px; background: var(--tint-bar, var(--text-dim)); transition: width 0.25s ease, background 0.25s ease; }
   .macro-tile-sub { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; font-family: 'Inter', sans-serif; font-size: 13.2px; color: var(--text-dim); }
-  /* Same pill as the Home cards' .cell-good / .cell-bad. */
-  .macro-pill { padding: 1px 8px; border-radius: 999px; font-weight: 600; white-space: nowrap; }
-  .macro-pill-good { background: #ddefd4; color: #2b6e1e; }
-  .macro-pill-bad { background: #f8ddd9; color: #a5342a; }
 
   .food-conflict { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; margin-bottom: 14px; padding: 10px 13px; border-radius: 12px; background: #fdf1dd; border: 1px solid #ecd3a4; color: #8a5b13; font-size: 13px; line-height: 1.5; }
   .food-conflict svg { flex-shrink: 0; color: #b07d17; }
