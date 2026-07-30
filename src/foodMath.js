@@ -324,3 +324,82 @@ export function roundTotals(t) {
     fat: round1(t.fat),
   };
 }
+
+// ---------------------------------------------------------------------------
+// Goal maths — shared by the Food tab and Goal Settings so the two can't drift.
+
+/** Calories per gram, for turning a macro split into calories and back. */
+export const KCAL_PER_G = { protein: 4, carbs: 4, fat: 9 };
+
+/**
+ * Carbs are whatever calories are left once protein and fat are paid for.
+ *
+ * Protein and fat are the numbers you set; carbs absorb the rest of the
+ * calorie budget, so they follow automatically when the calorie goal changes
+ * (including when it's the pacing number for today rather than the flat goal).
+ *
+ * Clamped at zero: a protein and fat split that already spends more than the
+ * calorie goal leaves no carbs, and a negative target isn't one. Goal Settings
+ * warns about that case separately — see macroCalories().
+ */
+export function carbGoalFrom(cal, protein, fat) {
+  if (cal == null || protein == null || fat == null) return null;
+  const left = cal - protein * KCAL_PER_G.protein - fat * KCAL_PER_G.fat;
+  return Math.max(0, Math.round(left / KCAL_PER_G.carbs));
+}
+
+/** What a protein/fat pair costs in calories, before carbs get a look in. */
+export function macroCalories(protein, fat) {
+  return (protein || 0) * KCAL_PER_G.protein + (fat || 0) * KCAL_PER_G.fat;
+}
+
+/**
+ * Which side of a goal a value has landed on: "good", "warn", "bad", or null
+ * when there's no target to compare against.
+ *
+ * `band` says what kind of number the goal is, because that decides where the
+ * amber buffer sits:
+ *
+ *   "window"   a number to land on — calories, and carbs once they're a budget.
+ *              The buffer is the TOTAL width of the amber window, centred on
+ *              the goal: a 100 buffer on a 2,100 goal is amber from 2,050 to
+ *              2,150, green below it, red above it.
+ *   "floor"    a number to reach — protein. Amber sits BELOW the goal, so a 20
+ *              buffer on 150 g is amber from 130 g up to (but not including)
+ *              150 g, green at 150 g and above, red under 130 g.
+ *   "ceiling"  a number to stay under — fat. Amber sits just ABOVE the goal.
+ *
+ * With no buffer set every band collapses to the plain two-state answer, which
+ * is what carbs and fat do until buffers are configured for them.
+ */
+export function macroStatus(value, target, { band = "ceiling", buffer = null } = {}) {
+  // Zero is a real target, not a missing one: a paced calorie budget can leave
+  // exactly nothing for carbs, and eating any is then over it. Only a null
+  // target means "no goal to compare against".
+  if (target == null || target < 0 || value == null) return null;
+  const b = buffer != null && buffer > 0 ? buffer : 0;
+
+  if (band === "floor") {
+    if (value >= target) return "good";
+    if (b && value >= target - b) return "warn";
+    return "bad";
+  }
+
+  if (band === "window") {
+    if (b && Math.abs(value - target) <= b / 2) return "warn";
+    return value <= target ? "good" : "bad";
+  }
+
+  if (value <= target) return "good";
+  if (b && value <= target + b) return "warn";
+  return "bad";
+}
+
+/** How the amber window reads on screen, e.g. "2,050 – 2,150" or "130 – 150". */
+export function bufferRangeLabel(target, { band = "ceiling", buffer = null } = {}) {
+  if (target == null || !(buffer > 0)) return "";
+  const n = (v) => Math.round(v).toLocaleString();
+  if (band === "floor") return `${n(target - buffer)} – ${n(target)}`;
+  if (band === "window") return `${n(target - buffer / 2)} – ${n(target + buffer / 2)}`;
+  return `${n(target)} – ${n(target + buffer)}`;
+}

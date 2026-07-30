@@ -174,10 +174,58 @@ food?" picker and undo-all before you move on.
 
 ## Targets
 
-Protein / carb / fat targets sit next to the calorie and step goals on the
+Calorie, **protein** and **fat** targets sit next to the step goal on the
 **Goal Settings** tab, per phase, and inherit from the previous goal when left
 blank — same as the existing fields. The day tiles and the weekly bar chart
 compare against whichever goal was in force on that date.
+
+**Carbs aren't set — they're derived.** Protein and fat are the numbers you
+aim for; carbs are whatever calories are left once those two are paid for:
+
+```
+carbs = (calorie goal - protein x 4 - fat x 9) / 4
+```
+
+So a 2,100 kcal goal with 150 g protein and 60 g fat leaves 240 g of carbs, and
+raising the calorie goal raises carbs on its own. The goal form shows the number
+as you type, and warns if protein and fat between them already cost more than
+the calorie goal — which leaves nothing for carbs. Goals saved before this
+change keep their old stored carb number; it's simply no longer read.
+
+### Alert buffers
+
+Without a buffer a macro is either green or red. A buffer adds an amber band
+either side of the line, for "close enough to matter, not yet wrong". Where the
+band sits depends on what kind of number the goal is:
+
+| Goal | Kind | A buffer of B means |
+| --- | --- | --- |
+| Calories | a number to **land on** | amber within B/2 either side — a 100 buffer on 2,100 is amber from 2,050 to 2,150, green below, red above |
+| Protein | a number to **reach** | amber *below* the goal — a 20 g buffer on 150 g is amber from 130 g, green once you hit 150 g, red under 130 g |
+| Fat | a number to **stay under** | amber just above the goal (no field yet) |
+| Carbs | a number to **land on**, like calories | (no field yet) |
+
+Calorie and protein buffers have fields on the Goal Settings tab. Fat and carbs
+keep the plain two-state behaviour until they're given one — the maths already
+handles them (`macroStatus` in `src/foodMath.js`), so it's a form field away.
+
+## Daily goal vs pacing
+
+The **Daily goal / Pacing** toggle above the macro tiles switches what today is
+compared against:
+
+- **Daily goal** — the flat number from Goal Settings, every day.
+- **Pacing** — what's left of this week's calorie budget spread over the days
+  still to come, the same number the Dashboard's pacing panel shows. Eat under
+  early in the week and today's allowance goes up; overshoot and it comes down.
+
+Only the calorie number moves. Protein and fat are what you aim for every day
+either way, and carbs follow the paced calorie figure through the same
+derivation — so a tight pacing day can leave no carb allowance at all, which
+the tile says outright rather than pretending there's no target.
+
+Pacing only means anything for today, so the toggle is greyed out on any other
+day and those days always show the flat goal.
 
 ## Calories flow into the Daily tab
 
