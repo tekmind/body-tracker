@@ -17,9 +17,10 @@ import {
 import * as foodApi from "./foodApi.js";
 
 // `band` says what kind of number each goal is, which is what decides where an
-// amber buffer sits — see macroStatus() in foodMath.js. Calories and carbs are
-// numbers to land on, protein is a floor to reach, fat is a ceiling to stay
-// under.
+// amber buffer sits — see macroStatus() in foodMath.js. These are the fallbacks
+// for a date with no goal; when there is one, the calorie and carb bands come
+// from its phase instead (a cut's calorie goal is a ceiling, a gain's is a
+// floor) — see targetsForDate in Dashboard.jsx.
 const MACROS = [
   { key: "cal", label: "Calories", unit: "", goalKey: "cal", color: "#c4534a", band: "window" },
   { key: "protein", label: "Protein", unit: "g", goalKey: "protein", color: "#5b8dee", band: "floor" },
@@ -620,7 +621,8 @@ export default function FoodTab({ targetsForDate, pacing, dailyEntryFor, onDayTo
       <div className="macro-grid">
         {MACROS.map(m => (
           <MacroTile key={m.key} macro={m} value={dayTotals[m.key]} target={targets[m.goalKey]}
-            buffer={goalTargets.buffers?.[m.goalKey]} paced={pacedCal != null && (m.key === "cal" || m.key === "carbs")} />
+            band={goalTargets.bands?.[m.goalKey]} buffer={goalTargets.buffers?.[m.goalKey]}
+            paced={pacedCal != null && (m.key === "cal" || m.key === "carbs")} />
         ))}
       </div>
 
@@ -897,7 +899,7 @@ function sortCatalog(a, b) {
 
 // ---------------------------------------------------------------------------
 
-function MacroTile({ macro, value, target: rawTarget, buffer, paced }) {
+function MacroTile({ macro, value, target: rawTarget, band: dateBand, buffer, paced }) {
   const target = targetOf(rawTarget);
   // A zero target with anything eaten is a full bar, not an empty one.
   const pct = target > 0 ? Math.min(100, (value / target) * 100)
@@ -905,10 +907,12 @@ function MacroTile({ macro, value, target: rawTarget, buffer, paced }) {
   const remaining = target != null ? target - value : null;
 
   // Three states now: green, amber inside the goal's buffer, red outside it.
-  // The band handles direction, so one call covers all four macros — under a
-  // calorie target is green, under a protein target is not.
-  const status = macroStatus(value, target, { band: macro.band, buffer });
-  const amber = bufferRangeLabel(target, { band: macro.band, buffer });
+  // The band handles direction, so one call covers all four macros — and it
+  // comes from the goal in force, which is what makes a gain phase read the
+  // opposite way round from a cut.
+  const band = dateBand || macro.band;
+  const status = macroStatus(value, target, { band, buffer });
+  const amber = bufferRangeLabel(target, { band, buffer });
 
   return (
     <div className={"macro-tile" + (STATUS_CLASS[status] || "")}>
@@ -926,7 +930,7 @@ function MacroTile({ macro, value, target: rawTarget, buffer, paced }) {
       <div className="macro-tile-sub">
         {target == null
           ? "no target set"
-          : macro.band === "floor"
+          : band === "floor"
             ? (remaining > 0 ? `${fmt(remaining)}${macro.unit} to go` : `${fmt(-remaining)}${macro.unit} over`)
             : (remaining >= 0 ? `${fmt(remaining)}${macro.unit} left` : `${fmt(-remaining)}${macro.unit} over`)}
         {status === "warn" && amber && <span className="macro-tile-amber">amber {amber}</span>}
@@ -985,6 +989,13 @@ function WeekPanel({ weekStart, setWeekStart, rows, targetsForDate, onPickDay })
     return last ? (targetsForDate(last.date).buffers || {}) : {};
   }, [counted, targetsForDate]);
 
+  // Bands come from the same day as the buffers — a week that straddles a
+  // phase change is judged by the phase it ended in.
+  const avgBands = useMemo(() => {
+    const last = counted[counted.length - 1];
+    return last ? (targetsForDate(last.date).bands || {}) : {};
+  }, [counted, targetsForDate]);
+
   const avgTargets = useMemo(() => {
     if (!counted.length) return {};
     const out = {};
@@ -1039,7 +1050,7 @@ function WeekPanel({ weekStart, setWeekStart, rows, targetsForDate, onPickDay })
           {MACROS.map(m => {
             const v = averages[m.key];
             const t = targetOf(avgTargets[m.key]);
-            const status = macroStatus(v, t, { band: m.band, buffer: avgBuffers[m.key] });
+            const status = macroStatus(v, t, { band: avgBands[m.key] || m.band, buffer: avgBuffers[m.key] });
             return (
               <div key={m.key} className={"week-avg-tile" + (STATUS_CLASS[status] || "")}>
                 <div className="week-avg-label">{m.label} avg</div>
@@ -1070,7 +1081,7 @@ function WeekPanel({ weekStart, setWeekStart, rows, targetsForDate, onPickDay })
           )}
           <Bar dataKey={metric} radius={[4, 4, 0, 0]} maxBarSize={38}>
             {days.map((d, i) => {
-              const status = macroStatus(d[metric], target, { band: macro.band, buffer: avgBuffers[metric] });
+              const status = macroStatus(d[metric], target, { band: avgBands[metric] || macro.band, buffer: avgBuffers[metric] });
               const color = !d.logged ? "#e0dfd8" : STATUS[status] || macro.color;
               return <Cell key={i} fill={color} />;
             })}

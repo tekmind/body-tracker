@@ -194,19 +194,31 @@ change keep their old stored carb number; it's simply no longer read.
 
 ### Alert buffers
 
-Without a buffer a macro is either green or red. A buffer adds an amber band
-either side of the line, for "close enough to matter, not yet wrong". Where the
-band sits depends on what kind of number the goal is:
+Without a buffer a macro is either green or red. A buffer adds an amber band —
+"close enough to matter, not yet wrong". Where the band sits depends on what
+kind of number the goal is, and for calories that **depends on the phase**:
 
-| Goal | Kind | A buffer of B means |
+| Phase | Calorie goal is | A 50 buffer on a 2,100 goal |
 | --- | --- | --- |
-| Calories | a number to **land on** | amber within B/2 either side — a 100 buffer on 2,100 is amber from 2,050 to 2,150, green below, red above |
-| Protein | a number to **reach** | amber *below* the goal — a 20 g buffer on 150 g is amber from 130 g, green once you hit 150 g, red under 130 g |
-| Fat | a number to **stay under** | amber just above the goal (no field yet) |
-| Carbs | a number to **land on**, like calories | (no field yet) |
+| **Cut** | a ceiling — under it is where you want to be | green under 2,100, amber 2,100–2,150, red above |
+| **Gain** | a floor — over it is where you want to be | green at 2,100 and above, amber 2,050–2,100, red below |
+| **Maintain** | a number to land on | amber 2,075–2,125, the buffer split either side, green below and red above |
 
-Calorie and protein buffers have fields on the Goal Settings tab. Fat and carbs
-keep the plain two-state behaviour until they're given one — the maths already
+So the same buffer number means "how far the wrong way before it's red", and
+which way is wrong flips with the phase.
+
+**Carbs follow the calorie band**, because they're a slice of the same budget.
+Without that, a gain day would show green for being over on calories and red
+for being over on carbs at the same time.
+
+**Protein doesn't move with the phase.** It's a floor in every phase — a number
+to reach, not a limit — so a 20 g buffer on 150 g is amber from 130 g, green the
+moment you hit 150 g, and red under 130 g whether you're cutting or gaining.
+Fat stays a ceiling for the same reason.
+
+Calorie and protein buffers have fields on the Goal Settings tab, and the form
+spells out the resulting bands for the phase you've picked. Fat and carbs keep
+plain two-state colouring until they're given a buffer — the maths already
 handles them (`macroStatus` in `src/foodMath.js`), so it's a form field away.
 
 ## Daily goal vs pacing

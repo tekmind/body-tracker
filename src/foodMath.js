@@ -395,6 +395,26 @@ export function macroStatus(value, target, { band = "ceiling", buffer = null } =
   return "bad";
 }
 
+/**
+ * Which shape the calorie goal has, which depends on the phase you're in.
+ *
+ *   Cut       a ceiling — under the goal is where you want to be, so the amber
+ *             buffer sits entirely ABOVE it: 50 over is amber, more is red.
+ *   Gain      the mirror image — over the goal is good, so the buffer sits
+ *             BELOW it: 50 short is amber, more is red.
+ *   Maintain  a number to land on, so the buffer splits half either side.
+ *
+ * Carbs follow the same shape, because they're a slice of the same calorie
+ * budget — a gain day that's green for being over on calories would otherwise
+ * be red for being over on carbs. Protein is a floor in every phase (a goal to
+ * reach, not a limit) and fat stays a ceiling, so neither moves with the phase.
+ */
+export const CAL_BAND_BY_PHASE = { Cut: "ceiling", Gain: "floor", Maintain: "window" };
+
+export function calBandFor(phase) {
+  return CAL_BAND_BY_PHASE[phase] || "window";
+}
+
 /** How the amber window reads on screen, e.g. "2,050 – 2,150" or "130 – 150". */
 export function bufferRangeLabel(target, { band = "ceiling", buffer = null } = {}) {
   if (target == null || !(buffer > 0)) return "";

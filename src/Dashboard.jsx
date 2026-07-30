@@ -14,7 +14,7 @@ import {
 } from "./dateUtils.js";
 import FoodTab from "./FoodTab.jsx";
 import LabsTab from "./LabsTab.jsx";
-import { carbGoalFrom, macroCalories, bufferRangeLabel } from "./foodMath.js";
+import { carbGoalFrom, macroCalories, bufferRangeLabel, calBandFor } from "./foodMath.js";
 
 const STORAGE_KEY = "entries";
 const GOALS_KEY = "phase_goals";
@@ -595,10 +595,15 @@ function GoalMacroNote({ goal }) {
       )}
       {(calBuffer > 0 || proteinBuffer > 0) && (
         <span className="goal-macro-buffers">
-          {calBuffer > 0 && calGoal != null &&
-            <>Calories turn amber between {bufferRangeLabel(calGoal, { band: "window", buffer: calBuffer })} — green below, red above. </>}
+          {calBuffer > 0 && calGoal != null && (() => {
+            const band = calBandFor(goal.phase);
+            const range = bufferRangeLabel(calGoal, { band, buffer: calBuffer });
+            if (band === "ceiling") return <>On a cut, calories stay green under {calGoal.toLocaleString()}, turn amber {range}, and red above that. </>;
+            if (band === "floor") return <>On a gain, calories go green at {calGoal.toLocaleString()} and over, amber {range}, and red below that. </>;
+            return <>On maintain, calories are amber {range} — the buffer splits either side — with green below and red above. </>;
+          })()}
           {proteinBuffer > 0 && proteinGoal != null &&
-            <>Protein turns amber between {bufferRangeLabel(proteinGoal, { band: "floor", buffer: proteinBuffer })}, and green once you reach {proteinGoal}g.</>}
+            <>Protein is the same in every phase: amber {bufferRangeLabel(proteinGoal, { band: "floor", buffer: proteinBuffer })}, green once you reach {proteinGoal}g.</>}
         </span>
       )}
     </div>
@@ -1550,10 +1555,16 @@ export default function Dashboard() {
     const cal = goal?.calGoal ?? null;
     const protein = goal?.proteinGoal ?? null;
     const fat = goal?.fatGoal ?? null;
+    const calBand = calBandFor(goal?.phase);
     return {
       cal, protein, fat,
+      phase: goal?.phase ?? null,
       // Carbs aren't stored — they're the calories protein and fat leave over.
       carbs: carbGoalFrom(cal, protein, fat),
+      // Which side of the goal the amber band sits on. Calories (and carbs,
+      // being a slice of the same budget) flip with the phase; protein is
+      // always a floor and fat always a ceiling.
+      bands: { cal: calBand, carbs: calBand, protein: "floor", fat: "ceiling" },
       // Widths of the amber band, per macro. Only calories and protein have
       // one so far; carbs and fat stay two-state until they're given a buffer,
       // which is a form field away (see GoalForm).
@@ -2204,7 +2215,13 @@ export default function Dashboard() {
                         <td>{g.stepGoal != null ? g.stepGoal.toLocaleString() + "/day" : "–"}</td>
                         <td>
                           {g.calGoal != null ? g.calGoal.toLocaleString() + "/day" : "–"}
-                          {g.calBuffer > 0 && <span className="goal-buffer-tag">±{Math.round(g.calBuffer / 2)}</span>}
+                          {g.calBuffer > 0 && (
+                            <span className="goal-buffer-tag">
+                              {calBandFor(g.phase) === "ceiling" ? `+${g.calBuffer}`
+                                : calBandFor(g.phase) === "floor" ? `-${g.calBuffer}`
+                                : `±${Math.round(g.calBuffer / 2)}`}
+                            </span>
+                          )}
                         </td>
                         <td>
                           {g.proteinGoal != null ? g.proteinGoal + "g" : "–"}
