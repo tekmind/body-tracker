@@ -6,18 +6,61 @@ also arrive on their own. This is the map of which is which.
 | Number | Auto source | How it gets in |
 | --- | --- | --- |
 | Steps | Apple Health (iPhone, or **WHOOP** — see below) | iOS Shortcut → `daily_metrics.steps` |
-| Calories burned | Apple Health | same Shortcut → `daily_metrics.cal` |
 | Weight / fat mass / muscle mass | Withings scale | `api/withings-sync.js` → `daily_metrics` |
 | Calories eaten | The Food tab | written into the daily log directly |
 
-All of it lands in one table, `daily_metrics`, keyed by the app's `M/D/YY`
-date string. See [`supabase_daily_metrics.sql`](supabase_daily_metrics.sql).
+All the synced values land in one table, `daily_metrics`, keyed by the app's
+`M/D/YY` date string. See
+[`supabase_daily_metrics.sql`](supabase_daily_metrics.sql).
 
-**A day you've logged by hand is never overwritten.** The merge rule is that
-manual entries win outright: a synced day only appears if that date isn't
-already in the daily log. So if you type a step count for a date, the Health
-number for that date stops showing — it's still in the table, just not what
-you see.
+**Calories are no longer synced.** The Shortcut used to send Apple Health's
+burned-calorie figure as well, but calories now come from the Food tab, so the
+Shortcut sends steps only. The `cal` column still exists and old rows keep
+their values — nothing reads them for a day the Food tab has covered.
+
+**What you log by hand always wins — field by field.** A synced value only
+fills in a blank you haven't logged, so a day with your own step count keeps
+it, and a day where the Food tab has written calories still shows its synced
+steps. Rows carrying anything borrowed from Health are marked `synced` in the
+Daily Log table.
+
+This used to work per whole row, which had a nasty edge: logging food creates
+a calories-only daily-log row, that row hid the synced row for the date, and
+the day's steps vanished with it — from the table, the weekly step average and
+the streaks alike. Fixed; `mergedDailyEntries` in `src/Dashboard.jsx` is the
+merge.
+
+## The Shortcut
+
+It runs on the phone and writes one row per day into `daily_metrics` through
+Supabase's REST API. The contract is small:
+
+```http
+POST {VITE_SUPABASE_URL}/rest/v1/daily_metrics
+apikey: {VITE_SUPABASE_ANON_KEY}
+Authorization: Bearer {VITE_SUPABASE_ANON_KEY}
+Content-Type: application/json
+Prefer: resolution=merge-duplicates
+
+{ "date": "7/31/26", "steps": 12345, "source": "healthkit" }
+```
+
+- **`date` must be `M/D/YY` with no leading zeros** — that's the app's format
+  and the table's primary key. (The merge is forgiving about spelling now, but
+  the key isn't: `07/31/26` and `7/31/26` would be two rows in the table.)
+- `Prefer: resolution=merge-duplicates` makes it an upsert, so re-running it
+  the same day updates that day rather than failing on the primary key.
+- Only the keys you send get written. Leaving `cal` out doesn't erase a `cal`
+  already on the row.
+
+**To cut it down to steps only:** delete the health action that reads Active
+Energy (calories) and its variable, and remove the `"cal"` key from the JSON
+body. Nothing else needs to change — not the URL, not the headers, not the
+date handling. The app has no opinion about which keys arrive.
+
+The anon key in the Shortcut is the same public key the browser bundle ships,
+so it's no more exposed there than it already is. What guards the table is its
+RLS policy, not the key.
 
 ## Steps from WHOOP
 

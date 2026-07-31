@@ -1210,14 +1210,41 @@ export default function Dashboard() {
     return s;
   }, [ACTUAL]);
 
-  // Manual entries always win. A HealthKit-synced day only shows up if you
-  // haven't already logged that date by hand.
+  // Manual entries win, but field by field rather than whole rows. Logging
+  // food writes a calories-only row into the daily log, and when that hid the
+  // whole synced row it took the day's steps with it — so every day you ate
+  // lost its step count, and the weekly average quietly skipped it.
   const mergedDailyEntries = useMemo(() => {
-    const manualDates = new Set(dailyEntries.map(d => d.date));
+    // Match on the date's value, not its spelling: "7/9/26" and "07/09/26"
+    // are the same day, and a synced row that spelt it differently used to
+    // show up as a second row for that date.
+    const key = (dateStr) => {
+      const d = parseDate(dateStr);
+      return d ? String(d.getTime()) : `raw:${dateStr}`;
+    };
+    const syncedByDate = new Map(healthkitDaily.map(d => [key(d.date), d]));
+    const manualDates = new Set(dailyEntries.map(d => key(d.date)));
+
+    const filled = dailyEntries.map(r => {
+      const s = syncedByDate.get(key(r.date));
+      if (!s) return r;
+      const merged = {
+        ...r,
+        cal: r.cal ?? s.cal ?? null,
+        steps: r.steps ?? s.steps ?? null,
+        weight: r.weight ?? s.weight ?? null,
+        fatMass: r.fatMass ?? s.fatMass ?? null,
+        muscleMass: r.muscleMass ?? s.muscleMass ?? null,
+      };
+      const borrowed = ["cal", "steps", "weight", "fatMass", "muscleMass"]
+        .some(k => r[k] == null && merged[k] != null);
+      return borrowed ? { ...merged, _filled: true } : r;
+    });
+
     const synced = healthkitDaily
-      .filter(d => !manualDates.has(d.date))
+      .filter(d => !manualDates.has(key(d.date)))
       .map(d => ({ date: d.date, cal: d.cal, steps: d.steps, weight: d.weight, fatMass: d.fatMass, muscleMass: d.muscleMass, _synced: true }));
-    return [...dailyEntries, ...synced];
+    return [...filled, ...synced];
   }, [dailyEntries, healthkitDaily]);
 
   // Calories/Steps stat cards use a daily-log weekly average as their main
@@ -2513,7 +2540,13 @@ export default function Dashboard() {
                           <td>
                             {d.date}
                             {inBlock && <span className="this-block-tag">this block</span>}
-                            {d._synced && <span className="synced-tag" title="Synced from HealthKit"><Watch size={10} /> synced</span>}
+                            {(d._synced || d._filled) && (
+                              <span className="synced-tag" title={d._synced
+                                ? "Synced from HealthKit"
+                                : "Some of this day came from HealthKit — the blanks you didn't log"}>
+                                <Watch size={10} /> synced
+                              </span>
+                            )}
                           </td>
                           <td>{fmtNum(d.cal)}</td>
                           <td>{fmtNum(d.steps)}</td>
