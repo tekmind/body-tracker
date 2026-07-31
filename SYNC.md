@@ -18,6 +18,16 @@ burned-calorie figure as well, but calories now come from the Food tab, so the
 Shortcut sends steps only. The `cal` column still exists and old rows keep
 their values — nothing reads them for a day the Food tab has covered.
 
+So **a `cal` value appearing on a new row means something else is still
+posting one.** Nothing in the browser app writes this table — it only reads
+and deletes — and `withings-sync.js` writes body composition only. A stray
+`cal` can only have come from a shortcut or automation, which is worth hunting
+down: a phantom 0-calorie day isn't inert, it counts as a real day of zero
+intake in the pacing maths and inflates the rest of the week's budget.
+
+To clear one, delete that day in the app's Daily Log. Synced rows delete the
+`daily_metrics` row itself rather than a log entry.
+
 **What you log by hand always wins — field by field.** A synced value only
 fills in a blank you haven't logged, so a day with your own step count keeps
 it, and a day where the Food tab has written calories still shows its synced
@@ -78,6 +88,32 @@ One consequence worth knowing: because it takes a single sample per run, each
 run writes exactly one day. If two drops ever land between runs, the older one
 is skipped and won't be picked up afterwards — the next run still takes only
 the latest. That shows up as a missing day, never a wrong number.
+
+### When it stops posting
+
+**"The network connection was lost" almost certainly isn't the network.** iOS
+reports `NSURLErrorNetworkConnectionLost` (-1005) when the connection drops
+before the server answers, which includes requests iOS itself refused to send.
+A rejected key, a bad row or a schema mismatch all come back as an HTTP status
+with a message instead — so this error means the request never landed.
+
+Check these in order; the first two take seconds:
+
+1. **An empty header row.** A blank Key/Text pair left in the headers list
+   makes iOS build a malformed request and abandon it. This has bitten once
+   already and looks exactly like an outage. Delete the blank row.
+2. **Is the project reachable at all?** Open
+   `https://<project>.supabase.co/rest/v1/` in Safari on the phone. Getting
+   `{"message":"No API key found in request"}` back is the *good* outcome — it
+   proves DNS, TLS and routing are fine and the project isn't paused. (Free
+   Supabase projects pause after about a week idle, and a paused one drops
+   connections rather than answering, which also surfaces as -1005.)
+3. **Is it Shortcuts or this request?** A throwaway shortcut of *Get contents
+   of* that same URL → *Quick Look* should show the same JSON. If it does,
+   Shortcuts' networking is fine and the fault is in this request — bisect it
+   by dropping the `Prefer` header, then the body down to `date` alone. If the
+   bare GET fails too, it's phone-level: iCloud Private Relay, a VPN or DNS
+   profile, or Low Data Mode.
 
 ### Making it steps-only
 
