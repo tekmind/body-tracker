@@ -98,6 +98,9 @@ export default function FoodTab({ targetsForDate, pacing, dailyEntryFor, onDayTo
   const [aiErr, setAiErr] = useState("");
   const [listening, setListening] = useState(false);
   const [review, setReview] = useState(null);
+  // The entry box is a pull-up: collapsed it's one button, so the macro tiles
+  // and the first meal both fit on a phone screen without scrolling.
+  const [aiOpen, setAiOpen] = useState(false);
 
   // rows is mutated from async handlers that would otherwise close over a
   // stale copy, so the ref is the source of truth for every write path.
@@ -447,6 +450,20 @@ export default function FoodTab({ targetsForDate, pacing, dailyEntryFor, onDayTo
     }
   }, [listening]);
 
+  // Opening and starting to talk is one tap, the way it was when the box sat
+  // open on the page — the mic starts inside the click so Safari allows it.
+  const openAi = useCallback(() => {
+    setAiErr("");
+    setReview(null);
+    setAiOpen(true);
+    if (speechSupported && !listening) toggleMic();
+  }, [speechSupported, listening, toggleMic]);
+
+  const closeAi = useCallback(() => {
+    if (listening) { try { recognitionRef.current?.stop(); } catch { /* no-op */ } }
+    setAiOpen(false);
+  }, [listening]);
+
   const runParse = useCallback(async () => {
     const text = aiText.trim();
     if (!text || aiBusy) return;
@@ -503,6 +520,9 @@ export default function FoodTab({ targetsForDate, pacing, dailyEntryFor, onDayTo
         skipped,
       });
       setAiText("");
+      // The review card takes over on the page behind, so the sheet's work is
+      // done — leaving it up would hide the thing you're meant to check.
+      setAiOpen(false);
     } catch (e) {
       setAiErr(e.message);
     } finally {
@@ -668,99 +688,65 @@ export default function FoodTab({ targetsForDate, pacing, dailyEntryFor, onDayTo
       )}
 
       {/* ---------------- Voice / text entry ---------------- */}
-      <div className="panel food-ai-panel">
-        <div className="panel-head">
-          <div className="panel-title">
-            Say what you ate
-            <span className="dim">it finds the foods and files them under the right meal</span>
+      <button className="food-ai-trigger" onClick={openAi}>
+        <Mic size={17} />
+        <span className="fat-label">Say what you ate</span>
+        <span className="fat-hint">it files the foods under the right meal</span>
+      </button>
+
+      {aiErr && !aiOpen && <div className="form-error food-ai-err"><AlertCircle size={12} /> {aiErr}</div>}
+
+      {review && (
+        <div className="food-review">
+          <div className="food-review-head">
+            <Check size={14} />
+            <strong>
+              Added {review.entries.length} item{review.entries.length === 1 ? "" : "s"} to {sectionLabel(review.section)}
+            </strong>
+            <button className="btn-ghost sm" onClick={undoReview}><Undo2 size={12} /> Undo all</button>
+            <button className="icon-btn" onClick={() => setReview(null)} title="Dismiss"><X size={12} /></button>
           </div>
-        </div>
-
-        <div className="food-ai-row">
-          {speechSupported && (
-            <button
-              className={"mic-btn" + (listening ? " listening" : "")}
-              onClick={toggleMic}
-              title={listening ? "Stop listening" : "Start talking"}>
-              <Mic size={20} />
-              <span>{listening ? "Listening… tap to stop" : "Tap and talk"}</span>
-            </button>
-          )}
-          <textarea
-            className="food-ai-input"
-            value={aiText}
-            onChange={(e) => setAiText(e.target.value)}
-            rows={speechSupported ? 2 : 3}
-            placeholder={'e.g. "a can of tuna fish, four ounces of white rice and ten saltine crackers"'}
-          />
-        </div>
-
-        <div className="food-ai-actions">
-          {!speechSupported && (
-            <span className="food-hint-inline">
-              This browser has no speech recognition — type it instead (Safari and Chrome support the mic).
-            </span>
-          )}
-          <button className="btn-primary" onClick={runParse} disabled={aiBusy || !aiText.trim()}>
-            {aiBusy ? <Loader2 size={13} className="spin" /> : <Sparkles size={13} />}
-            {aiBusy ? "Working it out…" : "Add to log"}
-          </button>
-        </div>
-
-        {aiErr && <div className="form-error"><AlertCircle size={12} /> {aiErr}</div>}
-
-        {review && (
-          <div className="food-review">
-            <div className="food-review-head">
-              <Check size={14} />
-              <strong>
-                Added {review.entries.length} item{review.entries.length === 1 ? "" : "s"} to {sectionLabel(review.section)}
-              </strong>
-              <button className="btn-ghost sm" onClick={undoReview}><Undo2 size={12} /> Undo all</button>
-              <button className="icon-btn" onClick={() => setReview(null)} title="Dismiss"><X size={12} /></button>
+          {review.entries.map((e, i) => (
+            <div className="food-review-row" key={e.row?.id || i}>
+              <span className="frr-qty">{fmt(e.item.quantity)} {e.item.unit}</span>
+              <span className="frr-name">
+                {e.food.name}
+                {e.food.brand && <span className="frr-brand"> · {e.food.brand}</span>}
+              </span>
+              <span className={"frr-src frr-" + e.matchedFrom}>
+                {e.matchedFrom === "history" ? "from your history" : "from the database"}
+              </span>
+              <span className="frr-cal">{fmt(e.row?.cal)} kcal</span>
+              {e.candidates.length > 1 && (
+                <select
+                  className="frr-swap"
+                  value=""
+                  onChange={(ev) => {
+                    const pick = e.candidates[Number(ev.target.value)];
+                    if (pick) swapReviewEntry(i, pick);
+                  }}>
+                  <option value="">Wrong food?</option>
+                  {e.candidates.map((c, ci) => {
+                    const s = displayServing(c);
+                    return (
+                      <option key={ci} value={ci}>
+                        {c.name}{c.brand ? ` · ${c.brand}` : ""} — {fmt(s.cal)} kcal/{s.label}
+                      </option>
+                    );
+                  })}
+                </select>
+              )}
+              {e.item.note && <span className="frr-note">{e.item.note}</span>}
             </div>
-            {review.entries.map((e, i) => (
-              <div className="food-review-row" key={e.row?.id || i}>
-                <span className="frr-qty">{fmt(e.item.quantity)} {e.item.unit}</span>
-                <span className="frr-name">
-                  {e.food.name}
-                  {e.food.brand && <span className="frr-brand"> · {e.food.brand}</span>}
-                </span>
-                <span className={"frr-src frr-" + e.matchedFrom}>
-                  {e.matchedFrom === "history" ? "from your history" : "from the database"}
-                </span>
-                <span className="frr-cal">{fmt(e.row?.cal)} kcal</span>
-                {e.candidates.length > 1 && (
-                  <select
-                    className="frr-swap"
-                    value=""
-                    onChange={(ev) => {
-                      const pick = e.candidates[Number(ev.target.value)];
-                      if (pick) swapReviewEntry(i, pick);
-                    }}>
-                    <option value="">Wrong food?</option>
-                    {e.candidates.map((c, ci) => {
-                      const s = displayServing(c);
-                      return (
-                        <option key={ci} value={ci}>
-                          {c.name}{c.brand ? ` · ${c.brand}` : ""} — {fmt(s.cal)} kcal/{s.label}
-                        </option>
-                      );
-                    })}
-                  </select>
-                )}
-                {e.item.note && <span className="frr-note">{e.item.note}</span>}
-              </div>
-            ))}
-            {review.skipped.length > 0 && (
-              <div className="food-review-skip">
-                Couldn't find {review.skipped.map(s => `"${s.query}"`).join(", ")} — add
-                {review.skipped.length === 1 ? " it" : " them"} by hand with the + button below.
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+          ))}
+          {review.skipped.length > 0 && (
+            <div className="food-review-skip">
+              Couldn't find {review.skipped.map(s => `"${s.query}"`).join(", ")} — add
+              {review.skipped.length === 1 ? " it" : " them"} by hand with the + button below.
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ---------------- Meal sections ---------------- */}
       {MEAL_SECTIONS.map(sec => {
@@ -870,6 +856,51 @@ export default function FoodTab({ targetsForDate, pacing, dailyEntryFor, onDayTo
         targetsForDate={targetsForDate}
         onPickDay={setDateStr}
       />
+
+      {aiOpen && (
+        <div className="food-sheet-backdrop" onClick={(e) => { if (e.target === e.currentTarget) closeAi(); }}>
+          <div className="food-sheet food-ai-sheet">
+            <div className="food-sheet-head">
+              <div className="food-sheet-title"><Mic size={14} /> Say what you ate</div>
+              <button className="icon-btn" onClick={closeAi} title="Close"><X size={14} /></button>
+            </div>
+
+            <div className="food-sheet-body">
+              {speechSupported ? (
+                <button
+                  className={"mic-btn" + (listening ? " listening" : "")}
+                  onClick={toggleMic}
+                  title={listening ? "Stop listening" : "Start talking"}>
+                  <Mic size={20} />
+                  <span>{listening ? "Listening… tap to stop" : "Tap and talk"}</span>
+                </button>
+              ) : (
+                <div className="food-hint">
+                  This browser has no speech recognition — type it instead (Safari and Chrome support the mic).
+                </div>
+              )}
+
+              <textarea
+                className="food-ai-input"
+                value={aiText}
+                autoFocus={!speechSupported}
+                onChange={(e) => setAiText(e.target.value)}
+                rows={3}
+                placeholder={'e.g. "a can of tuna fish, four ounces of white rice and ten saltine crackers"'}
+              />
+
+              {aiErr && <div className="form-error"><AlertCircle size={12} /> {aiErr}</div>}
+
+              <div className="food-ai-actions">
+                <button className="btn-primary" onClick={runParse} disabled={aiBusy || !aiText.trim()}>
+                  {aiBusy ? <Loader2 size={13} className="spin" /> : <Sparkles size={13} />}
+                  {aiBusy ? "Working it out…" : "Add to log"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {sheetSection && (
         <AddFoodSheet
@@ -1792,15 +1823,22 @@ export const FOOD_STYLES = `
   .food-hint { font-family: 'Inter', sans-serif; font-size: 12.6px; color: var(--text-faint); line-height: 1.55; margin-top: 12px; padding-bottom: 4px; }
   .food-hint-inline { font-family: 'Inter', sans-serif; font-size: 12.6px; color: var(--text-faint); flex: 1; }
 
-  .food-ai-panel { padding-bottom: 16px; }
-  .food-ai-row { display: flex; gap: 12px; align-items: stretch; margin-top: 6px; }
-  .mic-btn { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px; min-width: 132px; padding: 14px 12px; border-radius: 14px; border: 1px solid var(--border); background: var(--panel-2); color: var(--text-dim); font-family: 'Inter', sans-serif; font-size: 13.2px; font-weight: 600; line-height: 1.3; text-align: center; cursor: pointer; }
+  /* Collapsed, this is a single row — the box it opens is a pull-up sheet. */
+  .food-ai-trigger { display: flex; align-items: center; gap: 10px; width: 100%; margin-bottom: 14px; padding: 13px 16px; border: 1px solid var(--border); border-radius: 18px; background: var(--panel); color: var(--text); font-family: 'Inter', sans-serif; font-size: 14.5px; text-align: left; cursor: pointer; box-shadow: 0 1px 2px rgba(20,22,27,0.05), 0 4px 16px rgba(20,22,27,0.05); }
+  .food-ai-trigger:hover { border-color: var(--text-dim); }
+  .food-ai-trigger svg { color: var(--text-dim); flex: none; }
+  .fat-label { font-weight: 600; flex: none; }
+  .fat-hint { color: var(--text-faint); font-size: 12.6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .food-ai-err { margin: -6px 0 14px; }
+
+  .food-ai-sheet .food-sheet-body { display: flex; flex-direction: column; gap: 12px; }
+  .mic-btn { display: flex; align-items: center; justify-content: center; gap: 9px; width: 100%; padding: 15px 12px; border-radius: 14px; border: 1px solid var(--border); background: var(--panel-2); color: var(--text-dim); font-family: 'Inter', sans-serif; font-size: 13.6px; font-weight: 600; line-height: 1.3; text-align: center; cursor: pointer; }
   .mic-btn:hover { color: var(--text); border-color: var(--text-dim); }
   .mic-btn.listening { background: rgba(199,58,47,0.1); border-color: var(--bad); color: var(--bad); animation: micpulse 1.4s ease-in-out infinite; }
   @keyframes micpulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.62; } }
-  .food-ai-input { flex: 1; resize: vertical; border: 1px solid var(--border); border-radius: 12px; background: var(--panel-2); color: var(--text); padding: 12px 13px; font-family: 'Inter', sans-serif; font-size: 14.5px; line-height: 1.5; outline: none; }
+  .food-ai-input { width: 100%; resize: vertical; border: 1px solid var(--border); border-radius: 12px; background: var(--panel-2); color: var(--text); padding: 12px 13px; font-family: 'Inter', sans-serif; font-size: 14.5px; line-height: 1.5; outline: none; }
   .food-ai-input:focus { border-color: var(--text-dim); }
-  .food-ai-actions { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
+  .food-ai-actions { display: flex; align-items: center; gap: 12px; }
   .food-ai-actions .btn-primary { margin-left: auto; }
 
   .food-review { margin-top: 14px; border: 1px solid #cfe6c4; background: #f4faf1; border-radius: 14px; padding: 12px 14px; }
@@ -1936,15 +1974,16 @@ export const FOOD_STYLES = `
   }
 
   @media (max-width: 640px) {
-    .food-ai-row { flex-direction: column; }
-    .mic-btn { flex-direction: row; min-width: 0; width: 100%; padding: 13px; font-size: 13px; }
-    .food-ai-actions { flex-wrap: wrap; }
+    .fat-hint { display: none; }
     .food-ai-actions .btn-primary { width: 100%; justify-content: center; margin-left: 0; }
     .food-sheet-backdrop { padding: 0; }
     /* dvh, not vh: an open keyboard doesn't shrink vh, which pushed the Add
        button underneath it. Plain vh stays as the fallback for iOS < 16.4. */
     .food-sheet { max-width: none; max-height: 100vh; height: 100vh; border-radius: 0; padding-top: env(safe-area-inset-top); }
     .food-sheet { max-height: 100dvh; height: 100dvh; }
+    /* The entry sheet is three controls tall — it rises from the bottom rather
+       than taking the whole screen, so the day behind it stays visible. */
+    .food-ai-sheet { height: auto; max-height: 90dvh; border-radius: 20px 20px 0 0; padding-top: 0; padding-bottom: env(safe-area-inset-bottom); }
     .food-row-edit .qty-input { width: 72px; }
     .food-row-actions { gap: 8px; }
     .food-row-edit { gap: 8px; flex-wrap: wrap; }
