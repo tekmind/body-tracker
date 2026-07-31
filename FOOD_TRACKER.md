@@ -1,7 +1,13 @@
 # Food tab — setup
 
 The Food tab tracks calories, protein, carbs, and fat per meal section, with a
-"say what you ate" button that parses a spoken sentence into log entries.
+**Say what you ate** button that parses a spoken sentence into log entries.
+
+That button is the whole of it on the page — one row between the macro tiles
+and the first meal. Tapping it pulls up the mic, the box to type in and the
+Add-to-log button, and starts listening in the same tap; parsing closes it
+again and leaves the review card behind on the page. Keeping it collapsed is
+what lets the day's tiles and the first meal share one phone screen.
 
 Three one-time setup steps. Steps 2 and 3 are optional in the sense that the
 tab still runs without them, but you'll want both.
@@ -74,7 +80,7 @@ first time you open the scanner, so it never affects normal startup.
 
 ## 3. Anthropic API key (voice entry)
 
-The "say what you ate" button sends your sentence to Claude
+The Say what you ate button sends your sentence to Claude
 (`api/food-parse.js`), which splits it into foods and quantities. Add
 `ANTHROPIC_API_KEY` to the same Vercel environment-variable screen.
 
@@ -157,7 +163,10 @@ food?" picker and undo-all before you move on.
 
 - **Speech** is captured in the browser with the Web Speech API — Safari and
   Chrome both support it, including on iOS, so no audio ever leaves the device.
-  Only the transcribed text is sent. Browsers without it just show the textbox.
+  Only the transcribed text is sent. The recognizer is started inside the tap
+  that opens the sheet, which is the only thing Safari will accept, and it's
+  stopped again when the sheet closes so nothing keeps listening behind your
+  back. Browsers without it open straight into the textbox.
 - **Matching order** is history first, database second, as asked: your recent
   foods are sent along with the transcript so Claude can match against them by
   id, then anything unmatched gets looked up in USDA / Open Food Facts.
