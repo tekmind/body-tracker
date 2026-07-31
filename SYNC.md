@@ -53,10 +53,38 @@ Prefer: resolution=merge-duplicates
 - Only the keys you send get written. Leaving `cal` out doesn't erase a `cal`
   already on the row.
 
-**To cut it down to steps only:** delete the health action that reads Active
-Energy (calories) and its variable, and remove the `"cal"` key from the JSON
-body. Nothing else needs to change — not the URL, not the headers, not the
-date handling. The app has no opinion about which keys arrive.
+### Why it's shaped the way it is
+
+The odd-looking part is the date, and it's deliberate. **WHOOP posts one bulk
+step sample per day, at an inconsistent hour** — some days in the evening,
+some days the following morning. So the day a sample *belongs to* can't be
+read off the clock, and "log yesterday's steps" would be wrong half the time.
+
+The shortcut works backwards from the sample instead:
+
+1. Find step samples from the last 3 days, source WHOOP, latest first,
+   **limit 1** — there's only one drop per day, so the latest one is the drop.
+2. Sum it (a sum of one sample, which is the day's total).
+3. Take its **end date**, subtract **4 hours**, and format that as `M/d/yy`.
+
+The 4 hours is what pulls a drop that landed after midnight back onto the day
+it actually describes. Both Format Date actions in the shortcut are set to
+Custom / `M/d/yy` — the primary key needs that exact spelling.
+
+Don't "simplify" this to today-or-yesterday arithmetic. It looks redundant
+and isn't.
+
+One consequence worth knowing: because it takes a single sample per run, each
+run writes exactly one day. If two drops ever land between runs, the older one
+is skipped and won't be picked up afterwards — the next run still takes only
+the latest. That shows up as a missing day, never a wrong number.
+
+### Making it steps-only
+
+Delete the health action that reads Active Energy (calories) and its variable,
+and remove the `"cal"` key from the JSON body. Nothing else changes — not the
+URL, not the headers, not the date handling. The app has no opinion about
+which keys arrive.
 
 The anon key in the Shortcut is the same public key the browser bundle ships,
 so it's no more exposed there than it already is. What guards the table is its
