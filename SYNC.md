@@ -21,12 +21,19 @@ their values — nothing reads them for a day the Food tab has covered.
 So **a `cal` value appearing on a new row means something else is still
 posting one.** Nothing in the browser app writes this table — it only reads
 and deletes — and `withings-sync.js` writes body composition only. A stray
-`cal` can only have come from a shortcut or automation, which is worth hunting
-down: a phantom 0-calorie day isn't inert, it counts as a real day of zero
-intake in the pacing maths and inflates the rest of the week's budget.
+`cal` can only have come from a shortcut or automation, so it's worth hunting
+down at the source.
 
-To clear one, delete that day in the app's Daily Log. Synced rows delete the
-`daily_metrics` row itself rather than a log entry.
+**On today, a phantom zero is harmless.** Pacing counts only days *strictly
+before* today and always treats today as a day still to plan for, precisely so
+a sync that fires before you've eaten can't be read as "today's already
+accounted for" (`pacing` in `src/Dashboard.jsx`). The weekly stat-card
+averages skip today for the same reason. Logging food overwrites it anyway.
+
+**On a past day it does count**, because past days feed the calories-logged
+total that pacing divides up. To clear one, delete that day in the app's Daily
+Log — synced rows delete the `daily_metrics` row itself rather than a log
+entry.
 
 **What you log by hand always wins — field by field.** A synced value only
 fills in a blank you haven't logged, so a day with your own step count keeps
