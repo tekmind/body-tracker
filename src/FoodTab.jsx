@@ -1824,11 +1824,11 @@ export const FOOD_STYLES = `
   .food-hint-inline { font-family: 'Inter', sans-serif; font-size: 12.6px; color: var(--text-faint); flex: 1; }
 
   /* Collapsed, this is a single row — the box it opens is a pull-up sheet. */
-  .food-ai-trigger { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; margin-bottom: 14px; padding: 14px 16px; border: 1px solid transparent; border-radius: 18px; background: var(--text-dim); color: #ffffff; font-family: 'Inter', sans-serif; font-size: 14.5px; text-align: center; cursor: pointer; box-shadow: 0 1px 2px rgba(20,22,27,0.05), 0 4px 16px rgba(20,22,27,0.05); }
-  .food-ai-trigger:hover { background: #4a4e54; }
-  .food-ai-trigger svg { color: #ffffff; flex: none; }
+  .food-ai-trigger { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; margin-bottom: 14px; padding: 14px 16px; border: 1px solid var(--text-dim); border-radius: 18px; background: var(--panel); color: var(--text); font-family: 'Inter', sans-serif; font-size: 14.5px; text-align: center; cursor: pointer; }
+  .food-ai-trigger:hover { background: var(--panel-2); }
+  .food-ai-trigger svg { color: var(--text); flex: none; }
   .fat-label { font-weight: 600; flex: none; }
-  .fat-hint { color: rgba(255,255,255,0.76); font-size: 12.6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .fat-hint { color: var(--text-faint); font-size: 12.6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .food-ai-err { margin: -6px 0 14px; }
 
   .food-ai-sheet .food-sheet-body { display: flex; flex-direction: column; gap: 12px; }
