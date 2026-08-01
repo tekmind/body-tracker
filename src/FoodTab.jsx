@@ -1189,6 +1189,34 @@ function AddFoodSheet({
   // Fills the form from a web search rather than saving anything — the person
   // still reviews every number before it's stored, which matters because a
   // wrong custom food quietly skews every day it appears in afterwards.
+  /**
+   * Merge looked-up nutrition into the form and report what it wanted to call
+   * the food. When you're editing, the lookup is there to fix the numbers —
+   * the name is yours. Packages and web pages print variants ("Sliced Swiss"
+   * for what you filed as Swiss cheese), and taking that silently renames a
+   * food out from under the name you'd find it by. It's offered instead.
+   */
+  const applyLookup = useCallback((n) => {
+    const keep = !!editingFood;
+    const name = keep && custom.name.trim() ? custom.name : (n.name || custom.name);
+    const brand = keep && custom.brand.trim() ? custom.brand : (n.brand || custom.brand);
+    setCustom(c => ({
+      ...c,
+      name, brand,
+      serving_qty: String(n.serving_qty),
+      serving_unit: n.serving_unit,
+      serving_grams: n.serving_grams != null ? String(n.serving_grams) : "",
+      cal: String(n.cal),
+      protein: String(n.protein),
+      carbs: String(n.carbs),
+      fat: String(n.fat),
+    }));
+    return {
+      readName: n.name && n.name !== name ? n.name : null,
+      readBrand: n.brand && n.brand !== brand ? n.brand : null,
+    };
+  }, [editingFood, custom.name, custom.brand]);
+
   const runLookup = useCallback(async () => {
     const name = custom.name.trim();
     if (!name) return;
@@ -1205,23 +1233,12 @@ function AddFoodSheet({
         return;
       }
       const n = res.nutrition;
-      setCustom(c => ({
-        ...c,
-        name: n.name || c.name,
-        brand: n.brand || c.brand,
-        serving_qty: String(n.serving_qty),
-        serving_unit: n.serving_unit,
-        serving_grams: n.serving_grams != null ? String(n.serving_grams) : "",
-        cal: String(n.cal),
-        protein: String(n.protein),
-        carbs: String(n.carbs),
-        fat: String(n.fat),
-      }));
-      setLookup({ busy: false, sources: res.sources || [], note: n.note, confidence: n.confidence });
+      const named = applyLookup(n);
+      setLookup({ busy: false, sources: res.sources || [], note: n.note, confidence: n.confidence, ...named });
     } catch (e) {
       setLookup({ busy: false, error: e.message });
     }
-  }, [custom.name, custom.brand, custom.serving_qty, custom.serving_unit]);
+  }, [custom.name, custom.brand, custom.serving_qty, custom.serving_unit, applyLookup]);
 
   const mine = useMemo(() => {
     const q = query.trim();
@@ -1370,29 +1387,19 @@ function AddFoodSheet({
         return;
       }
       const n = res.nutrition;
-      setCustom(c => ({
-        ...c,
-        name: n.name || c.name,
-        brand: n.brand || c.brand,
-        serving_qty: String(n.serving_qty),
-        serving_unit: n.serving_unit,
-        serving_grams: n.serving_grams != null ? String(n.serving_grams) : "",
-        cal: String(n.cal),
-        protein: String(n.protein),
-        carbs: String(n.carbs),
-        fat: String(n.fat),
-      }));
+      const named = applyLookup(n);
       setLookup({
         busy: false,
         source: "label",
         note: [n.note, n.servings_per_container ? `${n.servings_per_container} servings per container.` : ""]
           .filter(Boolean).join(" "),
         confidence: n.confidence,
+        ...named,
       });
     } catch (err) {
       setLookup({ busy: false, error: err.message, source: "label" });
     }
-  }, []);
+  }, [applyLookup]);
 
   const mineList = useMemo(() => {
     const q = mineQuery.trim();
@@ -1662,6 +1669,24 @@ function AddFoodSheet({
                       {lookup.confidence && (
                         <span className={"lookup-confidence lc-" + lookup.confidence}>{lookup.confidence} confidence</span>
                       )}
+                    </div>
+                  )}
+                  {(lookup.readName || lookup.readBrand) && (
+                    <div className="lookup-note lookup-rename">
+                      <span>
+                        It reads{lookup.readName && <> the name as <strong>{lookup.readName}</strong></>}
+                        {lookup.readName && lookup.readBrand && " and"}
+                        {lookup.readBrand && <> the brand as <strong>{lookup.readBrand}</strong></>}
+                        . Kept yours, so the food stays where you'd look for it.
+                      </span>
+                      <button className="btn-ghost sm" onClick={() => {
+                        setCustom(c => ({
+                          ...c,
+                          name: lookup.readName || c.name,
+                          brand: lookup.readBrand || c.brand,
+                        }));
+                        setLookup(l => ({ ...l, readName: null, readBrand: null }));
+                      }}>Use it</button>
                     </div>
                   )}
                   {lookup.note && <div className="lookup-note">{lookup.note}</div>}
@@ -1964,6 +1989,8 @@ export const FOOD_STYLES = `
   .lc-medium { background: rgba(219,162,54,0.2); color: #8a5b13; }
   .lc-low { background: rgba(199,58,47,0.14); color: #a03d33; }
   .lookup-note { font-family: 'Inter', sans-serif; font-size: 11.2px; color: var(--text-dim); margin-top: 6px; line-height: 1.5; }
+  .lookup-rename { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .lookup-rename span { flex: 1; min-width: 180px; }
   .lookup-sources { display: flex; flex-wrap: wrap; gap: 6px 12px; margin-top: 8px; }
   .lookup-sources a { font-family: 'Inter', sans-serif; font-size: 10.8px; color: var(--cut); text-decoration: none; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .lookup-sources a:hover { text-decoration: underline; }
