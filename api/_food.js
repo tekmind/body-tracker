@@ -56,6 +56,28 @@ function usdaNutrient(food, id) {
   return null;
 }
 
+/**
+ * A portion label is only useful if it names something. Returns "" for
+ * USDA's placeholders and for bare codes — a unit called "10205" is worse
+ * than no alternate portion at all, because it looks like a real choice.
+ */
+function usableUnitText(raw) {
+  const s = String(raw ?? "").toLowerCase().trim();
+  if (!s) return "";
+  if (!/[a-z]/.test(s)) return "";                  // "10205", "90000"
+  if (s === "undetermined") return "";
+  if (s.includes("not specified")) return "";       // FNDDS "Quantity not specified"
+  return s;
+}
+
+/**
+ * "cup, diced" is a cup; "pat (1in sq, 1/3in high)" is a pat. Parentheses go
+ * before the comma split, or the comma inside them truncates mid-bracket.
+ */
+function tidyUnit(s) {
+  return String(s).replace(/\([^)]*\)/g, " ").split(",")[0].replace(/\s+/g, " ").trim();
+}
+
 function usdaPortions(food) {
   const out = [];
   const seen = new Set();
@@ -83,21 +105,38 @@ function usdaPortions(food) {
   // Foundation / SR Legacy items carry a full portion table.
   for (const p of food.foodPortions || []) {
     const grams = Number(p.gramWeight);
-    const amount = Number(p.amount) || 1;
-    const unit = (p.measureUnit?.name && p.measureUnit.name !== "undetermined"
-      ? p.measureUnit.name
-      : p.modifier || p.portionDescription || "").toString().toLowerCase().trim();
-    if (!grams || !unit) continue;
-    const label = `${amount} ${unit}`.trim();
-    push(label, amount, unit.split(",")[0].trim(), grams / amount);
+    if (!grams) continue;
+    // Survey (FNDDS) rows leave measureUnit as "undetermined" and put a
+    // numeric FNDDS lookup code in `modifier` — 10205 and 90000 are keys into
+    // a table we don't have, not units. Their readable text is in
+    // portionDescription. Foundation and SR Legacy are the other way round,
+    // so take whichever field actually reads like words.
+    const text = [
+      usableUnitText(p.measureUnit?.name),
+      usableUnitText(p.portionDescription),
+      usableUnitText(p.modifier),
+    ].find(Boolean);
+    if (!text) continue;
+
+    // FNDDS descriptions carry their own count ("1 slice", "2 tbsp"), so that
+    // number is the amount rather than something to multiply `amount` by.
+    const lead = text.match(/^([\d.]+)\s+(.+)$/);
+    const amount = lead ? Number(lead[1]) || 1 : Number(p.amount) || 1;
+    const unit = tidyUnit(lead ? lead[2] : text);
+    if (!unit) continue;
+    push(`${amount} ${unit}`.trim(), amount, unit, grams / amount);
   }
 
   // Search results expose the same data in a flatter form.
   for (const m of food.foodMeasures || []) {
     const grams = Number(m.gramWeight);
-    const unit = (m.disseminationText || m.measureUnitName || "").toLowerCase().trim();
-    if (!grams || !unit || unit === "undetermined") continue;
-    push(unit, 1, unit.split(",")[0].trim(), grams);
+    const text = usableUnitText(m.disseminationText) || usableUnitText(m.measureUnitName);
+    if (!grams || !text) continue;
+    const lead = text.match(/^([\d.]+)\s+(.+)$/);
+    const amount = lead ? Number(lead[1]) || 1 : 1;
+    const unit = tidyUnit(lead ? lead[2] : text);
+    if (!unit) continue;
+    push(`${amount} ${unit}`.trim(), amount, unit, grams / amount);
   }
 
   return out.slice(0, 8);

@@ -222,7 +222,7 @@ export function unitOptions(food) {
     if (n && !out.some(o => unitsMatch(o, n))) out.push(n);
   };
   push(food.serving_unit);
-  (food.alt_servings || []).forEach(a => push(a.unit || a.label));
+  offerablePortions(food).forEach(a => push(a.unit || a.label));
   if (food.serving_grams || isMassUnit(food.serving_unit)) {
     push("g");
     push("oz");
@@ -240,9 +240,22 @@ export function unitOptions(food) {
  * beats the storage base, because per-100 g foods would otherwise default to
  * a useless "1 g".
  */
+/**
+ * Portions worth offering as a choice. A unit that's a bare number is a USDA
+ * FNDDS lookup code that got stored before the importer learned to reject them
+ * (see `usableUnitText` in api/_food.js) — unresolvable here, so it's hidden
+ * rather than presented as if "10205" were a thing you could eat.
+ *
+ * Only the pickers filter. `servingFactor` still reads the raw list, so a day
+ * already logged in one of these units keeps converting to the right macros.
+ */
+export function offerablePortions(food) {
+  return (food?.alt_servings || []).filter(a => /[a-z]/i.test(String(a.unit || a.label || "")));
+}
+
 export function defaultPortion(food) {
   if (!food) return { qty: 1, unit: "serving" };
-  const alt = (food.alt_servings || []).find(a => a.unit || a.label);
+  const alt = offerablePortions(food).find(a => a.unit || a.label);
   if (alt) return { qty: Number(alt.qty) || 1, unit: normalizeUnit(alt.unit || alt.label) };
   return { qty: Number(food.serving_qty) || 1, unit: normalizeUnit(food.serving_unit) || "serving" };
 }
