@@ -2104,7 +2104,7 @@ export default function Dashboard() {
   async function handleDownloadBackup() {
     const today = new Date();
     const stamp = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
-    const filename = `body-tracker-backup-${stamp}.json`;
+    const filename = `health-tracker-backup-${stamp}.json`;
     // Chromium browsers can prompt a real "save as" dialog so you pick the
     // folder; Safari/Firefox don't support that API, so they fall back to a
     // normal download (still honors the browser's own "ask where to save"
@@ -2221,7 +2221,7 @@ export default function Dashboard() {
 
       <div className="header">
         <div className="header-top">
-          <h1 className="title">Body Tracker</h1>
+          <h1 className="title">Health Tracker</h1>
           <div className="header-meta">
             <div className="header-meta-row">
               <span>{formatMDY(new Date())}</span>
