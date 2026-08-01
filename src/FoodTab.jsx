@@ -1108,7 +1108,7 @@ function WeekPanel({ weekStart, setWeekStart, rows, targetsForDate, onPickDay })
           <Tooltip content={<WeekTooltip macro={macro} target={target} />} cursor={{ fill: "rgba(0,0,0,0.04)" }} />
           {target != null && (
             <ReferenceLine y={target} stroke={CHART_THEME.tick} strokeDasharray="4 4"
-              label={{ value: `target ${fmt(target)}`, position: "insideTopRight", fill: CHART_THEME.tick, fontSize: 10 }} />
+              label={{ value: `target ${fmt(target)}`, position: "top", fill: CHART_THEME.tick, fontSize: 11 }} />
           )}
           <Bar dataKey={metric} radius={[4, 4, 0, 0]} maxBarSize={38}>
             {days.map((d, i) => {
@@ -1767,8 +1767,8 @@ export const FOOD_STYLES = `
   .food-day-nav { display: flex; align-items: center; gap: 10px; }
   .food-day-label { display: flex; align-items: baseline; gap: 8px; }
   .food-day-dow { font-family: 'Inter', sans-serif; font-size: 19px; font-weight: 700; }
-  .food-day-date { font-family: 'Inter', sans-serif; font-size: 14px; color: var(--text-dim); }
-  .food-today-pill { font-family: 'Inter', sans-serif; font-size: 10px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--good); background: rgba(54,135,39,0.13); padding: 2px 8px; border-radius: 999px; }
+  .food-day-date { font-family: 'Inter', sans-serif; font-size: 19px; color: var(--text-dim); }
+  .food-today-pill { font-family: 'Inter', sans-serif; font-size: 13px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--good); background: rgba(54,135,39,0.13); padding: 3px 10px; border-radius: 999px; }
   .food-jump-today { margin-left: auto; }
   .food-pace-toggle { margin-left: auto; flex-shrink: 0; }
   .food-jump-today + .food-pace-toggle { margin-left: 0; }
