@@ -33,7 +33,7 @@ different ground:
 | Source | Good at | Key needed |
 | --- | --- | --- |
 | **USDA FoodData Central** | Generic whole foods, and — via the Survey (FNDDS) set — everyday prepared foods like "pizza, cheese, thin crust" | Free, required |
-| **Nutritionix** | Restaurant menu items and grocery brands, which USDA barely covers | Free tier, optional |
+| **Nutritionix** | Restaurant menu items and grocery brands, which USDA barely covers | Paid/trial only — see below |
 | **Open Food Facts** | Packaged products worldwide, and by far the best barcode coverage | None |
 
 Any of them failing, or having no key, still returns the others' results.
@@ -46,16 +46,30 @@ Any of them failing, or having no key, still returns the others' results.
 Without the key, search says so in the results and falls back to the other
 sources — fine for barcoded packages, poor for generic foods.
 
-### Nutritionix (optional, recommended)
+### Nutritionix (built, but no longer free to sign up for)
 
-Sign up at <https://developer.nutritionix.com/> and add `NUTRITIONIX_APP_ID`
-and `NUTRITIONIX_APP_KEY`. The free tier is **500 requests/day**, which is
-generous for one person but is a daily cap rather than a monthly pool. Their
-terms require visible attribution wherever their data appears; the search
-sheet shows it automatically, and only when one of their results is on screen.
+**The integration is complete and dormant** — it needs `NUTRITIONIX_APP_ID` and
+`NUTRITIONIX_APP_KEY` and nothing else. Natural-language search, UPC barcode
+fallback, `alt_measures` mapped onto the serving maths, and the attribution
+line their terms require (shown automatically, and only while one of their
+results is on screen). Add the keys, redeploy, and it's live.
 
-This is what closes most of the gap against a commercial tracker — restaurant
-menus are the category USDA has essentially nothing for.
+Getting keys is the problem. Nutritionix ran an open free tier at 500
+requests/day for years and **withdrew it**, citing abuse of trial accounts.
+What's left is a trial-request form at <https://www.nutritionix.com/request-api-trial>
+and enterprise pricing quoted around $1,850/month. Asking costs nothing and
+the code is ready, so it's worth a request — just don't plan around it.
+
+**Restaurant items are handled by "Search the web"** in the custom food form
+(below) instead. Type the item — "Chipotle chicken burrito bowl" — and Claude
+reads a nutrition panel off the web and fills the form. It's per-item and
+manual rather than appearing in normal search results, and costs a few cents a
+lookup, but it needs no new key and it's already working. Restaurant menus are
+the one category USDA has essentially nothing for, and this covers it.
+
+If that ever stops being enough, **Spoonacular** has 100,000+ menu items and a
+free tier, and would drop into `api/food-search.js` as a fourth source beside
+USDA and Open Food Facts. Queued, not built.
 
 ### Why not FatSecret
 
