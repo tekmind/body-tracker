@@ -5,7 +5,7 @@ import {
 } from "recharts";
 import {
   TrendingDown, TrendingUp, Minus, Flame, Footprints, Scale, Percent,
-  Plus, Pencil, Trash2, X, Save, Loader2, AlertCircle, Settings, Target, LayoutDashboard, AlertTriangle, Check, Circle, StickyNote, Dumbbell, Activity, Heart, CalendarDays, RefreshCw, Watch, Download, Utensils, FlaskConical
+  Plus, Pencil, Trash2, X, Save, Loader2, AlertCircle, Settings, Target, LayoutDashboard, AlertTriangle, Check, Circle, StickyNote, Dumbbell, Activity, Heart, CalendarDays, RefreshCw, Watch, Download, Utensils, FlaskConical, Undo2
 } from "lucide-react";
 import { supabase } from "./supabaseClient.js";
 import {
@@ -318,6 +318,18 @@ function num(v) {
   const n = parseFloat(v);
   return Number.isNaN(n) ? null : n;
 }
+
+// The Daily Log's editable columns, in tab order. Date is deliberately absent:
+// it's the key the log and the sync are matched on, so retyping it in place
+// would silently re-key the row onto another day's data. The pencil still
+// handles that, where a collision can be seen before it's saved.
+const DAILY_CELLS = [
+  { key: "cal", label: "Calories", mode: "numeric" },
+  { key: "steps", label: "Steps", mode: "numeric" },
+  { key: "weight", label: "Weight", mode: "decimal" },
+  { key: "fatMass", label: "Fat mass", mode: "decimal" },
+  { key: "muscleMass", label: "Muscle mass", mode: "decimal" },
+];
 
 function delta(curr, prev) { return curr - prev; }
 
@@ -770,6 +782,22 @@ export default function Dashboard() {
   const [dailyForm, setDailyForm] = useState({ date: "", cal: "", steps: "", weight: "", fatMass: "", muscleMass: "" });
   const [dailySaving, setDailySaving] = useState(false);
   const [dailyErrMsg, setDailyErrMsg] = useState("");
+
+  // Spreadsheet-style cell editing on the Daily Log: { date, field, value }.
+  // Keyed by date rather than row index, because the table renders a merged,
+  // re-sorted copy and a synced row isn't in dailyEntries at all.
+  const [cellEdit, setCellEdit] = useState(null);
+  const [cellUndo, setCellUndo] = useState(null); // { entries, label }
+  // Blur fires after Enter has already cleared the state, so the handler needs
+  // the live value rather than the one its render closed over. Committing the
+  // same value twice is a no-op, which is what makes that safe.
+  const cellEditRef = useRef(null);
+  cellEditRef.current = cellEdit;
+  // Touch has no double-tap to spare — iOS spends it on zoom — so a single tap
+  // opens the editor there and double-click does it with a mouse.
+  const coarsePointer = useMemo(
+    () => typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches,
+    []);
 
   const [withingsSyncing, setWithingsSyncing] = useState(false);
   const [withingsMsg, setWithingsMsg] = useState("");
@@ -1246,6 +1274,12 @@ export default function Dashboard() {
       .map(d => ({ date: d.date, cal: d.cal, steps: d.steps, weight: d.weight, fatMass: d.fatMass, muscleMass: d.muscleMass, _synced: true }));
     return [...filled, ...synced];
   }, [dailyEntries, healthkitDaily]);
+
+  // The table's own order, hoisted so keyboard navigation moves through the
+  // rows you can see rather than the order they happen to be stored in.
+  const dailyRows = useMemo(() => [...mergedDailyEntries]
+    .map((d, i) => ({ ...d, _i: i, _d: parseDate(d.date) }))
+    .sort((a, b) => (b._d?.getTime() ?? 0) - (a._d?.getTime() ?? 0)), [mergedDailyEntries]);
 
   // Calories/Steps stat cards use a daily-log weekly average as their main
   // number. "This week" is the same Fri–Thu block the Daily tab's pacing
@@ -1895,6 +1929,92 @@ export default function Dashboard() {
     setDailyEditIndex(null);
     setDailyFormOpen(true);
   }
+  // --- Daily Log cell editing ----------------------------------------------
+
+  function sameDay(a, b) {
+    const da = parseDate(a), db = parseDate(b);
+    return !!da && !!db && da.getTime() === db.getTime();
+  }
+
+  function beginCellEdit(entry, field) {
+    // Seed from what's actually stored, not what's displayed: a borrowed
+    // HealthKit value shows in the cell but isn't yours until you type it.
+    const manual = dailyEntries.find(r => sameDay(r.date, entry.date));
+    const own = manual ? manual[field] : null;
+    setCellEdit({ date: entry.date, field, value: own == null ? "" : String(own) });
+    setDailyErrMsg("");
+  }
+
+  /** Returns false when the edit was refused, so the editor stays open. */
+  function writeDailyCell(entry, field, text) {
+    const trimmed = String(text).trim();
+    if (trimmed !== "" && num(trimmed) == null) {
+      setDailyErrMsg(`"${trimmed}" isn't a number. Empty the cell to leave that day blank.`);
+      return false;
+    }
+    const value = trimmed === "" ? null : num(trimmed);
+    const idx = dailyEntries.findIndex(r => sameDay(r.date, entry.date));
+    const own = idx >= 0 ? dailyEntries[idx][field] : null;
+
+    // Blanking a number that came from the sync would look like it worked and
+    // then come straight back, because it isn't in the log to remove.
+    if (value == null && own == null && entry[field] != null) {
+      setDailyErrMsg("That number came from the HealthKit sync, so it can't be cleared here — delete the day to drop it.");
+      return false;
+    }
+    if (own === value) { setDailyErrMsg(""); return true; } // nothing changed
+
+    const claim = field === "cal" ? { calSource: value == null ? undefined : "manual" } : null;
+    const next = idx >= 0
+      ? dailyEntries.map((r, i) => (i === idx ? { ...r, [field]: value, ...claim } : r))
+      // A synced-only day has no row in the log yet; typing into one starts a
+      // manual entry, and the merge fills its blanks back in from the sync.
+      : [...dailyEntries, {
+          date: entry.date, cal: null, steps: null, weight: null,
+          fatMass: null, muscleMass: null, [field]: value, ...claim,
+        }];
+
+    setCellUndo({ entries: dailyEntries, label: `${DAILY_CELLS.find(c => c.key === field).label} on ${entry.date}` });
+    persistDaily(next);
+    return true;
+  }
+
+  /** dir: +1 next cell, -1 previous, 0 stay put. Wraps across rows. */
+  function neighbourCell(date, field, dir) {
+    const row = dailyRows.findIndex(r => sameDay(r.date, date));
+    const col = DAILY_CELLS.findIndex(c => c.key === field);
+    if (row < 0 || col < 0) return null;
+    let r = row, c = col + dir;
+    if (c >= DAILY_CELLS.length) { c = 0; r += 1; }
+    if (c < 0) { c = DAILY_CELLS.length - 1; r -= 1; }
+    if (r < 0 || r >= dailyRows.length) return null;
+    return { entry: dailyRows[r], field: DAILY_CELLS[c].key };
+  }
+
+  function commitCellEdit(dir) {
+    const edit = cellEditRef.current;
+    if (!edit) return;
+    const entry = dailyRows.find(r => sameDay(r.date, edit.date));
+    if (!entry) { setCellEdit(null); return; }
+    if (!writeDailyCell(entry, edit.field, edit.value)) return;
+    const target = dir ? neighbourCell(edit.date, edit.field, dir) : null;
+    if (target) beginCellEdit(target.entry, target.field);
+    else setCellEdit(null);
+  }
+
+  function onCellKeyDown(e) {
+    if (e.key === "Enter") { e.preventDefault(); commitCellEdit(0); }
+    else if (e.key === "Tab") { e.preventDefault(); commitCellEdit(e.shiftKey ? -1 : 1); }
+    else if (e.key === "Escape") { e.preventDefault(); setCellEdit(null); setDailyErrMsg(""); }
+  }
+
+  function undoCellEdit() {
+    if (!cellUndo) return;
+    persistDaily(cellUndo.entries);
+    setCellUndo(null);
+    setCellEdit(null);
+  }
+
   function openEditDaily(entry) {
     // A synced-only row (not in dailyEntries) isn't found here, so idx is -1 —
     // treat that as null (add), which upserts a new manual entry by date and
@@ -2530,10 +2650,7 @@ export default function Dashboard() {
                   {mergedDailyEntries.length === 0 && (
                     <tr><td colSpan={7} className="empty-row">No days logged yet — click "Log" to start.</td></tr>
                   )}
-                  {[...mergedDailyEntries]
-                    .map((d, i) => ({ ...d, _i: i, _d: parseDate(d.date) }))
-                    .sort((a, b) => (b._d?.getTime() ?? 0) - (a._d?.getTime() ?? 0))
-                    .map((d) => {
+                  {dailyRows.map((d) => {
                       const inBlock = d._d && d._d >= pacing.blockStart && d._d <= pacing.blockEnd;
                       return (
                         <tr key={d._i} className={d._synced ? "row-synced" : ""}>
@@ -2548,13 +2665,31 @@ export default function Dashboard() {
                               </span>
                             )}
                           </td>
-                          <td>{fmtNum(d.cal)}</td>
-                          <td>{fmtNum(d.steps)}</td>
-                          <td>{fmtNum(d.weight)}</td>
-                          <td>{fmtNum(d.fatMass)}</td>
-                          <td>{fmtNum(d.muscleMass)}</td>
+                          {DAILY_CELLS.map((c) => {
+                            const active = cellEdit && cellEdit.field === c.key && sameDay(cellEdit.date, d.date);
+                            return (
+                              <td key={c.key} className={"cell-edit" + (active ? " cell-editing" : "")}
+                                title={active ? undefined : `${c.label} — ${coarsePointer ? "tap" : "double-click"} to edit`}
+                                onDoubleClick={() => beginCellEdit(d, c.key)}
+                                onClick={coarsePointer ? () => beginCellEdit(d, c.key) : undefined}>
+                                {active ? (
+                                  <input
+                                    className="cell-input"
+                                    autoFocus
+                                    inputMode={c.mode}
+                                    value={cellEdit.value}
+                                    aria-label={`${c.label} on ${d.date}`}
+                                    onFocus={(e) => e.target.select()}
+                                    onChange={(e) => setCellEdit({ ...cellEdit, value: e.target.value })}
+                                    onKeyDown={onCellKeyDown}
+                                    onBlur={() => commitCellEdit(0)}
+                                  />
+                                ) : fmtNum(d[c.key])}
+                              </td>
+                            );
+                          })}
                           <td className="row-actions">
-                            <button className="icon-btn" onClick={() => openEditDaily(d)} title="Edit"><Pencil size={12} /></button>
+                            <button className="icon-btn" onClick={() => openEditDaily(d)} title="Edit this day"><Pencil size={12} /></button>
                             <DeleteBtn id={`daily-${d._i}`} onDelete={() => (d._synced ? handleDeleteSynced(d) : handleDeleteDaily(d))} />
                           </td>
                         </tr>
@@ -2562,6 +2697,20 @@ export default function Dashboard() {
                     })}
                 </tbody>
               </table>
+            </div>
+
+            {cellUndo && (
+              <div className="cell-undo">
+                <span>Changed {cellUndo.label}.</span>
+                <button className="btn-ghost sm" onClick={undoCellEdit}><Undo2 size={12} /> Undo</button>
+                <button className="icon-btn" onClick={() => setCellUndo(null)} title="Dismiss"><X size={12} /></button>
+              </div>
+            )}
+
+            <div className="table-hint">
+              {coarsePointer ? "Tap" : "Double-click"} a number to change it. Enter saves, Tab moves along the row,
+              Escape backs out. Emptying a cell blanks that day — which isn't the same as a zero, and keeps it out of
+              your averages. The date is edited with the pencil, since it's what days are matched on.
             </div>
           </div>
         </div>
@@ -3142,6 +3291,17 @@ const BASE_STYLES = `
   .status-badge.status-upcoming { background: #dba23622; color: #dba236; }
   .status-badge.status-past { background: #2b2f3a; color: var(--text-faint); }
   .empty-row { text-align: center !important; color: var(--text-faint); padding: 20px !important; }
+
+  /* Spreadsheet-style cells on the Daily Log. The affordance stays quiet until
+     you're over it — a table where every number looks like a form field reads
+     busier than one you can just read. */
+  .cell-edit { cursor: cell; }
+  .cell-edit:hover { box-shadow: inset 0 0 0 1px var(--border); }
+  .cell-editing { padding: 0 !important; box-shadow: inset 0 0 0 2px var(--cut); }
+  .cell-input { width: 100%; min-width: 64px; box-sizing: border-box; border: none; outline: none; background: var(--panel); color: var(--text); font: inherit; text-align: inherit; padding: 8px 10px; }
+  .cell-undo { display: flex; align-items: center; gap: 10px; margin-top: 4px; padding: 9px 12px; border: 1px solid var(--border); border-radius: 12px; font-family: 'Inter', sans-serif; font-size: 13px; color: var(--text-dim); }
+  .cell-undo span { flex: 1; }
+  .table-hint { font-family: 'Inter', sans-serif; font-size: 12.4px; color: var(--text-faint); line-height: 1.55; margin-top: 12px; padding-bottom: 4px; }
 
   .eyebrow { font-family: 'JetBrains Mono', monospace; font-size: 12.6px; letter-spacing: 0.16em; color: var(--text-faint); text-transform: uppercase; margin-bottom: 6px; }
   .title { font-family: 'Space Grotesk', sans-serif; font-size: 41.4px; font-weight: 700; letter-spacing: -0.02em; margin: 0; }
