@@ -16,7 +16,7 @@ export const OFF_PRODUCT_URL = "https://world.openfoodfacts.org/api/v2/product";
 
 // Open Food Facts asks every client to identify itself; anonymous traffic gets
 // rate-limited hard.
-const OFF_HEADERS = { "User-Agent": "BodyTracker/1.0 (personal calorie tracker)" };
+const OFF_HEADERS = { "User-Agent": "HealthTracker/1.0 (personal calorie tracker)" };
 
 // FoodData Central nutrient IDs.
 const N_ENERGY = 1008;   // Energy (kcal)
