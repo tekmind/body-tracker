@@ -3304,7 +3304,7 @@ const BASE_STYLES = `
   .table-hint { font-family: 'Inter', sans-serif; font-size: 12.4px; color: var(--text-faint); line-height: 1.55; margin-top: 12px; padding-bottom: 4px; }
 
   .eyebrow { font-family: 'JetBrains Mono', monospace; font-size: 12.6px; letter-spacing: 0.16em; color: var(--text-faint); text-transform: uppercase; margin-bottom: 6px; }
-  .title { font-family: 'Space Grotesk', sans-serif; font-size: 41.4px; font-weight: 700; letter-spacing: -0.02em; margin: 0; }
+  .title { font-family: 'Space Grotesk', sans-serif; font-size: 41.4px; font-weight: 700; letter-spacing: -0.02em; margin: 0; white-space: nowrap; }
   .title .accent { color: var(--derailed); }
 
   .timeline-wrap { margin-bottom: 14px; }
@@ -3530,7 +3530,13 @@ const BASE_STYLES = `
   @media (max-width: 640px) {
     .dash { padding: 12px 10px 28px; padding-top: calc(12px + env(safe-area-inset-top)); border-radius: 0; }
     .header { margin-bottom: 12px; gap: 8px; }
-    .title { font-size: 32.2px; }
+    /* The title shares its row with the date and phase pill, which take a
+       fixed ~136px whatever the screen. "Health Tracker" needs about 6.6x its
+       font size, so below ~360px the old flat 32.2px wrapped to two lines —
+       which is what an iPhone reports with Display Zoom or larger text on.
+       Scale with the viewport instead, sized against a longer date than
+       today's so a two-digit month doesn't push it over. */
+    .title { font-size: clamp(19px, calc(14.5vw - 24px), 32.2px); }
     .panel { padding: 14px 12px 6px; }
     .banner-alert { padding: 14px 12px; min-height: 0; font-size: 15.5px; }
     .banner-alert, .banner-ontrack, .notif-row { position: relative; padding-right: 80px; }
