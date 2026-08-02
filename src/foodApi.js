@@ -8,7 +8,7 @@
 import { supabase } from "./supabaseClient.js";
 
 const ITEM_COLUMNS =
-  "id,name,brand,source,source_id,serving_qty,serving_unit,serving_grams,alt_servings,cal,protein,carbs,fat,use_count,last_used_at";
+  "id,name,brand,source,source_id,serving_qty,serving_unit,serving_grams,alt_servings,cal,protein,carbs,fat,use_count,last_used_at,last_qty,last_unit";
 
 function unwrap({ data, error }) {
   if (error) throw error;
@@ -98,13 +98,20 @@ export async function deleteFoodItem(id) {
   unwrap(await supabase.from("food_items").delete().eq("id", id));
 }
 
-/** Bump recency/frequency so the food surfaces first next time. */
-export async function touchFood(food) {
+/**
+ * Bump recency/frequency so the food surfaces first next time, and remember
+ * the portion so one-tap add can repeat it.
+ */
+export async function touchFood(food, portion) {
   if (!food?.id) return food;
   const patch = {
     use_count: (Number(food.use_count) || 0) + 1,
     last_used_at: new Date().toISOString(),
   };
+  if (portion && Number(portion.qty) > 0 && portion.unit) {
+    patch.last_qty = Number(portion.qty);
+    patch.last_unit = portion.unit;
+  }
   try {
     return unwrap(await supabase.from("food_items").update(patch).eq("id", food.id).select(ITEM_COLUMNS).single());
   } catch {
