@@ -262,10 +262,14 @@ export default function FoodTab({ targetsForDate, pacing, dailyEntryFor, onDayTo
     }
   }, []);
 
-  const handleAddFood = useCallback(async ({ food, qty, unit }) => {
+  // keepOpen is for one-tap adds off the recents list: a meal is usually
+  // several things, and closing after each one meant reopening the sheet and
+  // finding your place again for every item.
+  const handleAddFood = useCallback(async ({ food, qty, unit, keepOpen }) => {
     const section = sheetSection;
     const ok = await runWrite(() => addEntries(section, [{ food, qty, unit }]), "Couldn't add that food");
-    if (ok) setSheetSection(null);
+    if (ok && !keepOpen) setSheetSection(null);
+    return !!ok;
   }, [sheetSection, addEntries, runWrite]);
 
   const handleAddMeal = useCallback(async (meal) => {
@@ -1170,6 +1174,11 @@ function AddFoodSheet({
   const [confirmDelFood, setConfirmDelFood] = useState(null);
   const [query, setQuery] = useState("");
   const [dbResults, setDbResults] = useState([]);
+  // What one-tap has logged since the sheet opened, so staying put still tells
+  // you what went in. The sheet unmounts on close, so this resets by itself.
+  const [added, setAdded] = useState([]);
+  const openOrder = useRef(null);
+  if (openOrder.current === null) openOrder.current = new Map(catalog.map((f, i) => [f.id, i]));
   const [warnings, setWarnings] = useState([]);
   const [attribution, setAttribution] = useState([]);
   const [searching, setSearching] = useState(false);
@@ -1242,7 +1251,13 @@ function AddFoodSheet({
 
   const mine = useMemo(() => {
     const q = query.trim();
-    if (!q) return catalog.slice(0, 12);
+    // Recents are ordered by recency, which every add rewrites — so without
+    // pinning the order the list reshuffles under your finger between taps.
+    // Hold the order the sheet opened with until it closes.
+    if (!q) {
+      const rank = (f) => (openOrder.current.has(f.id) ? openOrder.current.get(f.id) : Infinity);
+      return [...catalog].sort((a, b) => rank(a) - rank(b)).slice(0, 12);
+    }
     return catalog
       .map(f => ({ f, s: matchScore(q, f) }))
       .filter(x => x.s > 0.3)
@@ -1303,9 +1318,10 @@ function AddFoodSheet({
     }
   }, []);
 
-  /** One tap: log the remembered amount and close, no quantity step. */
-  const quickAdd = useCallback((food, portion) => {
-    onAdd({ food, qty: portion.qty, unit: portion.unit });
+  /** One tap: log the remembered amount without leaving the list. */
+  const quickAdd = useCallback(async (food, portion) => {
+    const ok = await onAdd({ food, qty: portion.qty, unit: portion.unit, keepOpen: true });
+    if (ok) setAdded(prev => [...prev, { id: food.id, name: food.name, label: `${fmt(portion.qty)} ${portion.unit}` }]);
   }, [onAdd]);
 
   // A scanned package is just a picked food — same quantity step, same add
@@ -1460,6 +1476,16 @@ function AddFoodSheet({
                 </button>
               </div>
               {scanErr && !scanning && <div className="form-error"><AlertCircle size={12} /> {scanErr}</div>}
+
+              {added.length > 0 && (
+                <div className="food-added-note">
+                  <Check size={13} />
+                  <span>
+                    <strong>{added.length} added</strong> to {sectionLabel(section)} —{" "}
+                    {added.map(a => `${a.label} ${a.name}`).join(", ")}. Keep going, or close when you're done.
+                  </span>
+                </div>
+              )}
 
               {mine.length > 0 && (
                 <div className="food-result-group">
@@ -1982,6 +2008,9 @@ export const FOOD_STYLES = `
   .food-result-row .food-result-name, .food-result-row .food-result-macros { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
   .food-quick-add { display: flex; align-items: center; justify-content: center; flex: none; align-self: center; width: 40px; height: 40px; padding: 0; border: 1px solid var(--border); border-radius: 50%; background: var(--panel); color: var(--text); cursor: pointer; }
   .food-quick-add:hover:not(:disabled) { background: var(--good); border-color: var(--good); color: #ffffff; }
+  .food-added-note { display: flex; align-items: flex-start; gap: 9px; margin: 10px 0 2px; padding: 10px 12px; border: 1px solid #cfe6c4; background: #f4faf1; border-radius: 12px; font-family: 'Inter', sans-serif; font-size: 12.6px; line-height: 1.5; color: #3a6b2c; }
+  .food-added-note svg { flex: none; margin-top: 1px; }
+  .food-added-note strong { font-weight: 700; }
   .food-quick-add:disabled { opacity: 0.5; cursor: default; }
   .food-result-name { font-size: 14px; font-weight: 500; }
   .food-result-tag { margin-left: 7px; font-family: 'Inter', sans-serif; font-size: 9.4px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--good); background: rgba(54,135,39,0.13); padding: 1px 6px; border-radius: 999px; }
