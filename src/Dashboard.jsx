@@ -3295,7 +3295,9 @@ const BASE_STYLES = `
   .notif-msg { flex: 0 1 auto; }
   .alert-close-btn { flex-shrink: 0; display: flex; align-items: center; justify-content: center; margin-left: auto; padding: 4px; border: none; background: transparent; border-radius: 6px; color: inherit; opacity: 0.55; cursor: pointer; }
   .alert-close-btn:hover { opacity: 1; background: rgba(0, 0, 0, 0.07); }
-  .notif-weeks { display: inline-flex; align-items: center; vertical-align: middle; flex-shrink: 0; background: var(--bad); color: #ffffff; font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 700; letter-spacing: 0.02em; padding: 2px 9px; border-radius: 999px; }
+  /* Sized for the widest streak it will ever show, same as the stat-card
+     badges: a 12w banner sitting above a 1w one shouldn't have a wider pill. */
+  .notif-weeks { display: inline-flex; align-items: center; justify-content: center; vertical-align: middle; flex-shrink: 0; min-width: 42px; box-sizing: border-box; background: var(--bad); color: #ffffff; font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 700; letter-spacing: 0.02em; padding: 2px 9px; border-radius: 999px; }
   .notif-row.notif-warn .notif-weeks { background: #b07d17; }
   .notif-weeks.ontrack-pill { background: #368727; }
 
