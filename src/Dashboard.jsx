@@ -390,7 +390,8 @@ function StatCard({ icon: Icon, label, value, valueTag, unit, weekValue, weekLab
       onKeyDown={onClick ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick(); } } : undefined}
     >
       {badge && (
-        <span className={"stat-alert-badge " + badge.level} title={(badge.level === "good" ? "On track " : "Missed target ") + badge.weeks + " weeks in a row"}>
+        <span className={"stat-alert-badge " + badge.level}
+          title={`${badge.level === "good" ? "On track" : "Missed target"} ${badge.weeks} week${badge.weeks === 1 ? "" : "s"} in a row`}>
           {badge.level === "good" ? <Check size={10} /> : <AlertTriangle size={10} />} {badge.weeks}w
         </span>
       )}
@@ -1867,7 +1868,13 @@ export default function Dashboard() {
   const muscleBadge = muscleStreak > 0
     ? mkBadge(muscleStreak, muscleStreak >= 3 ? "bad" : "warn")
     : mkBadge(muscleOnTrackStreak, "good");
-  const calBadge = mkBadge(calStreak, calStreak >= 3 ? "bad" : "warn");
+  // Same shape as muscle: weeks over target earn a warn/bad badge, and weeks
+  // at or under it earn the green one. Without the second half the card went
+  // blank the moment you got back on track, while the alert banner was showing
+  // a green streak pill for the very same run of weeks.
+  const calBadge = calStreak > 0
+    ? mkBadge(calStreak, calStreak >= 3 ? "bad" : "warn")
+    : mkBadge(calOnTrackStreak, "good");
   const stepsBadge = mkBadge(stepsStreak, stepsStreak >= 3 ? "bad" : "warn");
   // Every non-Weight card always resolves to one of good/warn/bad so its
   // icon, week-value box, and "since start" line share one color scheme.
