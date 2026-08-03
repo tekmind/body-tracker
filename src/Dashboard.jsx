@@ -3739,6 +3739,13 @@ const BASE_STYLES = `
   .dash .stat-sub { font-family: 'Inter', sans-serif; font-size: 13.2px; }
   .dash .stat-sub .cell-good { background: #ddefd4; color: #2b6e1e; padding: 1px 8px; border-radius: 999px; }
   .dash .stat-sub .cell-bad { background: #f8ddd9; color: #a5342a; padding: 1px 8px; border-radius: 999px; }
+  /* The delta pill takes the card's verdict rather than just the sign of the
+     number: the + or - already says which way it went, and a card that's
+     green everywhere except one red pill reads as a contradiction. Only
+     Calories and Steps carry this pill, and both set a status. */
+  .dash .stat-sub.status-good .cell-good, .dash .stat-sub.status-good .cell-bad { background: #ddefd4; color: #2b6e1e; }
+  .dash .stat-sub.status-warn .cell-good, .dash .stat-sub.status-warn .cell-bad { background: #fdf1dd; color: #8a5b13; }
+  .dash .stat-sub.status-bad .cell-good, .dash .stat-sub.status-bad .cell-bad { background: #f8ddd9; color: #a5342a; }
 
   /* Panel titles like "Sector performance" */
   .dash .panel-title { font-family: 'Inter', sans-serif; font-size: 17.2px; font-weight: 700; }
