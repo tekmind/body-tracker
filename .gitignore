@@ -7,3 +7,6 @@ dist
 # Local env overrides — never commit these.
 .env.local
 .env.*.local
+
+# Playwright screenshots written by the specs.
+tests/screenshots/
