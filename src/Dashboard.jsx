@@ -3277,6 +3277,12 @@ const BASE_STYLES = `
   .banner-ontrack-text { flex: 1; }
   .banner-alert .alert-close-btn, .banner-ontrack .alert-close-btn { position: absolute; top: 50%; right: 12px; transform: translateY(-50%); margin-left: 0; }
   .notif-stack { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+  /* The calorie banner and the per-metric rows are one group of alerts, so
+     they should be evenly spaced. The rows sit 6px apart; the banner had the
+     full 14px beneath it, which read as a break between them. Scoped to when
+     a stack actually follows, so a banner on its own keeps its trailing gap.
+     (-8px collapses the banner's 14px to the stack's 6px.) */
+  .banner-alert + .notif-stack, .banner-ontrack + .notif-stack { margin-top: -8px; }
   .notif-row { display: flex; align-items: center; gap: 9px; padding: 8px 13px; border-radius: 10px; font-family: 'Inter', sans-serif; font-size: 12.5px; }
   .notif-row.notif-warn { background: #fdf1dd; border: 1px solid #ecd3a4; color: #8a5b13; }
   .notif-row.notif-warn .notif-icon { color: #b07d17; }
@@ -3441,7 +3447,10 @@ const BASE_STYLES = `
     .dash .stat-card.stat-card-clickable:hover { box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.045), 0 0 28px rgba(0, 0, 0, 0.11); }
   }
   .dash .stat-card.stat-card-clickable:focus-visible { box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.045), 0 0 28px rgba(0, 0, 0, 0.11); outline: 2px solid var(--cut); outline-offset: 2px; }
-  .stat-alert-badge { position: absolute; top: -7px; right: 10px; display: inline-flex; align-items: center; gap: 3px; color: #1a0f0f; font-family: 'JetBrains Mono', monospace; font-size: 10.3px; font-weight: 700; letter-spacing: 0.03em; padding: 2px 6px; border-radius: 20px; box-shadow: 0 0 0 3px var(--bg); }
+  /* Sized for the widest streak it will ever show rather than the current
+     one, so a card reaching 10w doesn't end up with a badge a different width
+     from the cards beside it. */
+  .stat-alert-badge { position: absolute; top: -7px; right: 10px; display: inline-flex; align-items: center; justify-content: center; gap: 3px; min-width: 50px; box-sizing: border-box; color: #1a0f0f; font-family: 'JetBrains Mono', monospace; font-size: 10.3px; font-weight: 700; letter-spacing: 0.03em; padding: 2px 7px; border-radius: 20px; box-shadow: 0 0 0 3px var(--bg); }
   .stat-alert-badge.bad { background: var(--bad); }
   .stat-alert-badge.warn { background: var(--gain); }
   .stat-alert-badge.good { background: var(--good); color: #ffffff; }
