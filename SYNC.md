@@ -47,6 +47,29 @@ the day's steps vanished with it — from the table, the weekly step average and
 the streaks alike. Fixed; `mergedDailyEntries` in `src/Dashboard.jsx` is the
 merge.
 
+## The weekly log fills itself from the daily one
+
+Adding a week used to mean copying five numbers across by hand. Now the date
+is the only thing you type: everything else is read off the Daily log.
+
+| Field | Where it comes from |
+| --- | --- |
+| Weight, muscle, fat mass | The daily entry **on that exact date** |
+| Calories, steps | The **average of the seven days before it** |
+
+The split is deliberate. Body composition is a reading — it belongs to the
+morning it was taken. Calories and steps are behaviours, so what matters is
+the week that *produced* that reading, which is the seven days leading up to
+it and not the day itself.
+
+Days with nothing logged are skipped rather than counted as zero, so a missed
+day doesn't drag the average down — the same rule the stat cards and pacing
+follow. The form says which window it used and how many days had data, so an
+average built from three days isn't mistaken for one built from seven.
+
+Everything stays editable, and typing over a filled number sticks; the fields
+only refill when the date changes, or when you press **Pull again**.
+
 ## The Shortcut
 
 It runs on the phone and writes one row per day into `daily_metrics` through
