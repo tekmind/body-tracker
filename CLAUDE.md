@@ -17,6 +17,31 @@ skimmed, and they explain *why* rather than restating the code.
 | [`LABS.md`](LABS.md) | The Labs tab and lab-report parsing |
 | [`CHANGE_QUEUE.md`](CHANGE_QUEUE.md) | Ideas parked for later. Nothing here gets built unless asked |
 
+## What the owner has asked for
+
+**Merge without asking.** Open the PR and merge it once the work is verified —
+don't stop to ask permission each time. Say what landed and what it means for
+them. Verification still comes first: the point is to skip the round trip, not
+the checking.
+
+**Spend on thinking, not on typing.** Reach for a cheap model when the task is
+mechanical and a strong one when a wrong answer is expensive or hard to
+notice. This applies to subagents and to the app's own AI calls alike.
+
+The app already encodes the split, and new work should follow it:
+
+| Setting | Model | Why |
+| --- | --- | --- |
+| `FOOD_PARSE_MODEL` | Haiku 4.5 | Splitting a spoken sentence into foods and quantities against a supplied id list. Schema-constrained extraction, runs several times a day, and every parse lands in a review card you can undo |
+| `FOOD_LABEL_MODEL` | Sonnet 5 | Reading a Nutrition Facts panel. A misread digit is silent and repeats every time that food is logged |
+| `FOOD_LOOKUP_MODEL` | Sonnet 5 | Judging whether a web page is a real nutrition label needs more than extraction |
+| `LAB_PARSE_MODEL` | Sonnet 5 | A dense grid of numbers that might be acted on medically |
+
+The pattern: **cheap where the output is checked before it counts, strong
+where a mistake is silent and durable.** Cost matters — this is one person's
+app — but a wrong number that quietly skews months of history costs more than
+the model that would have caught it.
+
 ## Conventions
 
 - **Work on `claude/calorie-tracker-feature-2vd0z4`**, never commit to `main`.
