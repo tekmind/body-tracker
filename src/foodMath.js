@@ -291,7 +291,12 @@ export function defaultPortion(food) {
  * back to reading per-100 g.
  */
 export function displayServing(food) {
-  const { qty, unit } = defaultPortion(food);
+  return portionDisplay(food, defaultPortion(food));
+}
+
+/** The same, for a portion you already have — what you last ate, say. */
+export function portionDisplay(food, portion) {
+  const { qty, unit } = portion || defaultPortion(food);
   const macros = scaleMacros(food, qty, unit);
   const grams = servingFactor(food, qty, unit).factor * (Number(food.serving_grams) || 0);
   const label = `${round1(qty)} ${unit}`;

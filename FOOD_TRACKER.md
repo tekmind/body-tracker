@@ -175,10 +175,15 @@ food?" picker and undo-all before you move on.
 
 ## Adding a food you've had before
 
-Every food under **Recently eaten** carries a button showing the amount you
-logged last time — `+ 3 stick`. Tapping it logs that and closes the sheet: one
-tap, no quantity step. Tapping the row itself opens the quantity step as
-before, pre-filled with the same amount, for when today isn't a usual portion.
+Every food under **Recently eaten** carries a round **+** button. Tapping it
+logs the amount you had last time and closes the sheet: one tap, no quantity
+step. Tapping the row itself opens the quantity step as before, pre-filled with
+the same amount, for when today isn't a usual portion.
+
+The button needs no label because the line under the food's name already
+describes exactly what it will log — `500 kcal / 5 stick (160 g) · 50p 0c 30f`,
+your portion with macros scaled to it, rather than the database's idea of one
+serving.
 
 The amount is stored on the food (`last_qty` / `last_unit`) and rewritten every
 time you log it, so it follows the way you actually eat rather than the
