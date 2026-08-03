@@ -253,6 +253,26 @@ export function offerablePortions(food) {
   return (food?.alt_servings || []).filter(a => /[a-z]/i.test(String(a.unit || a.label || "")));
 }
 
+/**
+ * What to start the quantity box at, and what one-tap add uses: the amount you
+ * had last time, falling back to the food's own portion.
+ *
+ * The remembered unit is only honoured if it still resolves *exactly*. A food
+ * edited since — a label photo replacing "1 serving = 33 g" with grams, say —
+ * can leave a stored unit the maths can no longer line up, and an inexact
+ * match is counted as whole servings, which is a guess. Repeating a guess on
+ * one tap, with no quantity step to catch it, is worse than forgetting.
+ */
+export function lastPortion(food) {
+  if (!food) return { qty: 1, unit: "serving" };
+  const qty = Number(food.last_qty);
+  const unit = normalizeUnit(food.last_unit);
+  if (unit && Number.isFinite(qty) && qty > 0 && servingFactor(food, qty, unit).exact) {
+    return { qty, unit, remembered: true };
+  }
+  return { ...defaultPortion(food), remembered: false };
+}
+
 export function defaultPortion(food) {
   if (!food) return { qty: 1, unit: "serving" };
   const alt = offerablePortions(food).find(a => a.unit || a.label);

@@ -10,7 +10,7 @@ import BarcodeScanner from "./BarcodeScanner.jsx";
 import { fileToScaledJpeg } from "./labelPhoto.js";
 import { parseDate, formatMDY, addDays, blockStartFor, blockEndFor, today as todayDate } from "./dateUtils.js";
 import {
-  MEAL_SECTIONS, sectionLabel, sectionForHour, unitOptions, defaultPortion,
+  MEAL_SECTIONS, sectionLabel, sectionForHour, unitOptions, defaultPortion, lastPortion,
   displayServing, scaleMacros, macroColumns, sumMacros, roundTotals, matchScore, normalizeUnit,
   carbGoalFrom, macroStatus, bufferRangeLabel,
 } from "./foodMath.js";
@@ -231,7 +231,7 @@ export default function FoodTab({ targetsForDate, pacing, dailyEntryFor, onDayTo
         ...macroColumns(food, e.qty, e.unit),
         sort_order: existing + i,
       });
-      touched.push(food);
+      touched.push({ food, qty: e.qty, unit: normalizeUnit(e.unit) || "serving" });
     }
     const inserted = await foodApi.insertFoodRows(payload);
     const next = [...rowsRef.current, ...inserted];
@@ -240,7 +240,7 @@ export default function FoodTab({ targetsForDate, pacing, dailyEntryFor, onDayTo
 
     // Recency drives both the search ordering and what voice entry can match
     // against, so it's worth keeping current — but never worth failing on.
-    const refreshed = await Promise.all(touched.map(f => foodApi.touchFood(f)));
+    const refreshed = await Promise.all(touched.map(t => foodApi.touchFood(t.food, t)));
     setCatalog(prev => {
       const byId = new Map(prev.map(f => [f.id, f]));
       refreshed.forEach(f => byId.set(f.id, f));
@@ -1266,7 +1266,9 @@ function AddFoodSheet({
         if (!cancelled) {
           setDbResults(res.foods || []);
           setWarnings(res.warnings || []);
-          setAttribution(res.attribution || []);
+          // A malformed field here used to throw inside render and take the
+          // whole sheet down with it — not worth losing a search over.
+          setAttribution(Array.isArray(res.attribution) ? res.attribution : []);
         }
       } catch (e) {
         if (!cancelled && e.name !== "AbortError") setSearchErr(e.message);
@@ -1279,7 +1281,9 @@ function AddFoodSheet({
 
   const pick = useCallback(async (food) => {
     const apply = (f) => {
-      const p = defaultPortion(f);
+      // Opens on the amount you had last time, so the edit path starts from
+      // the same place one-tap add would have taken you.
+      const p = lastPortion(f);
       setSelected(f);
       setQty(String(p.qty));
       setUnit(p.unit);
@@ -1298,6 +1302,11 @@ function AddFoodSheet({
       }
     }
   }, []);
+
+  /** One tap: log the remembered amount and close, no quantity step. */
+  const quickAdd = useCallback((food, portion) => {
+    onAdd({ food, qty: portion.qty, unit: portion.unit });
+  }, [onAdd]);
 
   // A scanned package is just a picked food — same quantity step, same add
   // button — so the scanner hands off into exactly the flow search uses.
@@ -1453,7 +1462,9 @@ function AddFoodSheet({
               {mine.length > 0 && (
                 <div className="food-result-group">
                   <div className="food-result-head">{query.trim() ? "Your foods" : "Recently eaten"}</div>
-                  {mine.map(f => <FoodResult key={f.id} food={f} onPick={pick} mine />)}
+                  {mine.map(f => (
+                    <FoodResult key={f.id} food={f} onPick={pick} onQuickAdd={quickAdd} disabled={saving} mine />
+                  ))}
                 </div>
               )}
 
@@ -1766,20 +1777,33 @@ function AddFoodSheet({
   );
 }
 
-function FoodResult({ food, onPick, mine }) {
+function FoodResult({ food, onPick, onQuickAdd, disabled, mine }) {
   // Show the food's own portion, not the per-100 g figure it's stored as.
   const s = displayServing(food);
+  // The button says what it will log, so a one-tap add is never a guess about
+  // how much. Two taps to change it, which is what the row itself is for.
+  const p = onQuickAdd ? lastPortion(food) : null;
   return (
-    <button className="food-result" onClick={() => onPick(food)}>
-      <span className="food-result-name">
-        {food.name}
-        {food.brand && <span className="food-row-brand"> · {food.brand}</span>}
-        {mine && <span className="food-result-tag">yours</span>}
-      </span>
-      <span className="food-result-macros">
-        {fmt(s.cal)} kcal / {s.label} · {fmt(s.protein)}p {fmt(s.carbs)}c {fmt(s.fat)}f
-      </span>
-    </button>
+    <div className="food-result-row">
+      <button className="food-result" onClick={() => onPick(food)}>
+        <span className="food-result-name">
+          {food.name}
+          {food.brand && <span className="food-row-brand"> · {food.brand}</span>}
+          {mine && <span className="food-result-tag">yours</span>}
+        </span>
+        <span className="food-result-macros">
+          {fmt(s.cal)} kcal / {s.label} · {fmt(s.protein)}p {fmt(s.carbs)}c {fmt(s.fat)}f
+        </span>
+      </button>
+      {p && (
+        <button className="food-quick-add" disabled={disabled}
+          onClick={() => onQuickAdd(food, p)}
+          title={`Add ${fmt(p.qty)} ${p.unit} of ${food.name}`}>
+          <Plus size={14} />
+          <span>{fmt(p.qty)} {p.unit}</span>
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -1947,6 +1971,14 @@ export const FOOD_STYLES = `
   .food-result-head { font-family: 'Inter', sans-serif; font-size: 10.6px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-faint); margin-bottom: 6px; }
   .food-result { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; width: 100%; text-align: left; background: transparent; border: none; border-bottom: 1px solid var(--border); padding: 10px 4px; cursor: pointer; color: var(--text); }
   .food-result:hover { background: var(--panel-2); }
+  /* The border moves to the row so the quick-add button sits inside the same
+     ruled line rather than floating past it. */
+  .food-result-row { display: flex; align-items: stretch; gap: 8px; border-bottom: 1px solid var(--border); }
+  .food-result-row .food-result { border-bottom: none; min-width: 0; }
+  .food-result-row .food-result-name, .food-result-row .food-result-macros { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+  .food-quick-add { display: flex; align-items: center; justify-content: center; gap: 5px; flex: none; align-self: center; padding: 9px 12px; border: 1px solid var(--border); border-radius: 999px; background: var(--panel); color: var(--text); font-family: 'Inter', sans-serif; font-size: 13px; font-weight: 600; white-space: nowrap; cursor: pointer; }
+  .food-quick-add:hover:not(:disabled) { background: var(--good); border-color: var(--good); color: #ffffff; }
+  .food-quick-add:disabled { opacity: 0.5; cursor: default; }
   .food-result-name { font-size: 14px; font-weight: 500; }
   .food-result-tag { margin-left: 7px; font-family: 'Inter', sans-serif; font-size: 9.4px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--good); background: rgba(54,135,39,0.13); padding: 1px 6px; border-radius: 999px; }
   .food-result-macros { font-family: 'Inter', sans-serif; font-size: 12.6px; color: var(--text-faint); }

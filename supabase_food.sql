@@ -106,3 +106,22 @@ begin
     execute format('create policy "public delete" on %I for delete using (true)', t);
   end loop;
 end $$;
+
+-- ---------------------------------------------------------------------------
+-- Remembered portions. The Food tab's "recently eaten" list adds a food in one
+-- tap using the amount you had last time, so the amount has to outlive the
+-- session. Safe to re-run.
+alter table food_items add column if not exists last_qty numeric;
+alter table food_items add column if not exists last_unit text;
+
+-- Backfill from what you've already logged, so the feature works on day one
+-- rather than after each food has been eaten once more.
+update food_items f
+set last_qty = l.qty, last_unit = l.unit
+from (
+  select distinct on (food_id) food_id, qty, unit
+  from food_log
+  where food_id is not null
+  order by food_id, created_at desc
+) l
+where f.id = l.food_id and f.last_qty is null;

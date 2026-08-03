@@ -173,6 +173,28 @@ isn't in the list you sent gets discarded server-side and falls through to a
 database search, and every parse lands in a review card with a per-item "wrong
 food?" picker and undo-all before you move on.
 
+## Adding a food you've had before
+
+Every food under **Recently eaten** carries a button showing the amount you
+logged last time — `+ 3 stick`. Tapping it logs that and closes the sheet: one
+tap, no quantity step. Tapping the row itself opens the quantity step as
+before, pre-filled with the same amount, for when today isn't a usual portion.
+
+The amount is stored on the food (`last_qty` / `last_unit`) and rewritten every
+time you log it, so it follows the way you actually eat rather than the
+database's idea of a serving. `supabase_food.sql` backfills it from your
+existing log, so it's useful from the first run rather than after eating each
+food once more.
+
+A remembered unit is only reused if it still resolves **exactly**. When a food
+has been edited since — a label photo swapping "1 serving = 33 g" for grams —
+the old unit can end up counted as whole servings, which is a guess. One tap
+has no quantity step to catch a guess, so the button falls back to the food's
+own portion instead.
+
+Foods from the database have nothing remembered and get no one-tap button;
+they go through the quantity step, where you'd want to check them anyway.
+
 ## How things fit together
 
 - **Speech** is captured in the browser with the Web Speech API — Safari and

@@ -550,11 +550,40 @@ function PhaseTimeline({ all, trackedCount, derailedDates }) {
   );
 }
 
-function EntryForm({ form, setForm, onSave, onCancel, isEdit, error }) {
+function EntryForm({ form, setForm, onSave, onCancel, isEdit, error, pullFromDaily }) {
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
+  const [pulled, setPulled] = useState(null);
+  // Only refill when the date actually changes, so typing over a filled number
+  // isn't undone by the next render.
+  const lastDate = useRef(isEdit ? form.date : null);
+
+  const applyPull = useCallback((dateStr) => {
+    if (!pullFromDaily) return;
+    const got = pullFromDaily(dateStr);
+    if (!got) { setPulled(null); return; }
+    setPulled(got);
+    setForm(f => {
+      const next = { ...f };
+      // Blanks are left alone rather than written as empty: a week with no
+      // reading that day should keep whatever you'd already typed.
+      if (got.weight != null) next.aW = String(got.weight);
+      if (got.muscleMass != null) next.aM = String(got.muscleMass);
+      if (got.fatMass != null) next.aF = String(got.fatMass);
+      if (got.cal.value != null) next.aCal = String(got.cal.value);
+      if (got.steps.value != null) next.steps = String(got.steps.value);
+      return next;
+    });
+  }, [pullFromDaily, setForm]);
+
+  useEffect(() => {
+    if (form.date === lastDate.current) return;
+    lastDate.current = form.date;
+    applyPull(form.date);
+  }, [form.date, applyPull]);
+
   return (
     <div className="entry-form">
-      <div className="form-note">Targets and phase are set automatically from your Goal Settings (the latest goal on or before each week's date decides its phase). Calories and steps here are entered manually for the week — separate from the Daily tab, which tracks its own day-by-day pacing.</div>
+      <div className="form-note">Targets and phase are set automatically from your Goal Settings (the latest goal on or before each week's date decides its phase). Set the date and the rest fills itself from the Daily tab — weight, muscle and fat as they read that day, calories and steps averaged over the seven days before it. Everything stays editable.</div>
       <div className="form-grid">
         <label>Week<input value={form.wk} onChange={set("wk")} placeholder="e.g. 19" inputMode="numeric" /></label>
         {/* Dates keep the full keyboard — the numeric pads have no "/" key. */}
@@ -566,6 +595,37 @@ function EntryForm({ form, setForm, onSave, onCancel, isEdit, error }) {
         <label>Steps<input value={form.steps} onChange={set("steps")} placeholder="steps" inputMode="numeric" /></label>
         <label className="notes-field">Notes<input value={form.notes} onChange={set("notes")} placeholder="optional" /></label>
       </div>
+      {pulled && (
+        <div className="pull-note">
+          <div className="pull-line">
+            <Watch size={12} />
+            {pulled.hasDay
+              ? <span>Weight, muscle and fat read off <strong>{pulled.from}</strong>.</span>
+              : <span>No daily entry for <strong>{pulled.from}</strong>, so the body numbers are yours to fill in.</span>}
+          </div>
+          <div className="pull-line">
+            <CalendarDays size={12} />
+            {pulled.cal.days || pulled.steps.days ? (
+              <span>
+                Averaged over <strong>{pulled.window}</strong> —{" "}
+                {pulled.cal.value != null
+                  ? <>calories from {pulled.cal.days} day{pulled.cal.days === 1 ? "" : "s"}</>
+                  : <>no calories logged</>}
+                {", "}
+                {pulled.steps.value != null
+                  ? <>steps from {pulled.steps.days} day{pulled.steps.days === 1 ? "" : "s"}</>
+                  : <>no steps logged</>}
+                . Days with nothing logged are skipped, not counted as zero.
+              </span>
+            ) : (
+              <span>Nothing logged in the seven days before this — <strong>{pulled.window}</strong> — so calories and steps are yours to fill in.</span>
+            )}
+          </div>
+          <button className="btn-ghost sm" onClick={() => applyPull(form.date)}>
+            <RefreshCw size={12} /> Pull again
+          </button>
+        </div>
+      )}
       {error && <div className="form-error"><AlertCircle size={12} /> {error}</div>}
       <div className="form-actions">
         <button className="btn-ghost" onClick={onCancel}><X size={13} /> Cancel</button>
@@ -1275,6 +1335,51 @@ export default function Dashboard() {
     return [...filled, ...synced];
   }, [dailyEntries, healthkitDaily]);
 
+  /**
+   * What a week's entry can be read off the daily log, given its date.
+   *
+   * Body composition is a reading, so it comes from that exact day. Calories
+   * and steps are behaviours, so they're the average of the seven days
+   * *before* it — the week that produced the reading, not the day it was
+   * taken on. Days with nothing logged are skipped rather than counted as
+   * zero, the same rule the stat cards and pacing use, so a missed day
+   * doesn't drag the average down.
+   */
+  const weekFromDaily = useCallback((dateStr) => {
+    const d = parseDate(dateStr);
+    if (!d) return null;
+    const at = (s) => { const p = parseDate(s); return p ? p.getTime() : null; };
+    const onDay = mergedDailyEntries.find(r => at(r.date) === d.getTime()) || null;
+
+    const start = addDays(d, -7), end = addDays(d, -1);
+    const window = mergedDailyEntries.filter(r => {
+      const t = at(r.date);
+      return t != null && t >= start.getTime() && t <= end.getTime();
+    });
+    const avg = (key) => {
+      // Filter before converting: Number(null) is 0, which is finite, so
+      // testing the converted value counts every blank day as a zero and
+      // quietly drags the average down.
+      const vals = window
+        .map(r => r[key])
+        .filter(v => v != null && v !== "" && Number.isFinite(Number(v)))
+        .map(Number);
+      if (!vals.length) return { value: null, days: 0 };
+      return { value: Math.round(vals.reduce((a, b) => a + b, 0) / vals.length), days: vals.length };
+    };
+
+    return {
+      weight: onDay?.weight ?? null,
+      muscleMass: onDay?.muscleMass ?? null,
+      fatMass: onDay?.fatMass ?? null,
+      cal: avg("cal"),
+      steps: avg("steps"),
+      hasDay: !!onDay,
+      from: dateStr,
+      window: `${formatMDY(start)} – ${formatMDY(end)}`,
+    };
+  }, [mergedDailyEntries]);
+
   // The table's own order, hoisted so keyboard navigation moves through the
   // rows you can see rather than the order they happen to be stored in.
   const dailyRows = useMemo(() => [...mergedDailyEntries]
@@ -1712,7 +1817,7 @@ export default function Dashboard() {
           </button>
         </div>
         {formOpen && (
-          <EntryForm form={form} setForm={setForm} isEdit={false} error={formErr}
+          <EntryForm form={form} setForm={setForm} isEdit={false} error={formErr} pullFromDaily={weekFromDaily}
             onCancel={() => { setFormOpen(false); setFormErr(""); }}
             onSave={() => {
               if (!parseDate(form.date)) { setFormErr("Date needs to look like 7/10/26 (month/day/year)."); return; }
@@ -2950,7 +3055,7 @@ export default function Dashboard() {
         </div>
 
         {formOpen && (
-          <EntryForm form={form} setForm={setForm} isEdit={editIndex != null} error={formErr}
+          <EntryForm form={form} setForm={setForm} isEdit={editIndex != null} error={formErr} pullFromDaily={weekFromDaily}
             onCancel={() => { setFormOpen(false); setEditIndex(null); setFormErr(""); }}
             onSave={handleSave} />
         )}
@@ -3480,6 +3585,12 @@ const BASE_STYLES = `
   .cell-good { color: var(--good); font-weight: 600; }
   .cell-bad { color: var(--bad); font-weight: 600; }
   .form-note { font-family: 'JetBrains Mono', monospace; font-size: 12.1px; color: var(--text-faint); margin-bottom: 10px; line-height: 1.5; }
+  /* Says where each filled number came from — an autofilled figure you can't
+     trace is one you end up re-checking by hand anyway. */
+  .pull-note { display: flex; flex-direction: column; align-items: flex-start; gap: 7px; margin-top: 12px; padding: 11px 13px; border: 1px solid var(--border); border-radius: 12px; font-family: 'Inter', sans-serif; font-size: 12.4px; color: var(--text-dim); line-height: 1.5; }
+  .pull-line { display: flex; align-items: flex-start; gap: 8px; }
+  .pull-line svg { flex: none; margin-top: 2px; }
+  .pull-note strong { color: var(--text); font-weight: 600; }
   .footer-note { font-family: 'JetBrains Mono', monospace; font-size: 11.5px; color: var(--text-faint); line-height: 1.5; margin-bottom: 14px; }
   .row-actions { text-align: right; white-space: nowrap; }
   .row-actions .icon-btn + .icon-btn { margin-left: 4px; }
