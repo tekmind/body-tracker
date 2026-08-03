@@ -1444,8 +1444,10 @@ function AddFoodSheet({
               <div className="food-search-row">
                 <div className="food-search-box">
                   <Search size={14} />
+                  {/* Deliberately not autofocused. The sheet opens onto the
+                      foods you actually eat, and raising the keyboard covers
+                      them — searching is the fallback, not the first move. */}
                   <input
-                    autoFocus
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
                     placeholder="Search your foods and the food database…"
