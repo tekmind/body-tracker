@@ -11,7 +11,7 @@ import { fileToScaledJpeg } from "./labelPhoto.js";
 import { parseDate, formatMDY, addDays, blockStartFor, blockEndFor, today as todayDate } from "./dateUtils.js";
 import {
   MEAL_SECTIONS, sectionLabel, sectionForHour, unitOptions, defaultPortion, lastPortion,
-  displayServing, scaleMacros, macroColumns, sumMacros, roundTotals, matchScore, normalizeUnit,
+  displayServing, portionDisplay, scaleMacros, macroColumns, sumMacros, roundTotals, matchScore, normalizeUnit,
   carbGoalFrom, macroStatus, bufferRangeLabel,
 } from "./foodMath.js";
 import * as foodApi from "./foodApi.js";
@@ -1444,8 +1444,10 @@ function AddFoodSheet({
               <div className="food-search-row">
                 <div className="food-search-box">
                   <Search size={14} />
+                  {/* Deliberately not autofocused. The sheet opens onto the
+                      foods you actually eat, and raising the keyboard covers
+                      them — searching is the fallback, not the first move. */}
                   <input
-                    autoFocus
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
                     placeholder="Search your foods and the food database…"
@@ -1778,11 +1780,13 @@ function AddFoodSheet({
 }
 
 function FoodResult({ food, onPick, onQuickAdd, disabled, mine }) {
-  // Show the food's own portion, not the per-100 g figure it's stored as.
-  const s = displayServing(food);
-  // The button says what it will log, so a one-tap add is never a guess about
-  // how much. Two taps to change it, which is what the row itself is for.
+  // Where one tap would log it, the line under the name describes that
+  // portion — the amount you had last time, with macros to match — so the
+  // button needs no label of its own and the row already says what it does.
+  // Everything else falls back to the food's own portion rather than the
+  // per-100 g figure it's stored as.
   const p = onQuickAdd ? lastPortion(food) : null;
+  const s = p ? portionDisplay(food, p) : displayServing(food);
   return (
     <div className="food-result-row">
       <button className="food-result" onClick={() => onPick(food)}>
@@ -1798,9 +1802,9 @@ function FoodResult({ food, onPick, onQuickAdd, disabled, mine }) {
       {p && (
         <button className="food-quick-add" disabled={disabled}
           onClick={() => onQuickAdd(food, p)}
+          aria-label={`Add ${fmt(p.qty)} ${p.unit} of ${food.name}`}
           title={`Add ${fmt(p.qty)} ${p.unit} of ${food.name}`}>
-          <Plus size={14} />
-          <span>{fmt(p.qty)} {p.unit}</span>
+          <Plus size={18} />
         </button>
       )}
     </div>
@@ -1976,7 +1980,7 @@ export const FOOD_STYLES = `
   .food-result-row { display: flex; align-items: stretch; gap: 8px; border-bottom: 1px solid var(--border); }
   .food-result-row .food-result { border-bottom: none; min-width: 0; }
   .food-result-row .food-result-name, .food-result-row .food-result-macros { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
-  .food-quick-add { display: flex; align-items: center; justify-content: center; gap: 5px; flex: none; align-self: center; padding: 9px 12px; border: 1px solid var(--border); border-radius: 999px; background: var(--panel); color: var(--text); font-family: 'Inter', sans-serif; font-size: 13px; font-weight: 600; white-space: nowrap; cursor: pointer; }
+  .food-quick-add { display: flex; align-items: center; justify-content: center; flex: none; align-self: center; width: 40px; height: 40px; padding: 0; border: 1px solid var(--border); border-radius: 50%; background: var(--panel); color: var(--text); cursor: pointer; }
   .food-quick-add:hover:not(:disabled) { background: var(--good); border-color: var(--good); color: #ffffff; }
   .food-quick-add:disabled { opacity: 0.5; cursor: default; }
   .food-result-name { font-size: 14px; font-weight: 500; }

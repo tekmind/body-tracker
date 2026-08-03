@@ -607,15 +607,16 @@ function EntryForm({ form, setForm, onSave, onCancel, isEdit, error, pullFromDai
             <CalendarDays size={12} />
             {pulled.cal.days || pulled.steps.days ? (
               <span>
-                Averaged over <strong>{pulled.window}</strong> —{" "}
+                Averaged over the <strong>7 days</strong> {pulled.window} —{" "}
                 {pulled.cal.value != null
-                  ? <>calories from {pulled.cal.days} day{pulled.cal.days === 1 ? "" : "s"}</>
+                  ? <>calories from {pulled.cal.days} of them</>
                   : <>no calories logged</>}
                 {", "}
                 {pulled.steps.value != null
-                  ? <>steps from {pulled.steps.days} day{pulled.steps.days === 1 ? "" : "s"}</>
+                  ? <>steps from {pulled.steps.days} of them</>
                   : <>no steps logged</>}
-                . Days with nothing logged are skipped, not counted as zero.
+                . A day with nothing logged is skipped rather than averaged in as a zero,
+                so the divisor is the number of days that had a figure.
               </span>
             ) : (
               <span>Nothing logged in the seven days before this — <strong>{pulled.window}</strong> — so calories and steps are yours to fill in.</span>
