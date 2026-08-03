@@ -463,7 +463,7 @@ function RecoveryFooter({ r }) {
       </div>
       {(r.calGoal != null || r.stepGoal != null) && (
         <div className="rec-plan">
-          <span className="rec-plan-label">Get back to your Cut:</span>
+          <span className="rec-plan-label">Get back to your {r.phase}:</span>
           {r.calGoal != null && <span className="rec-chip">{r.calGoal.toLocaleString()} kcal/day</span>}
           {r.stepGoal != null && <span className="rec-chip">{r.stepGoal.toLocaleString()} steps/day</span>}
         </div>
@@ -1395,13 +1395,18 @@ export default function Dashboard() {
       const change = gap - prevGap;
       dir = change < -5 ? "improving" : change > 5 ? "worsening" : "flat";
     }
-    // The Cut goal in effect today — what to steer back toward.
+    // The goal in effect today for the CURRENT phase — what to steer back
+    // toward. Keyed off groupPhase, same as every other cal/step target.
     const today = new Date(); today.setHours(0, 0, 0, 0);
-    const cutGoal = activeGoalFor(goals, "Cut", today);
+    const phase = groupPhaseOnDate(goals, today)
+      || phaseOnDate(goals, today)
+      || last.groupPhase || last.phase || null;
+    const phaseGoal = phase ? activeGoalFor(goals, phase, today) : null;
     return {
       gap, dir, prevGap,
-      calGoal: cutGoal?.calGoal ?? null,
-      stepGoal: cutGoal?.stepGoal ?? null,
+      phase,
+      calGoal: phaseGoal?.calGoal ?? null,
+      stepGoal: phaseGoal?.stepGoal ?? null,
     };
   }, [alertLevel, effectiveActual, goals]);
 
@@ -2278,7 +2283,7 @@ export default function Dashboard() {
             <div className="banner-alert derailed">
               <AlertCircle size={30} />
               <div className="banner-alert-text">
-                <strong>Calories — you've derailed.</strong> <span className="notif-weeks">{calStreak}w</span> Calories have been over target for {calStreak} weeks in a row — this isn't a rough week, it's a pattern.
+                <strong>You've derailed.</strong> <span className="notif-weeks">{calStreak}w</span> Calories have been over target for {calStreak} weeks in a row — this isn't a rough week, it's a pattern.
                 {recovery && <RecoveryFooter r={recovery} />}
               </div>
               <button className="alert-close-btn" onClick={() => dismissAlert("calories-derailed", `${latestDataVersion}::${calStreak}`)} aria-label="Dismiss"><X size={16} /></button>
