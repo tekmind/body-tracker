@@ -42,10 +42,27 @@ where a mistake is silent and durable.** Cost matters — this is one person's
 app — but a wrong number that quietly skews months of history costs more than
 the model that would have caught it.
 
-**Say when you shift models, and why.** Whenever a plan involves running part
-of the work on a different model — a subagent on a cheap one, a hard step
-escalated to a strong one — put a line in the outline naming the shift and its
-reason, so the trade-off is visible rather than buried:
+**The session's level is yours to set and mine to question.**
+
+You start a session at the level you think it needs. Once I've read the
+request and seen what it actually involves, I say whether that looks right —
+in either direction — before doing the work.
+
+- **Only on a mismatch.** If the level fits, say nothing. A note every turn
+  is noise, and noise gets skipped.
+- **One line**: what I'd move to and why. "This is a rename across 40 files,
+  Haiku would do" or "this is the sort of off-by-one that reads as correct —
+  worth Opus."
+- **A recommendation, not a stop.** Carry on at the level that's set; you can
+  switch if you agree. The exception is when working at the current level
+  would produce a confidently wrong answer rather than a slower one — then
+  say so and wait, because the output would need redoing anyway.
+
+**Say when you shift models, and why.** Separately from the session's own
+level: whenever a plan runs part of the work on a different model — a subagent
+on a cheap one, a hard step escalated to a strong one — put a line in the
+outline naming the shift and its reason, so the trade-off is visible rather
+than buried:
 
 > 3. Sweep the 40 call sites for the old prop name — *Haiku: mechanical
 >    find-and-replace, and the build catches a miss.*
