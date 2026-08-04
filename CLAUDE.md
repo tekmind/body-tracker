@@ -42,6 +42,19 @@ where a mistake is silent and durable.** Cost matters — this is one person's
 app — but a wrong number that quietly skews months of history costs more than
 the model that would have caught it.
 
+**Say when you shift models, and why.** Whenever a plan involves running part
+of the work on a different model — a subagent on a cheap one, a hard step
+escalated to a strong one — put a line in the outline naming the shift and its
+reason, so the trade-off is visible rather than buried:
+
+> 3. Sweep the 40 call sites for the old prop name — *Haiku: mechanical
+>    find-and-replace, and the build catches a miss.*
+> 4. Work out why the pacing average drifts on week boundaries — *Opus: the
+>    kind of off-by-one that reads as correct.*
+
+One clause is enough. The point is that a reader can see where the money went
+and disagree with the call, not that the reasoning is exhaustive.
+
 ## Conventions
 
 - **Work on `claude/calorie-tracker-feature-2vd0z4`**, never commit to `main`.
