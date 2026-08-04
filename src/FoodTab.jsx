@@ -12,7 +12,7 @@ import { parseDate, formatMDY, addDays, blockStartFor, blockEndFor, today as tod
 import {
   MEAL_SECTIONS, sectionLabel, sectionForHour, unitOptions, defaultPortion, lastPortion,
   displayServing, portionDisplay, scaleMacros, macroColumns, sumMacros, roundTotals, matchScore, normalizeUnit,
-  carbGoalFrom, macroStatus, bufferRangeLabel,
+  carbGoalFrom, macroStatus, bufferRangeLabel, withAlcoholAsCarbs,
 } from "./foodMath.js";
 import * as foodApi from "./foodApi.js";
 
@@ -167,7 +167,11 @@ export default function FoodTab({ targetsForDate, pacing, dailyEntryFor, onDayTo
   // --- derived -------------------------------------------------------------
 
   const dayRows = useMemo(() => rows.filter(r => r.date === dateStr), [rows, dateStr]);
-  const dayTotals = useMemo(() => roundTotals(sumMacros(dayRows)), [dayRows]);
+  // Against the day's targets, a drink's calories count as carbs — otherwise
+  // the calorie tile goes red while every macro sits green and nothing on
+  // screen says where the difference went. The per-section lines below keep
+  // the foods' own macros; only the totals being compared to a goal fold it in.
+  const dayTotals = useMemo(() => withAlcoholAsCarbs(roundTotals(sumMacros(dayRows))), [dayRows]);
   const goalTargets = useMemo(() => targetsForDate(dateStr), [targetsForDate, dateStr]);
 
   const selectedDate = useMemo(() => parseDate(dateStr) || todayDate(), [dateStr]);
@@ -646,7 +650,9 @@ export default function FoodTab({ targetsForDate, pacing, dailyEntryFor, onDayTo
         {MACROS.map(m => (
           <MacroTile key={m.key} macro={m} value={dayTotals[m.key]} target={targets[m.goalKey]}
             band={goalTargets.bands?.[m.goalKey]} buffer={goalTargets.buffers?.[m.goalKey]}
-            paced={pacedCal != null && (m.key === "cal" || m.key === "carbs")} />
+            paced={pacedCal != null && (m.key === "cal" || m.key === "carbs")}
+            note={m.key === "carbs" && dayTotals.fromAlcohol
+              ? `${fmt(dayTotals.fromAlcohol)}g of it from alcohol` : null} />
         ))}
       </div>
 
@@ -934,7 +940,7 @@ function sortCatalog(a, b) {
 
 // ---------------------------------------------------------------------------
 
-function MacroTile({ macro, value, target: rawTarget, band: dateBand, buffer, paced }) {
+function MacroTile({ macro, value, target: rawTarget, band: dateBand, buffer, paced, note }) {
   const target = targetOf(rawTarget);
   // A zero target with anything eaten is a full bar, not an empty one.
   const pct = target > 0 ? Math.min(100, (value / target) * 100)
@@ -970,6 +976,7 @@ function MacroTile({ macro, value, target: rawTarget, band: dateBand, buffer, pa
             : (remaining >= 0 ? `${fmt(remaining)}${macro.unit} left` : `${fmt(-remaining)}${macro.unit} over`)}
         {status === "warn" && amber && <span className="macro-tile-amber">amber {amber}</span>}
       </div>
+      {note && <div className="macro-tile-note">{note}</div>}
     </div>
   );
 }
@@ -986,7 +993,9 @@ function WeekPanel({ weekStart, setWeekStart, rows, targetsForDate, onPickDay })
 
   const days = useMemo(() => weekDateStrings(weekStart).map(ds => {
     const dayRows = rows.filter(r => r.date === ds);
-    const totals = roundTotals(sumMacros(dayRows));
+    // Same fold-in as the day's tiles, so a week's carb bars and the day
+    // you'd tap through to can't tell different stories.
+    const totals = withAlcoholAsCarbs(roundTotals(sumMacros(dayRows)));
     const d = parseDate(ds);
     return {
       date: ds,
@@ -1990,6 +1999,9 @@ export const FOOD_STYLES = `
      over or under, which is the only state with no status to show. */
   .macro-bar-fill { height: 100%; border-radius: 999px; background: var(--tint-bar, var(--text-dim)); transition: width 0.25s ease, background 0.25s ease; }
   .macro-tile-sub { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; font-family: 'Inter', sans-serif; font-size: 13.2px; color: var(--text-dim); }
+  /* Quieter than the sub-line and deliberately not re-tinted with the status:
+     it explains where a number came from, it isn't part of the verdict. */
+  .macro-tile-note { font-family: 'Inter', sans-serif; font-size: 11.6px; color: var(--text-faint); margin-top: 3px; }
 
   .food-conflict { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; margin-bottom: 14px; padding: 10px 13px; border-radius: 12px; background: #fdf1dd; border: 1px solid #ecd3a4; color: #8a5b13; font-size: 13px; line-height: 1.5; }
   .food-conflict svg { flex-shrink: 0; color: #b07d17; }

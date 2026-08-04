@@ -248,6 +248,43 @@ as you type, and warns if protein and fat between them already cost more than
 the calorie goal — which leaves nothing for carbs. Goals saved before this
 change keep their old stored carb number; it's simply no longer read.
 
+### Alcohol counts as carbs
+
+Ethanol carries 7 kcal/g and belongs to none of the three macros, so a beer
+logs its full calories while barely moving a macro tile. Left alone that reads
+as a broken tab: 2,155 of a 2,100 goal in red, every macro green, and nothing
+on screen saying where the difference went.
+
+So the day's totals fold it in. Anything the macros don't account for —
+
+```
+gap = calories - (protein x 4 + carbs x 4 + fat x 9)
+```
+
+— is counted as carbs at 4 kcal/g, and the carbs tile says how many of its
+grams arrived that way. Carbs are the right bucket because that's already what
+they are here: the calories protein and fat leave over. With the fold-in the
+four tiles reconcile again — whatever is in the calorie total is in a macro
+somewhere.
+
+Two limits worth knowing:
+
+- **It's an inference, not a reading.** Nothing in the log says "alcohol"; the
+  gap is simply what protein, carbs and fat don't explain. A food entered with
+  calories but no macros would land in the same bucket and be labelled the
+  same way. In practice the gap is a drink — but the label is a guess about a
+  number that isn't.
+- **Gaps under 50 kcal are ignored.** Label figures are rounded twice over and
+  plenty don't reconcile anyway (fibre and sugar alcohols are carbs but not at
+  4 kcal/g), so a ten-item day drifts a few dozen calories on its own.
+  Announcing "6 g from alcohol" on a day with nothing stronger than bread in
+  it is worse than saying nothing. A light beer is ~100 kcal against ~6 g of
+  carbs, so it clears the floor comfortably.
+
+The per-meal lines and the food rows keep the foods' own macros. They're a
+breakdown of what you ate; only the totals being compared against a goal fold
+the drink in.
+
 ### Alert buffers
 
 Without a buffer a macro is either green or red. A buffer adds an amber band —

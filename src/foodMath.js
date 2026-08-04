@@ -354,6 +354,59 @@ export function sumMacros(rows) {
   }), { ...EMPTY_TOTALS });
 }
 
+/**
+ * Calories in a day's total that protein, carbs and fat don't account for.
+ *
+ * In practice that's alcohol: it carries 7 kcal/g and belongs to none of the
+ * three macros, so a beer logs its full calories while contributing almost
+ * nothing to any macro tile. A day can then be over on calories with every
+ * macro comfortably under, which reads as a broken tile rather than as what
+ * it is.
+ *
+ * Small gaps are ignored, and the floor is deliberately well clear of zero.
+ * Label figures are rounded before they're printed and again when they're
+ * stored, and plenty of them don't reconcile in the first place — fibre and
+ * sugar alcohols are counted as carbs but not at 4 kcal/g. A ten-item day can
+ * drift a few dozen calories with nothing stronger than bread in it, and
+ * announcing "6g from alcohol" on that day is worse than saying nothing.
+ *
+ * A drink clears this easily: even a light beer is ~100 kcal against ~6g of
+ * carbs, so it arrives as an 80 kcal gap. A single sip logged for
+ * completeness doesn't, which is the right way round.
+ */
+const UNACCOUNTED_FLOOR = 50;
+
+export function unaccountedCal(totals) {
+  if (!totals || totals.cal == null) return 0;
+  const fromMacros = (Number(totals.protein) || 0) * KCAL_PER_G.protein
+    + (Number(totals.carbs) || 0) * KCAL_PER_G.carbs
+    + (Number(totals.fat) || 0) * KCAL_PER_G.fat;
+  const gap = (Number(totals.cal) || 0) - fromMacros;
+  return gap >= UNACCOUNTED_FLOOR ? gap : 0;
+}
+
+/**
+ * The same totals with those calories counted as carbs.
+ *
+ * Carbs are the right bucket because that's already what they are here — the
+ * calories left once protein and fat are paid for (see carbGoalFrom). Adding
+ * the drink's calories to them makes the four tiles add up again: whatever is
+ * in the calorie total is in a macro somewhere.
+ *
+ * `fromAlcohol` is the grams that came from the fold-in, so the tile can say
+ * so rather than showing a carb count the day's foods don't explain.
+ */
+export function withAlcoholAsCarbs(totals) {
+  const gap = unaccountedCal(totals);
+  if (!gap) return totals;
+  const grams = gap / KCAL_PER_G.carbs;
+  return {
+    ...totals,
+    carbs: round1((Number(totals.carbs) || 0) + grams),
+    fromAlcohol: round1(grams),
+  };
+}
+
 export function roundTotals(t) {
   return {
     cal: Math.round(t.cal),
