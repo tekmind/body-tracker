@@ -1,13 +1,20 @@
 // Shared fixtures and Playwright setup for the spec files beside this one.
 // See tests/README.md for how to run them.
+import { fileURLToPath } from "node:url";
 
 // This container ships a prebuilt Chromium; anywhere else, let Playwright
 // resolve its own. PW_CHROMIUM overrides both.
 const PINNED = process.env.PW_CHROMIUM || "/opt/pw-browsers/chromium-1194/chrome-linux/chrome";
-/** Screenshots go to tests/screenshots/, which is gitignored. */
+/**
+ * Screenshots go to tests/screenshots/, which is gitignored.
+ *
+ * fileURLToPath, not .pathname: a checkout whose path contains a space gets
+ * it percent-encoded, and every screenshot lands in a bogus "Body%20Tracker"
+ * directory beside the repo instead.
+ */
 export function shot(name) {
   const dir = new URL("./screenshots/", import.meta.url);
-  return new URL(name, dir).pathname;
+  return fileURLToPath(new URL(name, dir));
 }
 
 export const LAUNCH = (await import("node:fs")).existsSync(PINNED)

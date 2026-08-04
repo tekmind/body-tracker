@@ -1162,6 +1162,23 @@ const EMPTY_CUSTOM = {
   cal: "", protein: "", carbs: "", fat: "",
 };
 
+/**
+ * A picked food with the name and brand you typed over it, if you typed any.
+ *
+ * Clearing the name entirely means "leave it alone" rather than "call it
+ * nothing" — an unnamed food is unfindable afterwards, and the barcode's own
+ * name is at least something. The brand does clear, because plenty of foods
+ * genuinely have none and barcode databases invent them.
+ */
+function renamed(food, edit) {
+  if (!edit) return food;
+  return {
+    ...food,
+    name: edit.name.trim() || food.name,
+    brand: edit.brand.trim() || null,
+  };
+}
+
 function AddFoodSheet({
   section, catalog, meals, saving, onClose, onAdd, onAddMeal, onCreateCustom,
   onDeleteMeal, onUpdateFood, onDeleteFood,
@@ -1188,6 +1205,10 @@ function AddFoodSheet({
   const [scanBusy, setScanBusy] = useState(false);
   const [scanErr, setScanErr] = useState("");
   const [selected, setSelected] = useState(null);
+  // Set only for a scanned food: { name, brand } you can correct before it's
+  // saved. Null for anything picked off a list, where the name is already the
+  // one you filed it under.
+  const [pickEdit, setPickEdit] = useState(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [qty, setQty] = useState("1");
   const [unit, setUnit] = useState("serving");
@@ -1300,7 +1321,11 @@ function AddFoodSheet({
     return () => { cancelled = true; controller.abort(); clearTimeout(t); };
   }, [query]);
 
-  const pick = useCallback(async (food) => {
+  const pick = useCallback(async (food, { editable = false } = {}) => {
+    // Seeded once per pick: the detail fetch below re-applies the food a
+    // moment later, and re-seeding there would wipe a name you'd already
+    // started correcting.
+    let seeded = false;
     const apply = (f) => {
       // Opens on the amount you had last time, so the edit path starts from
       // the same place one-tap add would have taken you.
@@ -1308,6 +1333,8 @@ function AddFoodSheet({
       setSelected(f);
       setQty(String(p.qty));
       setUnit(p.unit);
+      if (!editable) setPickEdit(null);
+      else if (!seeded) { setPickEdit({ name: f.name || "", brand: f.brand || "" }); seeded = true; }
     };
     apply(food);
     // USDA and Open Food Facts search hits can be missing portions the detail
@@ -1338,7 +1365,9 @@ function AddFoodSheet({
     try {
       const food = await foodApi.lookupBarcode(code);
       setScanning(false);
-      pick(food);
+      // Editable: barcode databases name things the way the manufacturer
+      // registered them, not the way you'd look for them later.
+      pick(food, { editable: true });
     } catch (e) {
       setScanErr(e.message);
     } finally {
@@ -1571,10 +1600,23 @@ function AddFoodSheet({
               <button className="btn-ghost sm" onClick={() => setSelected(null)}>
                 <ChevronLeft size={12} /> {mode === "mine" ? "Back to my foods" : "Back to results"}
               </button>
-              <div className="food-pick-name">
-                {selected.name}
-                {selected.brand && <span className="food-row-brand"> · {selected.brand}</span>}
-              </div>
+              {pickEdit ? (
+                <div className="food-pick-edit">
+                  <label>Name
+                    <input value={pickEdit.name} placeholder={selected.name}
+                      onChange={(e) => setPickEdit(p => ({ ...p, name: e.target.value }))} />
+                  </label>
+                  <label>Brand
+                    <input value={pickEdit.brand} placeholder="optional"
+                      onChange={(e) => setPickEdit(p => ({ ...p, brand: e.target.value }))} />
+                  </label>
+                </div>
+              ) : (
+                <div className="food-pick-name">
+                  {selected.name}
+                  {selected.brand && <span className="food-row-brand"> · {selected.brand}</span>}
+                </div>
+              )}
               <div className="food-pick-serving">
                 {loadingDetail
                   ? <><Loader2 size={12} className="spin" /> loading portions…</>
@@ -1608,7 +1650,7 @@ function AddFoodSheet({
               <div className="form-actions">
                 <button className="btn-ghost" onClick={() => setSelected(null)}><X size={13} /> Cancel</button>
                 <button className="btn-primary" disabled={saving || (num(qty) ?? 0) <= 0}
-                  onClick={() => onAdd({ food: selected, qty: num(qty), unit })}>
+                  onClick={() => onAdd({ food: renamed(selected, pickEdit), qty: num(qty), unit })}>
                   {saving ? <Loader2 size={13} className="spin" /> : <Plus size={13} />} Add to {sectionLabel(section)}
                 </button>
               </div>
@@ -2080,10 +2122,12 @@ export const FOOD_STYLES = `
 
   .food-pick { padding-top: 6px; }
   .food-pick-name { font-family: 'Inter', sans-serif; font-size: 17px; font-weight: 700; margin: 12px 0 4px; }
+  .food-pick-edit { display: grid; grid-template-columns: 1.6fr 1fr; gap: 12px; margin: 12px 0 8px; }
+  .food-pick-edit label { display: flex; flex-direction: column; gap: 5px; font-family: 'Inter', sans-serif; font-size: 13.2px; font-weight: 600; letter-spacing: 0.01em; color: var(--text-dim); }
   .food-pick-serving { display: flex; align-items: center; gap: 6px; font-family: 'Inter', sans-serif; font-size: 13.2px; color: var(--text-dim); }
   .food-pick-qty { display: grid; grid-template-columns: 1fr 1.4fr; gap: 12px; margin: 16px 0; }
   .food-pick-qty label { display: flex; flex-direction: column; gap: 5px; font-family: 'Inter', sans-serif; font-size: 13.2px; font-weight: 600; letter-spacing: 0.01em; color: var(--text-dim); }
-  .food-pick-qty input, .food-pick-qty select { background: var(--panel-2); border: 1px solid var(--border); border-radius: 9px; color: var(--text); padding: 9px 11px; font-family: 'Inter', sans-serif; font-size: 15px; outline: none; }
+  .food-pick-qty input, .food-pick-qty select, .food-pick-edit input { background: var(--panel-2); border: 1px solid var(--border); border-radius: 9px; color: var(--text); padding: 9px 11px; font-family: 'Inter', sans-serif; font-size: 15px; outline: none; min-width: 0; }
   .food-pick-preview { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; background: var(--panel-2); border-radius: 12px; padding: 12px 14px; font-family: 'Inter', sans-serif; font-size: 12.4px; color: var(--text-dim); }
   .fpp-cal { font-family: 'Inter', sans-serif; letter-spacing: -0.02em; font-size: 20px; font-weight: 700; color: var(--text); }
   .fpp-warn { flex-basis: 100%; color: #a03d33; font-size: 11.4px; line-height: 1.5; }
@@ -2149,5 +2193,6 @@ export const FOOD_STYLES = `
     .food-week-nav { flex-wrap: wrap; }
     .frr-cal { margin-left: 0; }
     .food-pick-qty { grid-template-columns: 1fr; }
+    .food-pick-edit { grid-template-columns: 1fr; }
   }
 `;
