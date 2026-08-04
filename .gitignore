@@ -2,7 +2,10 @@ node_modules
 dist
 .DS_Store
 .env
-.claude
+# Local Claude state, except the preferences copy — the container is
+# disposable and ~/.claude/CLAUDE.md isn't in git anywhere else.
+.claude/*
+!.claude/user-preferences.md
 
 # Local env overrides — never commit these.
 .env.local
