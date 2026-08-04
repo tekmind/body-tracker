@@ -6,6 +6,7 @@ dist
 # disposable and ~/.claude/CLAUDE.md isn't in git anywhere else.
 .claude/*
 !.claude/user-preferences.md
+.obsidian
 
 # Local env overrides — never commit these.
 .env.local
