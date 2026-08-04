@@ -125,6 +125,12 @@ when you don't have the package in hand. Type a name (and brand, if it has one)
 and Claude searches the web, reads the nutrition label it finds, and fills in
 the form.
 
+There's a shortcut into it: the **Web** button next to Scan on the search row.
+When a search turns up nothing usable, tapping it carries what you typed
+straight into the custom form as the food's name and starts the lookup — no
+retyping, and backing out returns you to the search you were in the middle of.
+The same offer appears in the "nothing found" empty state.
+
 It fills the form — it never saves. The numbers arrive editable, with the
 sources linked and a confidence rating, and the banner says to check them
 before saving. That's deliberate: a wrong custom food quietly skews every day

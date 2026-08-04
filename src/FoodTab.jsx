@@ -1169,6 +1169,7 @@ function AddFoodSheet({
   // "custom" isn't a tab — it's the form you land in from "Add a food" or from
   // editing one, and backing out returns you to where you came from.
   const [mode, setMode] = useState("search"); // search | mine | meals | custom
+  const [customFrom, setCustomFrom] = useState("mine"); // tab the custom form was opened from
   const [editingFood, setEditingFood] = useState(null);
   const [mineQuery, setMineQuery] = useState("");
   const [confirmDelFood, setConfirmDelFood] = useState(null);
@@ -1205,10 +1206,14 @@ function AddFoodSheet({
    * for what you filed as Swiss cheese), and taking that silently renames a
    * food out from under the name you'd find it by. It's offered instead.
    */
-  const applyLookup = useCallback((n) => {
+  const applyLookup = useCallback((n, seed) => {
+    // `seed` is for a lookup fired in the same tick the form was filled in
+    // (the Web button on the search row) — `custom` still holds the old value
+    // then, so the caller passes what it just set.
+    const was = { name: seed?.name ?? custom.name, brand: seed?.brand ?? custom.brand };
     const keep = !!editingFood;
-    const name = keep && custom.name.trim() ? custom.name : (n.name || custom.name);
-    const brand = keep && custom.brand.trim() ? custom.brand : (n.brand || custom.brand);
+    const name = keep && was.name.trim() ? was.name : (n.name || was.name);
+    const brand = keep && was.brand.trim() ? was.brand : (n.brand || was.brand);
     setCustom(c => ({
       ...c,
       name, brand,
@@ -1226,15 +1231,16 @@ function AddFoodSheet({
     };
   }, [editingFood, custom.name, custom.brand]);
 
-  const runLookup = useCallback(async () => {
-    const name = custom.name.trim();
+  const runLookup = useCallback(async (seed) => {
+    const name = (seed?.name ?? custom.name).trim();
+    const brand = (seed?.brand ?? custom.brand).trim();
     if (!name) return;
     setLookup({ busy: true });
     try {
       const res = await foodApi.lookupNutrition({
         name,
-        brand: custom.brand.trim(),
-        serving: custom.serving_unit && custom.serving_unit !== "serving"
+        brand,
+        serving: !seed && custom.serving_unit && custom.serving_unit !== "serving"
           ? `${custom.serving_qty} ${custom.serving_unit}` : "",
       });
       if (!res.nutrition) {
@@ -1242,7 +1248,7 @@ function AddFoodSheet({
         return;
       }
       const n = res.nutrition;
-      const named = applyLookup(n);
+      const named = applyLookup(n, seed);
       setLookup({ busy: false, sources: res.sources || [], note: n.note, confidence: n.confidence, ...named });
     } catch (e) {
       setLookup({ busy: false, error: e.message });
@@ -1356,13 +1362,34 @@ function AddFoodSheet({
     fat: num(custom.fat) ?? 0,
   });
 
-  const openCreate = useCallback(() => {
+  const openCreate = useCallback((from = "mine") => {
     setEditingFood(null);
     setCustom(EMPTY_CUSTOM);
     setCustomQty("1");
     setLookup(null);
+    setCustomFrom(from);
     setMode("custom");
   }, []);
+
+  // The Web button on the search row: what you typed is the food's name, and
+  // the lookup starts straight away rather than making you retype it into the
+  // custom form. Same review-before-saving rule as every other lookup — it
+  // fills the form in, it doesn't save anything.
+  const openWebLookup = useCallback((text) => {
+    const name = text.trim();
+    if (!name) return;
+    setEditingFood(null);
+    setCustom({ ...EMPTY_CUSTOM, name });
+    setCustomQty("1");
+    setCustomFrom("search");
+    setMode("custom");
+    runLookup({ name, brand: "" });
+  }, [runLookup]);
+
+  const closeCustom = useCallback(() => {
+    setEditingFood(null);
+    setMode(customFrom);
+  }, [customFrom]);
 
   const openEdit = useCallback((food) => {
     // Show the food's real serving, not the per-100 g form it's stored in.
@@ -1371,6 +1398,7 @@ function AddFoodSheet({
     // of wrong answer.
     const s = displayServing(food);
     setEditingFood(food);
+    setCustomFrom("mine");
     setCustom({
       name: food.name || "",
       brand: food.brand || "",
@@ -1395,6 +1423,7 @@ function AddFoodSheet({
     setEditingFood(null);
     setCustom(EMPTY_CUSTOM);
     setLookup(null);
+    setCustomFrom("mine");
     setMode("custom");
     labelInputRef.current?.click();
   }, []);
@@ -1426,6 +1455,8 @@ function AddFoodSheet({
     }
   }, [applyLookup]);
 
+  const customTab = (tab) => mode === tab || (mode === "custom" && customFrom === tab);
+
   const mineList = useMemo(() => {
     const q = mineQuery.trim();
     if (!q) return catalog;
@@ -1446,9 +1477,11 @@ function AddFoodSheet({
         <div className="toggle-group food-sheet-tabs">
           {/* Switching tabs drops a half-finished pick, which is what tapping
               a different tab means. */}
-          <button className={"toggle-btn" + (mode === "search" && !selected ? " active" : "")}
+          {/* The custom form isn't a tab of its own, so it keeps lit whichever
+              tab you opened it from — that's where backing out returns you. */}
+          <button className={"toggle-btn" + (customTab("search") && !selected ? " active" : "")}
             onClick={() => { setSelected(null); setMode("search"); }}>Search</button>
-          <button className={"toggle-btn" + ((mode === "mine" || mode === "custom") && !selected ? " active" : "")}
+          <button className={"toggle-btn" + (customTab("mine") && !selected ? " active" : "")}
             onClick={() => { setSelected(null); setMode("mine"); }}>My foods</button>
           <button className={"toggle-btn" + (mode === "meals" && !selected ? " active" : "")}
             onClick={() => { setSelected(null); setMode("meals"); }}>My meals</button>
@@ -1473,6 +1506,14 @@ function AddFoodSheet({
                 <button className="scan-btn" onClick={openScanner} title="Scan a barcode">
                   <ScanLine size={18} />
                   <span>Scan</span>
+                </button>
+                <button className="scan-btn" onClick={() => openWebLookup(query)}
+                  disabled={query.trim().length < 2}
+                  title={query.trim().length < 2
+                    ? "Type a name first, then search the web for it"
+                    : `Search the web for "${query.trim()}" and make it your own food`}>
+                  <Globe size={18} />
+                  <span>Web</span>
                 </button>
               </div>
               {scanErr && !scanning && <div className="form-error"><AlertCircle size={12} /> {scanErr}</div>}
@@ -1509,10 +1550,15 @@ function AddFoodSheet({
               {query.trim().length >= 2 && !searching && !mine.length && !dbResults.length && !searchErr && (
                 <div className="food-section-empty">
                   <div>Nothing found for "{query.trim()}".</div>
-                  <button className="btn-primary sm" style={{ marginTop: 10 }}
-                    onClick={() => { openCreate(); setCustom({ ...EMPTY_CUSTOM, name: query.trim() }); }}>
-                    <Plus size={13} /> Add it as a custom food
-                  </button>
+                  <div className="food-empty-actions">
+                    <button className="btn-primary sm" onClick={() => openWebLookup(query)}>
+                      <Globe size={13} /> Search the web for it
+                    </button>
+                    <button className="btn-ghost sm"
+                      onClick={() => { openCreate("search"); setCustom({ ...EMPTY_CUSTOM, name: query.trim() }); }}>
+                      <Plus size={13} /> Add it by hand
+                    </button>
+                  </div>
                 </div>
               )}
             </>
@@ -1663,8 +1709,8 @@ function AddFoodSheet({
 
           {!selected && mode === "custom" && (
             <div className="food-custom">
-              <button className="btn-ghost sm" onClick={() => { setMode("mine"); setEditingFood(null); }}>
-                <ChevronLeft size={12} /> Back to my foods
+              <button className="btn-ghost sm" onClick={closeCustom}>
+                <ChevronLeft size={12} /> Back to {customFrom === "search" ? "search" : "my foods"}
               </button>
               <div className="form-note">
                 Enter the nutrition for one serving exactly as the label reads it. Filling in the gram weight is what
@@ -1682,7 +1728,7 @@ function AddFoodSheet({
                     ? <Loader2 size={12} className="spin" /> : <Camera size={12} />}
                   {lookup?.busy && lookup.source === "label" ? "Reading the label…" : "Photo of label"}
                 </button>
-                <button className="btn-ghost sm" onClick={runLookup} disabled={!custom.name.trim() || lookup?.busy}>
+                <button className="btn-ghost sm" onClick={() => runLookup()} disabled={!custom.name.trim() || lookup?.busy}>
                   {lookup?.busy && lookup.source !== "label"
                     ? <Loader2 size={12} className="spin" /> : <Globe size={12} />}
                   {lookup?.busy && lookup.source !== "label" ? "Searching the web…" : "Search the web"}
@@ -1754,7 +1800,7 @@ function AddFoodSheet({
                 )}
               </div>
               <div className="form-actions">
-                <button className="btn-ghost" onClick={() => { setMode("mine"); setEditingFood(null); }}>
+                <button className="btn-ghost" onClick={closeCustom}>
                   <X size={13} /> Cancel
                 </button>
                 {editingFood ? (
@@ -1982,7 +2028,9 @@ export const FOOD_STYLES = `
   .food-search-box { flex: 1; display: flex; align-items: center; gap: 8px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; color: var(--text-faint); min-width: 0; }
   .food-search-box input { flex: 1; min-width: 0; background: transparent; border: none; outline: none; color: var(--text); font-family: 'Inter', sans-serif; font-size: 14.5px; }
   .scan-btn { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; flex-shrink: 0; padding: 6px 12px; border-radius: 12px; border: 1px solid var(--border); background: var(--panel-2); color: var(--text-dim); font-family: 'Inter', sans-serif; font-size: 9.6px; letter-spacing: 0.05em; text-transform: uppercase; cursor: pointer; }
-  .scan-btn:hover { color: var(--text); border-color: var(--text-dim); }
+  .scan-btn:hover:not(:disabled) { color: var(--text); border-color: var(--text-dim); }
+  .scan-btn:disabled { opacity: 0.45; cursor: default; }
+  .food-empty-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 10px; }
   .food-attribution { font-family: 'Inter', sans-serif; font-size: 10.6px; color: var(--text-faint); margin-top: 14px; padding-bottom: 4px; }
 
   .scanner-backdrop { position: fixed; inset: 0; z-index: 70; background: rgba(12,13,16,0.88); display: flex; align-items: center; justify-content: center; padding: 16px; }
