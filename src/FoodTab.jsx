@@ -1825,11 +1825,19 @@ function AddFoodSheet({
                   </button>
                 ) : (
                   <button className="btn-primary" disabled={!customValid || saving}
-                    onClick={() => onCreateCustom({
-                      fields: { ...customFields(), alt_servings: [] },
-                      qty: num(customQty) ?? 1,
-                      unit: normalizeUnit(custom.serving_unit) || "serving",
-                    })}>
+                    onClick={() => {
+                      const fields = { ...customFields(), alt_servings: [] };
+                      // "How many now" counts SERVINGS, and a serving is often
+                      // more than one of its own unit — "12 oz", "2 crackers".
+                      // Logging qty 1 of "oz" against a 12 oz serving asked for
+                      // one ounce of it, a twelfth of the calories, and got
+                      // remembered as the portion to repeat next time.
+                      onCreateCustom({
+                        fields,
+                        qty: (num(customQty) ?? 1) * fields.serving_qty,
+                        unit: fields.serving_unit,
+                      });
+                    }}>
                     {saving ? <Loader2 size={13} className="spin" /> : <Save size={13} />} Save & add
                   </button>
                 )}
