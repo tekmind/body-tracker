@@ -1464,7 +1464,7 @@ function AddFoodSheet({
   }, [catalog, mineQuery]);
 
   return (
-    <div className="food-sheet-backdrop" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+    <div className="food-sheet-backdrop sheet-top" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="food-sheet">
         {/* One hidden input drives every "photo of label" button. */}
         <input ref={labelInputRef} type="file" accept="image/*" capture="environment"
@@ -2018,6 +2018,12 @@ export const FOOD_STYLES = `
   .week-avg-sub { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; font-family: 'Inter', sans-serif; font-size: 13.2px; color: var(--text-dim); margin-top: 6px; }
 
   .food-sheet-backdrop { position: fixed; inset: 0; z-index: 60; background: rgba(20,22,27,0.42); display: flex; align-items: flex-end; justify-content: center; padding: 24px 16px; }
+  /* The add-food sheet changes height constantly — search results, a picked
+     food, the custom form. Pinned to the bottom, every one of those moved the
+     top edge and the tabs with it; pinned to the top, it grows downwards and
+     the controls you're aiming at stay put. The entry sheet keeps rising from
+     the bottom: it's three controls tall and doesn't resize like this. */
+  .food-sheet-backdrop.sheet-top { align-items: flex-start; }
   .food-sheet { width: 100%; max-width: 640px; max-height: 88vh; display: flex; flex-direction: column; background: var(--panel); border-radius: 20px; box-shadow: 0 18px 50px rgba(20,22,27,0.28); overflow: hidden; }
   .food-sheet-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 18px 10px; }
   .food-sheet-title { display: flex; align-items: center; gap: 8px; font-family: 'Inter', sans-serif; font-size: 16px; font-weight: 700; }
