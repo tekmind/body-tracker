@@ -855,6 +855,12 @@ export default function Dashboard() {
   // same value twice is a no-op, which is what makes that safe.
   const cellEditRef = useRef(null);
   cellEditRef.current = cellEdit;
+  // Once you're editing, a single click moves along — asking for a double-click
+  // again mid-run is a tap you shouldn't have to make. Mousedown notes that an
+  // editor was open, because by the time the click lands the input has already
+  // blurred and saved; if that save was refused the editor is still open and
+  // the click is ignored so the error stays on screen.
+  const clickFromCell = useRef(false);
   // Touch has no double-tap to spare — iOS spends it on zoom — so a single tap
   // opens the editor there and double-click does it with a mouse.
   const coarsePointer = useMemo(
@@ -2120,6 +2126,13 @@ export default function Dashboard() {
     else setCellEdit(null);
   }
 
+  function onCellClick(entry, field) {
+    const jump = clickFromCell.current;
+    clickFromCell.current = false;
+    if (cellEditRef.current) return; // the previous cell refused to close
+    if (coarsePointer || jump) beginCellEdit(entry, field);
+  }
+
   function onCellKeyDown(e) {
     if (e.key === "Enter") { e.preventDefault(); commitCellEdit(0); }
     else if (e.key === "Tab") { e.preventDefault(); commitCellEdit(e.shiftKey ? -1 : 1); }
@@ -2762,7 +2775,7 @@ export default function Dashboard() {
             <div className="table-wrap">
               <table>
                 <thead>
-                  <tr><th>Date</th><th>Calories</th><th>Steps</th><th>Weight</th><th>Fat Mass</th><th>Muscle Mass</th><th></th></tr>
+                  <tr><th className="daily-date">Date</th><th>Calories</th><th>Steps</th><th>Weight</th><th>Fat Mass</th><th>Muscle Mass</th><th></th></tr>
                 </thead>
                 <tbody>
                   {mergedDailyEntries.length === 0 && (
@@ -2772,16 +2785,11 @@ export default function Dashboard() {
                       const inBlock = d._d && d._d >= pacing.blockStart && d._d <= pacing.blockEnd;
                       return (
                         <tr key={d._i} className={d._synced ? "row-synced" : ""}>
-                          <td>
-                            {d.date}
-                            {inBlock && <span className="this-block-tag">this block</span>}
-                            {(d._synced || d._filled) && (
-                              <span className="synced-tag" title={d._synced
-                                ? "Synced from HealthKit"
-                                : "Some of this day came from HealthKit — the blanks you didn't log"}>
-                                <Watch size={10} /> synced
-                              </span>
-                            )}
+                          <td className="daily-date">
+                            <div className="daily-date-row">
+                              <span className="daily-date-val">{d.date}</span>
+                              {inBlock && <span className="this-block-tag">this block</span>}
+                            </div>
                           </td>
                           {DAILY_CELLS.map((c) => {
                             const active = cellEdit && cellEdit.field === c.key && sameDay(cellEdit.date, d.date);
@@ -2789,8 +2797,13 @@ export default function Dashboard() {
                               <td key={c.key} className={"cell-edit" + (active ? " cell-editing" : "")}
                                 title={active ? undefined : `${c.label} — ${coarsePointer ? "tap" : "double-click"} to edit`}
                                 onDoubleClick={() => beginCellEdit(d, c.key)}
-                                onClick={coarsePointer ? () => beginCellEdit(d, c.key) : undefined}>
-                                {active ? (
+                                onMouseDown={() => { clickFromCell.current = !!cellEditRef.current && !active; }}
+                                onClick={() => onCellClick(d, c.key)}>
+                                {/* The number stays in the flow and the editor
+                                    lies over it, so opening one can't change
+                                    what the column measures. */}
+                                {fmtNum(d[c.key])}
+                                {active && (
                                   <input
                                     className="cell-input"
                                     autoFocus
@@ -2802,7 +2815,7 @@ export default function Dashboard() {
                                     onKeyDown={onCellKeyDown}
                                     onBlur={() => commitCellEdit(0)}
                                   />
-                                ) : fmtNum(d[c.key])}
+                                )}
                               </td>
                             );
                           })}
@@ -2826,9 +2839,10 @@ export default function Dashboard() {
             )}
 
             <div className="table-hint">
-              {coarsePointer ? "Tap" : "Double-click"} a number to change it. Enter saves, Tab moves along the row,
-              Escape backs out. Emptying a cell blanks that day — which isn't the same as a zero, and keeps it out of
-              your averages. The date is edited with the pencil, since it's what days are matched on.
+              {coarsePointer ? "Tap" : "Double-click"} a number to change it, then a single {coarsePointer ? "tap" : "click"} moves
+              to the next one. Enter saves, Tab moves along the row, Escape backs out. Emptying a cell blanks that day —
+              which isn't the same as a zero, and keeps it out of your averages. The date is edited with the pencil,
+              since it's what days are matched on.
             </div>
           </div>
         </div>
@@ -3381,7 +3395,6 @@ const BASE_STYLES = `
   .check-day-label { text-transform: uppercase; }
   .block-checklist-hint { font-family: 'JetBrains Mono', monospace; font-size: 11.5px; color: var(--text-faint); margin-top: 10px; line-height: 1.5; }
   .this-block-tag { display: inline-block; margin-left: 8px; font-family: 'JetBrains Mono', monospace; font-size: 9.8px; letter-spacing: 0.05em; color: var(--cut); background: #5b8dee22; padding: 1px 6px; border-radius: 10px; vertical-align: middle; }
-  .synced-tag { display: inline-flex; align-items: center; gap: 3px; margin-left: 8px; font-family: 'JetBrains Mono', monospace; font-size: 9.8px; letter-spacing: 0.05em; color: var(--good); background: rgba(54, 135, 39, 0.13); padding: 1px 6px; border-radius: 10px; vertical-align: middle; }
   .row-synced td { opacity: 0.85; }
   .daily-grid { grid-template-columns: repeat(3, 1fr) !important; }
 
@@ -3421,10 +3434,19 @@ const BASE_STYLES = `
   /* Spreadsheet-style cells on the Daily Log. The affordance stays quiet until
      you're over it — a table where every number looks like a form field reads
      busier than one you can just read. */
-  .cell-edit { cursor: cell; }
+  .cell-edit { cursor: cell; position: relative; }
   .cell-edit:hover { box-shadow: inset 0 0 0 1px var(--border); }
-  .cell-editing { padding: 0 !important; box-shadow: inset 0 0 0 2px var(--cut); }
-  .cell-input { width: 100%; min-width: 64px; box-sizing: border-box; border: none; outline: none; background: var(--panel); color: var(--text); font: inherit; text-align: inherit; padding: 8px 10px; }
+  .cell-editing { box-shadow: inset 0 0 0 2px var(--cut); }
+  /* Laid over the number rather than swapped in for it: an input sized by its
+     own content would widen the column the moment you opened one, jogging every
+     other row sideways. Covering the cell leaves the measurements alone. */
+  .cell-input { position: absolute; inset: 0; width: 100%; box-sizing: border-box; border: none; outline: none; background: var(--panel); color: var(--text); font: inherit; text-align: inherit; padding: 0 10px; }
+
+  /* Dates read as a column, so they start at the same x on every row and the
+     block marker is pushed out to the right rather than nudging them along. */
+  th.daily-date, td.daily-date { text-align: left; }
+  .daily-date-row { display: flex; align-items: center; gap: 8px; }
+  .daily-date-row .this-block-tag { margin-left: auto; }
   .cell-undo { display: flex; align-items: center; gap: 10px; margin-top: 4px; padding: 9px 12px; border: 1px solid var(--border); border-radius: 12px; font-family: 'Inter', sans-serif; font-size: 13px; color: var(--text-dim); }
   .cell-undo span { flex: 1; }
   .table-hint { font-family: 'Inter', sans-serif; font-size: 12.4px; color: var(--text-faint); line-height: 1.55; margin-top: 12px; padding-bottom: 4px; }

@@ -20,8 +20,14 @@ const METRICS = [
   { date: "07/26/26", cal: null, steps: 8400, weight: null, fat_mass: null, muscle_mass: null },
 ];
 
+// Today, so one row always carries the "this block" marker whenever the spec
+// is run — the date column has to line up with and without it.
+const today = new Date();
+const TODAY = `${today.getMonth() + 1}/${today.getDate()}/${String(today.getFullYear()).slice(2)}`;
+
 // 7/29 has a daily-log row written by the Food tab: calories, no steps.
 const DAILY = [
+  { date: TODAY, cal: 1900, steps: 9000, weight: null, fatMass: null, muscleMass: null, calSource: "manual" },
   { date: "7/29/26", cal: 1850, steps: null, weight: null, fatMass: null, muscleMass: null, calSource: "food" },
   { date: "7/27/26", cal: 1900, steps: 15000, weight: null, fatMass: null, muscleMass: null, calSource: "manual" },
   { date: "7/26/26", cal: 1700, steps: null, weight: null, fatMass: null, muscleMass: null, calSource: "manual" },
@@ -77,12 +83,32 @@ const jul26 = rows.filter(r => /7\/26\/26/.test(r.date));
 check("a differently-spelt date is one row, not two", jul26.length === 1, `${jul26.length} rows`);
 check("and it picks up the synced steps", jul26[0]?.steps === "8,400", jul26[0]?.steps);
 
-// The day marked as partly filled says so rather than passing as hand-logged.
-const tagged = await p.$$eval(".table-wrap table tbody tr", (trs) => trs
-  .filter(tr => tr.querySelector(".synced-tag"))
-  .map(tr => tr.querySelectorAll("td")[0].textContent.trim().split(/\s/)[0]));
-check("the part-filled day is marked synced", tagged.includes("7/29/26"), tagged.join(","));
-check("a fully hand-logged day is not", !tagged.includes("7/27/26"), tagged.join(","));
+// The synced badge is gone: the numbers are the point, and every row carried
+// one once food logging started filling days in.
+check("no row advertises itself as synced", await p.locator(".synced-tag").count() === 0);
+
+// With the badge gone the dates have to line up on their own, so a row that
+// carries the "this block" marker starts at the same x as one that doesn't.
+const dateLefts = await p.$$eval(".table-wrap table tbody tr td.daily-date .daily-date-val",
+  (els) => els.map(el => Math.round(el.getBoundingClientRect().left)));
+check("every date starts at the same x", new Set(dateLefts).size === 1, dateLefts.join(","));
+const marked = await p.locator("td.daily-date .this-block-tag").count();
+check("today's row still carries the block marker", marked >= 1, `${marked} marked`);
+const gap = await p.$$eval("td.daily-date", (tds) => {
+  const td = tds.find(t => t.querySelector(".this-block-tag"));
+  if (!td) return null;
+  const cell = td.getBoundingClientRect(), tag = td.querySelector(".this-block-tag").getBoundingClientRect();
+  const val = td.querySelector(".daily-date-val").getBoundingClientRect();
+  return {
+    fromRight: Math.round(cell.right - tag.right), width: Math.round(cell.width),
+    clearsTheDate: tag.left >= val.right,
+    offCentre: Math.round((tag.top + tag.bottom) / 2 - (cell.top + cell.bottom) / 2),
+  };
+});
+check("the block marker sits at the right of the date cell", gap && gap.fromRight <= 14,
+  gap ? `${gap.fromRight}px from the right of a ${gap.width}px cell` : "no marked row");
+check("it's clear of the date rather than trailing it", gap?.clearsTheDate);
+check("and sits on the date's line", Math.abs(gap?.offCentre ?? 99) <= 1, `${gap?.offCentre}px off`);
 
 // The step average and streaks read the same merged list, so a hidden day
 // silently drags them too.
