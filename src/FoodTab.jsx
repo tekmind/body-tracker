@@ -1121,7 +1121,7 @@ function WeekPanel({ weekStart, setWeekStart, rows, targetsForDate, onPickDay })
           <Tooltip content={<WeekTooltip macro={macro} target={target} />} cursor={{ fill: "rgba(0,0,0,0.04)" }} />
           {target != null && (
             <ReferenceLine y={target} stroke={CHART_THEME.tick} strokeDasharray="4 4"
-              label={{ value: `target ${fmt(target)}`, position: "top", fill: CHART_THEME.tick, fontSize: 11 }} />
+              label={<TargetLabel value={`target ${fmt(target)}`} />} />
           )}
           <Bar dataKey={metric} radius={[4, 4, 0, 0]} maxBarSize={38}>
             {days.map((d, i) => {
@@ -1137,6 +1137,20 @@ function WeekPanel({ weekStart, setWeekStart, rows, targetsForDate, onPickDay })
         average rather than counted as a zero-calorie day, and today is held back until it's done.
       </div>
     </div>
+  );
+}
+
+// The target caption sits at the left end of its dashed line, clear of the
+// bars. recharts' own label positions are named against a rectangle, and a
+// horizontal reference line is zero-height — "insideTopLeft" there puts the
+// text *below* the line — so it's less surprising to place it directly.
+function TargetLabel({ value, viewBox }) {
+  if (!viewBox) return null;
+  return (
+    <text x={viewBox.x + 3} y={viewBox.y - 5} textAnchor="start"
+      fill={CHART_THEME.tick} fontSize={11} fontFamily={CHART_THEME.font}>
+      {value}
+    </text>
   );
 }
 

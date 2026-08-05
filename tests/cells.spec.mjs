@@ -166,6 +166,46 @@ await p.locator(".panel-title").first().click();
 await p.waitForTimeout(300);
 check("clicking away saves rather than discarding", dayIn("7/27/26")?.muscleMass === 168.5, JSON.stringify(dayIn("7/27/26")?.muscleMass));
 
+// --- opening an editor doesn't move the table around -------------------------
+const widths = () => p.$$eval(".table-wrap table thead th", ths => ths.map(t => Math.round(t.getBoundingClientRect().width)));
+const numberLefts = () => p.$$eval(".table-wrap table tbody tr td.cell-edit",
+  tds => tds.map(t => Math.round(t.getBoundingClientRect().left)));
+const wBefore = await widths(), xBefore = await numberLefts();
+await rowFor("7/27/26").locator("td").nth(COL.muscleMass).dblclick();
+await p.locator(".cell-input").waitFor();
+check("editing a cell doesn't resize its column", JSON.stringify(await widths()) === JSON.stringify(wBefore),
+  `${wBefore.join("/")} → ${(await widths()).join("/")}`);
+check("and doesn't shift the other cells sideways", JSON.stringify(await numberLefts()) === JSON.stringify(xBefore));
+
+// --- with an editor open, one click is enough to move to another cell --------
+await rowFor("7/27/26").locator("td").nth(COL.weight).click();
+await p.waitForTimeout(250);
+at = await p.locator(".cell-input").evaluate(el => el.getAttribute("aria-label"));
+check("a single click moves the editor while one is open", at === "Weight on 7/27/26", at);
+check("only one editor is open at a time", await p.locator(".cell-input").count() === 1);
+check("and the cell it moved to is focused, ready to type",
+  await p.evaluate(() => document.activeElement?.className.includes("cell-input")));
+await p.locator(".cell-input").press("Escape");
+await p.waitForTimeout(150);
+
+// Back to needing the double-click once nothing is being edited — otherwise
+// every stray tap on the table opens something.
+await rowFor("7/27/26").locator("td").nth(COL.cal).click();
+await p.waitForTimeout(200);
+check("a single click on its own still does nothing", await p.locator(".cell-input").count() === 0);
+
+// A refused value keeps the editor where it is; the click that caused the
+// refusal must not carry you off it and lose the error.
+await rowFor("7/27/26").locator("td").nth(COL.cal).dblclick();
+await p.locator(".cell-input").waitFor();
+await p.locator(".cell-input").fill("abc");
+await rowFor("7/27/26").locator("td").nth(COL.steps).click();
+await p.waitForTimeout(250);
+at = await p.locator(".cell-input").evaluate(el => el.getAttribute("aria-label"));
+check("a refused edit holds the editor in place", at === "Calories on 7/27/26", at);
+check("and the complaint is still on screen", /isn't a number/.test(await p.locator(".banner-error").first().innerText()));
+await p.keyboard.press("Escape");
+
 // --- touch: one tap, because iOS spends double-tap on zoom -------------------
 const ctx = await b.newContext({ viewport: { width: 390, height: 780 }, hasTouch: true, isMobile: true });
 const m = await ctx.newPage();
