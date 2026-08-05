@@ -44,20 +44,22 @@ for (const [w, h, tag] of [[390, 780, "phone"], [1200, 900, "desktop"]]) {
     return {
       label: text.textContent,
       above: t.bottom <= line.top + 1,
-      clipped: t.top < plot.top || t.left < plot.left,
-      // Distance from the left end of the dashed line to the start of the text.
-      fromLeftEnd: Math.round(t.left - line.left),
+      clipped: t.top < plot.top || t.right > plot.right,
+      // Distance from the end of the text to the far end of the dashed line.
+      fromFarEnd: Math.round(line.right - t.right),
+      // How far the text's near edge is from the line's far end, as a share of
+      // the chart: the end really means the end, not merely off-centre.
+      startsAt: Math.round(line.right - t.left),
       plotW: Math.round(plot.width),
     };
   });
   check(`${tag}: the label names the target`, /^target [\d,]+$/.test(ref.label), ref.label);
   check(`${tag}: it sits on top of the dashed line`, ref.above);
   check(`${tag}: it isn't clipped by the chart's edges`, !ref.clipped);
-  check(`${tag}: it starts at the left end of the line`, ref.fromLeftEnd >= 0 && ref.fromLeftEnd <= 10,
-    `${ref.fromLeftEnd}px from the left end`);
-  // Left really means left — not merely off-centre the other way.
-  check(`${tag}: and stays well clear of the middle`, ref.fromLeftEnd < ref.plotW * 0.25,
-    `${ref.fromLeftEnd}px into a ${ref.plotW}px chart`);
+  check(`${tag}: it ends at the far end of the line`, ref.fromFarEnd >= 0 && ref.fromFarEnd <= 10,
+    `${ref.fromFarEnd}px from the end`);
+  check(`${tag}: and stays well clear of the middle`, ref.startsAt < ref.plotW * 0.5,
+    `${ref.startsAt}px back into a ${ref.plotW}px chart`);
 
   const over = await p.evaluate(() => document.body.scrollWidth - document.documentElement.clientWidth);
   check(`${tag}: nothing overflows sideways`, over <= 1, `${over}px`);

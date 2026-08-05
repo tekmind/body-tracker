@@ -95,8 +95,25 @@ check("typing into a synced day starts a log row", dayIn("7/29/26")?.weight === 
 check("its synced steps survive that", await cellText("7/29/26", COL.steps) === "12,345", await cellText("7/29/26", COL.steps));
 check("and aren't copied into the log", dayIn("7/29/26")?.steps == null, JSON.stringify(dayIn("7/29/26")?.steps));
 
-// --- a borrowed value can be overridden but not blanked --------------------
+// --- opening a synced number shows it, and looking is not editing -----------
+// Reported from the phone: tapping a step count that came from the Shortcut
+// opened an empty box, and clicking away then complained that the number
+// couldn't be cleared. Nothing was ever typed.
 check("the food day borrows its steps", await cellText("7/28/26", COL.steps) === "8,289");
+await rowFor("7/28/26").locator("td").nth(COL.steps).dblclick();
+await p.locator(".cell-input").waitFor();
+check("opening a synced cell shows the number, not an empty box",
+  await p.locator(".cell-input").inputValue() === "8289", await p.locator(".cell-input").inputValue());
+await p.locator(".panel-title").first().click();
+await p.waitForTimeout(300);
+check("clicking away without typing leaves it alone", await cellText("7/28/26", COL.steps) === "8,289",
+  await cellText("7/28/26", COL.steps));
+check("and doesn't complain about it", await p.locator(".banner-error").count() === 0,
+  await p.locator(".banner-error").first().innerText().catch(() => ""));
+check("nor claim the sync's number as hand-logged", dayIn("7/28/26")?.steps == null,
+  JSON.stringify(dayIn("7/28/26")?.steps));
+
+// --- a borrowed value can be overridden but not blanked --------------------
 await edit("7/28/26", "steps", "");
 check("blanking a borrowed number is refused", await p.locator(".banner-error").count() >= 1);
 check("with a reason", /HealthKit sync/.test(await p.locator(".banner-error").first().innerText()),

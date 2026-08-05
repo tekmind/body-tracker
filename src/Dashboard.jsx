@@ -2061,11 +2061,15 @@ export default function Dashboard() {
   }
 
   function beginCellEdit(entry, field) {
-    // Seed from what's actually stored, not what's displayed: a borrowed
-    // HealthKit value shows in the cell but isn't yours until you type it.
+    // Seed from what the cell shows, including a number borrowed from the
+    // HealthKit sync. Opening a cell that reads 9,421 onto an empty box looks
+    // like the app just threw the number away, and clicking away then argued
+    // about it. Handing it back unchanged writes nothing (see writeDailyCell),
+    // so it still isn't yours until you actually change it.
     const manual = dailyEntries.find(r => sameDay(r.date, entry.date));
     const own = manual ? manual[field] : null;
-    setCellEdit({ date: entry.date, field, value: own == null ? "" : String(own) });
+    const shown = own == null ? entry[field] : own;
+    setCellEdit({ date: entry.date, field, value: shown == null ? "" : String(shown) });
     setDailyErrMsg("");
   }
 
@@ -2086,6 +2090,10 @@ export default function Dashboard() {
       setDailyErrMsg("That number came from the HealthKit sync, so it can't be cleared here — delete the day to drop it.");
       return false;
     }
+    // Opening a synced number and clicking away without touching it isn't an
+    // edit: leave it the sync's to keep updating rather than claiming it as
+    // hand-logged the moment you looked at it.
+    if (own == null && value != null && num(entry[field]) === value) { setDailyErrMsg(""); return true; }
     if (own === value) { setDailyErrMsg(""); return true; } // nothing changed
 
     const claim = field === "cal" ? { calSource: value == null ? undefined : "manual" } : null;
@@ -3443,10 +3451,10 @@ const BASE_STYLES = `
   .cell-input { position: absolute; inset: 0; width: 100%; box-sizing: border-box; border: none; outline: none; background: var(--panel); color: var(--text); font: inherit; text-align: inherit; padding: 0 10px; }
 
   /* Dates read as a column, so they start at the same x on every row and the
-     block marker is pushed out to the right rather than nudging them along. */
+     block marker follows the date rather than pushing it along. */
   th.daily-date, td.daily-date { text-align: left; }
   .daily-date-row { display: flex; align-items: center; gap: 8px; }
-  .daily-date-row .this-block-tag { margin-left: auto; }
+  .daily-date-row .this-block-tag { margin-left: 0; }
   .cell-undo { display: flex; align-items: center; gap: 10px; margin-top: 4px; padding: 9px 12px; border: 1px solid var(--border); border-radius: 12px; font-family: 'Inter', sans-serif; font-size: 13px; color: var(--text-dim); }
   .cell-undo span { flex: 1; }
   .table-hint { font-family: 'Inter', sans-serif; font-size: 12.4px; color: var(--text-faint); line-height: 1.55; margin-top: 12px; padding-bottom: 4px; }

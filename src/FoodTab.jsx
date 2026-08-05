@@ -1140,14 +1140,14 @@ function WeekPanel({ weekStart, setWeekStart, rows, targetsForDate, onPickDay })
   );
 }
 
-// The target caption sits at the left end of its dashed line, clear of the
+// The target caption sits at the far end of its dashed line, clear of the
 // bars. recharts' own label positions are named against a rectangle, and a
-// horizontal reference line is zero-height — "insideTopLeft" there puts the
+// horizontal reference line is zero-height — "insideTopRight" there puts the
 // text *below* the line — so it's less surprising to place it directly.
 function TargetLabel({ value, viewBox }) {
   if (!viewBox) return null;
   return (
-    <text x={viewBox.x + 3} y={viewBox.y - 5} textAnchor="start"
+    <text x={viewBox.x + viewBox.width - 3} y={viewBox.y - 5} textAnchor="end"
       fill={CHART_THEME.tick} fontSize={11} fontFamily={CHART_THEME.font}>
       {value}
     </text>
