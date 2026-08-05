@@ -100,14 +100,12 @@ const gap = await p.$$eval("td.daily-date", (tds) => {
   const cell = td.getBoundingClientRect(), tag = td.querySelector(".this-block-tag").getBoundingClientRect();
   const val = td.querySelector(".daily-date-val").getBoundingClientRect();
   return {
-    fromRight: Math.round(cell.right - tag.right), width: Math.round(cell.width),
-    clearsTheDate: tag.left >= val.right,
+    afterDate: Math.round(tag.left - val.right), width: Math.round(cell.width),
     offCentre: Math.round((tag.top + tag.bottom) / 2 - (cell.top + cell.bottom) / 2),
   };
 });
-check("the block marker sits at the right of the date cell", gap && gap.fromRight <= 14,
-  gap ? `${gap.fromRight}px from the right of a ${gap.width}px cell` : "no marked row");
-check("it's clear of the date rather than trailing it", gap?.clearsTheDate);
+check("the block marker follows the date", gap && gap.afterDate >= 0 && gap.afterDate <= 12,
+  gap ? `${gap.afterDate}px after the date` : "no marked row");
 check("and sits on the date's line", Math.abs(gap?.offCentre ?? 99) <= 1, `${gap?.offCentre}px off`);
 
 // The step average and streaks read the same merged list, so a hidden day
