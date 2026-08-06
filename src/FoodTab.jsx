@@ -73,7 +73,7 @@ function bestLocalMatch(query, catalog) {
   return bestScore >= 0.7 ? best : null;
 }
 
-export default function FoodTab({ targetsForDate, pacing, dailyEntryFor, onDayTotalsChange, onForceDailyCalories }) {
+export default function FoodTab({ targetsForDate, pacing, onDayTotalsChange }) {
   const [dateStr, setDateStr] = useState(() => formatMDY(new Date()));
   const [weekStart, setWeekStart] = useState(() => blockStartFor(todayDate()));
   const [rows, setRows] = useState([]);
@@ -106,6 +106,9 @@ export default function FoodTab({ targetsForDate, pacing, dailyEntryFor, onDayTo
   // stale copy, so the ref is the source of truth for every write path.
   const rowsRef = useRef([]);
   const loadedDates = useRef(new Set());
+  // Dates whose rows have arrived, as state rather than a ref — the reconcile
+  // effect below has to re-run when one lands.
+  const [settledDates, setSettledDates] = useState(() => new Set());
   const recognitionRef = useRef(null);
   const aiTextRef = useRef("");
   aiTextRef.current = aiText;
@@ -125,6 +128,15 @@ export default function FoodTab({ targetsForDate, pacing, dailyEntryFor, onDayTo
       const fetched = await foodApi.fetchFoodLog(missing);
       const missingSet = new Set(missing);
       commitRows([...rowsRef.current.filter(r => !missingSet.has(r.date)), ...fetched]);
+      // Only once the rows are actually in. loadedDates is set before the
+      // fetch to stop it being issued twice, so it can't stand in for "this
+      // day is known" — a day still in flight looks like a day with nothing
+      // logged, and reconciling off that would blank it.
+      setSettledDates(prev => {
+        const next = new Set(prev);
+        missing.forEach(d => next.add(d));
+        return next;
+      });
     } catch (e) {
       missing.forEach(d => loadedDates.current.delete(d));
       setErr(`Couldn't load the food log: ${e.message}`);
@@ -194,26 +206,29 @@ export default function FoodTab({ targetsForDate, pacing, dailyEntryFor, onDayTo
       carbs: carbGoalFrom(pacedCal, goalTargets.protein, goalTargets.fat),
     };
   }, [goalTargets, pacedCal]);
-  const dailyEntry = dailyEntryFor(dateStr);
 
   const defaultSection = useMemo(
     () => (isToday ? sectionForHour(new Date().getHours()) : "dinner"),
     [isToday]
   );
 
-  // A number typed by hand on the Daily tab is never overwritten from here —
-  // when it disagrees with what's actually logged, say so and offer the swap.
-  const manualCalConflict =
-    dailyEntry && dailyEntry.cal != null && dailyEntry.calSource !== "food" &&
-    dayRows.length > 0 && Math.abs(dailyEntry.cal - dayTotals.cal) > 1
-      ? dailyEntry.cal
-      : null;
-
   const syncDay = useCallback((allRows) => {
     const forDay = allRows.filter(r => r.date === dateStr);
     const totals = roundTotals(sumMacros(forDay));
     onDayTotalsChange(dateStr, totals.cal, forDay.length);
   }, [dateStr, onDayTotalsChange]);
+
+  // Reconcile on arrival, not only on edit. A day whose calorie number drifted
+  // out of step — an older build that deferred to whatever was already on the
+  // row, something else posting to daily_metrics — used to stay wrong until
+  // you happened to add or delete a food on it. Looking at the day is enough.
+  //
+  // Gated on the day's rows having actually landed: mid-fetch a day looks
+  // empty, and writing that would blank a number the Food tab itself wrote.
+  useEffect(() => {
+    if (!settledDates.has(dateStr)) return;
+    onDayTotalsChange(dateStr, dayTotals.cal, dayRows.length);
+  }, [dateStr, dayRows.length, dayTotals.cal, settledDates, onDayTotalsChange]);
 
   // --- mutations -----------------------------------------------------------
 
@@ -656,18 +671,6 @@ export default function FoodTab({ targetsForDate, pacing, dailyEntryFor, onDayTo
         ))}
       </div>
 
-      {manualCalConflict != null && (
-        <div className="food-conflict">
-          <AlertCircle size={13} />
-          <span>
-            The Daily tab has <strong>{fmt(manualCalConflict)}</strong> kcal typed in by hand for this day, so it
-            wasn't replaced. What's logged here adds up to <strong>{fmt(dayTotals.cal)}</strong>.
-          </span>
-          <button className="btn-ghost sm" onClick={() => onForceDailyCalories(dateStr, dayTotals.cal)}>
-            Use {fmt(dayTotals.cal)}
-          </button>
-        </div>
-      )}
       {pacedCal != null && (
         <div className="food-pace-note">
           <Sparkles size={12} />
@@ -1990,9 +1993,8 @@ export const FOOD_STYLES = `
   /* --tint-bar mirrors STATUS.good / STATUS.warn / STATUS.bad in this file. */
   .macro-tile.macro-good, .week-avg-tile.macro-good { --tint-bar: #3f8f2b; background: #ddefd4; border-color: #cfe6c4; }
   .macro-tile.macro-bad, .week-avg-tile.macro-bad { --tint-bar: #c4534a; background: #f8ddd9; border-color: #eec4be; }
-  /* Amber is the app's existing warning pair (see .food-conflict), used here
-     for "inside the goal's alert buffer" — close enough to matter, not yet
-     wrong. */
+  /* Amber is the app's warning pair, used here for "inside the goal's alert
+     buffer" — close enough to matter, not yet wrong. */
   .macro-tile.macro-warn, .week-avg-tile.macro-warn { --tint-bar: #dba236; background: #fdf1dd; border-color: #ecd3a4; }
   .macro-good .macro-tile-label, .macro-good .macro-tile-value, .macro-good .macro-tile-sub,
   .macro-good .week-avg-label, .macro-good .week-avg-value, .macro-good .week-avg-sub { color: #2b6e1e; }
@@ -2017,9 +2019,6 @@ export const FOOD_STYLES = `
      it explains where a number came from, it isn't part of the verdict. */
   .macro-tile-note { font-family: 'Inter', sans-serif; font-size: 11.6px; color: var(--text-faint); margin-top: 3px; }
 
-  .food-conflict { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; margin-bottom: 14px; padding: 10px 13px; border-radius: 12px; background: #fdf1dd; border: 1px solid #ecd3a4; color: #8a5b13; font-size: 13px; line-height: 1.5; }
-  .food-conflict svg { flex-shrink: 0; color: #b07d17; }
-  .food-conflict span { flex: 1; min-width: 200px; }
   .food-hint-loose { margin: 0 2px 14px; }
   .food-hint { font-family: 'Inter', sans-serif; font-size: 12.6px; color: var(--text-faint); line-height: 1.55; margin-top: 12px; padding-bottom: 4px; }
   .food-hint-inline { font-family: 'Inter', sans-serif; font-size: 12.6px; color: var(--text-faint); flex: 1; }

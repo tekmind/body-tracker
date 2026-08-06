@@ -47,14 +47,16 @@ check("carbs target is derived, ignoring any stored carbGoal", t[2].target === "
 check("protein target is the number set", t[1].target === "/ 190g", t[1].target);
 await p.close();
 
-// --- Maintain: the buffer splits either side of the goal -------------------
-// 1807 logged, buffer 100 -> amber window is goal +/- 50.
+// --- Maintain: amber sits above the goal, never below it -------------------
+// 1807 logged, buffer 100 -> amber runs goal..goal+100. Coming in under the
+// goal is green: it's the thing you wanted, not something to warn about.
 for (const [calGoal, want, why] of [
-  [1900, GREEN, "below the window"],
-  [1800, AMBER, "inside the window (1,750-1,850)"],
-  [1750, RED, "above the window"],
-  [1857, AMBER, "exactly on the low edge (window starts at 1,807)"],
-  [1858, GREEN, "one past the low edge (window starts at 1,808)"],
+  [1900, GREEN, "93 under the goal"],
+  [1807, GREEN, "exactly on the goal"],
+  [1806, AMBER, "one over the goal"],
+  [1750, AMBER, "57 over, inside the 1,750-1,850 band"],
+  [1707, AMBER, "exactly 100 over, on the far edge"],
+  [1706, RED, "101 over is past the band"],
 ]) {
   p = await open({ ...base, phase: "Maintain", calGoal, proteinGoal: 100, fatGoal: 50, calBuffer: 100 });
   t = await tiles(p);
@@ -72,9 +74,9 @@ for (const [phase, value, want, why] of [
   ["Gain", 1900, RED, "93 short is wider than the 50 band"],
   ["Gain", 1800, GREEN, "over the goal on a gain is green"],
   ["Gain", 2000, RED, "193 short is past the band"],
-  ["Maintain", 1800, AMBER, "inside the 1,775-1,825 window"],
-  ["Maintain", 1900, GREEN, "under the window"],
-  ["Maintain", 1750, RED, "over the window"],
+  ["Maintain", 1800, AMBER, "7 over on maintenance is inside the 1,800-1,850 band"],
+  ["Maintain", 1900, GREEN, "under the goal on maintenance is green, same as a cut"],
+  ["Maintain", 1750, RED, "57 over is past the band"],
 ]) {
   p = await open({ ...base, phase, calGoal: value, proteinGoal: 100, fatGoal: 50, calBuffer: 50 });
   t = await tiles(p);
