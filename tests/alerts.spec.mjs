@@ -56,14 +56,18 @@ const bannerText = (p) => p.locator(".banner-alert, .banner-ontrack").first().in
 
 const OVER = { calOver: true }, OK = {}, SHORT = { stepsShort: true };
 
-// --- defaults are the old hardcoded numbers ---------------------------------
-let p = await open([OK, OK, OVER]);
-check("one week over is not yet an alert", await level(p) === "ontrack", await level(p));
-check("and it says what would trigger one", /triggers a slipping alert/.test(await bannerText(p)), await bannerText(p));
+// --- defaults: amber after one week, red after three ------------------------
+let p = await open([OK, OK, OK]);
+check("no off weeks, no alert", await level(p) === "ontrack", await level(p));
+check("and it counts the on-track run", /3w/.test(await bannerText(p)), await bannerText(p));
+await p.close();
+
+p = await open([OK, OK, OVER]);
+check("one week over is already the amber warning", await level(p) === "slipping", await level(p));
 await p.close();
 
 p = await open([OK, OVER, OVER]);
-check("two weeks over slips, by default", await level(p) === "slipping", await level(p));
+check("two weeks over is still amber, not yet red", await level(p) === "slipping", await level(p));
 await p.close();
 
 p = await open([OVER, OVER, OVER]);
@@ -71,9 +75,41 @@ check("three weeks over derails, by default", await level(p) === "derailed", awa
 check("the banner counts the weeks", /3w/.test(await bannerText(p)), await bannerText(p));
 await p.close();
 
+// --- the stat chips climb the SAME ladder -----------------------------------
+// The reported bug: chips went amber after a single week while the settings
+// card claimed two. Only their red cut read the setting; the amber one was
+// hardcoded to "any run at all" and described nothing.
+const chip = async (pg, card) => pg.locator(".stat-card", { hasText: card }).first()
+  .locator(".stat-alert-badge")
+  .evaluate(el => ({ text: el.textContent.trim(), cls: el.className })).catch(() => null);
+
+p = await open([OK, OK, OVER]);
+let c = await chip(p, "Calories");
+check("one week over turns the chip amber", /\bwarn\b/.test(c?.cls || ""), JSON.stringify(c));
+check("and the chip counts that one week", c?.text === "1w", c?.text);
+await p.close();
+
+p = await open([OVER, OVER, OVER]);
+c = await chip(p, "Calories");
+check("three weeks turns it red", /\bbad\b/.test(c?.cls || ""), JSON.stringify(c));
+await p.close();
+
+// Move the amber threshold and the chip has to move with it — that's the whole
+// point of the two surfaces sharing one ladder.
+p = await open([OK, OK, OVER], { metric: "cal", slipping: 2, derailed: 3 });
+c = await chip(p, "Calories");
+check("with amber set to 2w, a single off week shows no chip badge", c === null || !/\bwarn\b/.test(c.cls),
+  JSON.stringify(c));
+check("and it doesn't claim you're on track either", !/\bgood\b/.test(c?.cls || ""), JSON.stringify(c));
+check("the banner agrees with the chip", await level(p) === "ontrack", await level(p));
+// With a gap between "off this week" and the amber threshold, the on-track
+// banner has something to warn about. At amber-after-1 there is no gap.
+check("and it says what would trigger one", /triggers a slipping alert/.test(await bannerText(p)), await bannerText(p));
+await p.close();
+
 // --- the thresholds move it -------------------------------------------------
 p = await open([OK, OVER, OVER], { metric: "cal", slipping: 3, derailed: 4 });
-check("a later slipping threshold holds the alert back", await level(p) === "ontrack", await level(p));
+check("a later amber threshold holds the alert back", await level(p) === "ontrack", await level(p));
 await p.close();
 
 p = await open([OK, OVER, OVER], { metric: "cal", slipping: 1, derailed: 2 });
@@ -115,16 +151,18 @@ await p.waitForSelector(".alert-settings");
 
 const stepper = (label) => p.locator(".alert-setting-row", { hasText: label }).first();
 check("the watched metric shows as selected",
-  await stepper("Watch").locator(".toggle-btn.active").innerText() === "Calories",
-  await stepper("Watch").locator(".toggle-btn.active").innerText());
-check("slipping shows its current value", await stepper("Slipping after").locator(".habit-target-val").innerText() === "2w");
-check("derailed shows its current value", await stepper("Derailed after").locator(".habit-target-val").innerText() === "3w");
+  await stepper("Banner watches").locator(".toggle-btn.active").innerText() === "Calories",
+  await stepper("Banner watches").locator(".toggle-btn.active").innerText());
+check("amber shows its current value", await stepper("Amber after").locator(".habit-target-val").innerText() === "1w",
+  await stepper("Amber after").locator(".habit-target-val").innerText());
+check("red shows its current value", await stepper("Red after").locator(".habit-target-val").innerText() === "3w",
+  await stepper("Red after").locator(".habit-target-val").innerText());
 
 // Pull the derail threshold down to 2 and the same data should now be a derail.
-await stepper("Derailed after").locator(".habit-step-btn").first().click();
+await stepper("Red after").locator(".habit-step-btn").first().click();
 await p.waitForTimeout(250);
-check("the stepper moves", await stepper("Derailed after").locator(".habit-target-val").innerText() === "2w",
-  await stepper("Derailed after").locator(".habit-target-val").innerText());
+check("the stepper moves", await stepper("Red after").locator(".habit-target-val").innerText() === "2w",
+  await stepper("Red after").locator(".habit-target-val").innerText());
 check("and it's saved", savedAlerts?.derailed === 2, JSON.stringify(savedAlerts));
 await p.locator(".tab-btn", { hasText: "Home" }).click();
 await p.waitForSelector(".stat-card");
@@ -133,13 +171,13 @@ check("the same weeks now read as derailed", await level(p) === "derailed", awai
 // Slipping can't overtake derailed — the early warning would never fire.
 await p.locator(".tab-btn", { hasText: "Goal Settings" }).click();
 await p.waitForSelector(".alert-settings");
-await stepper("Slipping after").locator(".habit-step-btn").last().click();
+await stepper("Amber after").locator(".habit-step-btn").last().click();
 await p.waitForTimeout(250);
 check("raising slipping past derailed pushes derailed up with it",
   savedAlerts?.derailed >= savedAlerts?.slipping, JSON.stringify(savedAlerts));
 
 // And switching the metric persists too.
-await stepper("Watch").locator(".toggle-btn", { hasText: "Muscle" }).click();
+await stepper("Banner watches").locator(".toggle-btn", { hasText: "Muscle" }).click();
 await p.waitForTimeout(250);
 check("the metric is saved", savedAlerts?.metric === "muscle", JSON.stringify(savedAlerts));
 
