@@ -1474,11 +1474,13 @@ function AddFoodSheet({
   // capture="environment" opens the rear camera straight from the file input,
   // which beats a getUserMedia viewfinder here: the OS camera focuses and
   // exposes properly, and small print needs that.
-  const openLabelCamera = useCallback(() => {
+  // `from` is where Back returns you, so photographing a label from the search
+  // tab doesn't send you to My foods on the way out.
+  const openLabelCamera = useCallback((from = "mine") => {
     setEditingFood(null);
     setCustom(EMPTY_CUSTOM);
     setLookup(null);
-    setCustomFrom("mine");
+    setCustomFrom(from);
     setMode("custom");
     labelInputRef.current?.click();
   }, []);
@@ -1569,6 +1571,14 @@ function AddFoodSheet({
                 <button className="scan-btn" onClick={openScanner} title="Scan a barcode">
                   <ScanLine size={18} />
                   <span>Scan</span>
+                </button>
+                {/* The other two tabs could photograph a Nutrition Facts panel
+                    and this one couldn't, so a food with a barcode the lookup
+                    misses meant going to My foods first to find the camera. */}
+                <button className="scan-btn" onClick={() => openLabelCamera("search")}
+                  title="Photograph a Nutrition Facts panel">
+                  <Camera size={18} />
+                  <span>Photo</span>
                 </button>
                 <button className="scan-btn" onClick={() => openWebLookup(query)}
                   disabled={query.trim().length < 2}
@@ -1695,7 +1705,7 @@ function AddFoodSheet({
             <>
               <div className="mine-head">
                 <button className="btn-primary sm" onClick={openScanner}><ScanLine size={13} /> Scan a barcode</button>
-                <button className="btn-primary sm" onClick={openLabelCamera}><Camera size={13} /> Photo of label</button>
+                <button className="btn-primary sm" onClick={() => openLabelCamera("mine")}><Camera size={13} /> Photo of label</button>
                 <button className="btn-ghost sm" onClick={openCreate}><Plus size={13} /> Add by hand</button>
                 <span className="mine-count">
                   {catalog.length} food{catalog.length === 1 ? "" : "s"} in your list

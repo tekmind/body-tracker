@@ -162,6 +162,33 @@ check("a brand-new food does take the label's name",
   await p.locator(".food-custom-grid input").first().inputValue());
 check("with nothing to second-guess", await p.locator(".lookup-rename").count() === 0);
 
+// --- the same camera is reachable from the Search tab ----------------------
+// It was the one add-food surface without it, so a food the barcode lookup
+// missed meant detouring through My foods to find a camera.
+await p.locator(".food-custom .btn-ghost").first().click();      // back out of the form
+await p.locator(".food-sheet-tabs .toggle-btn", { hasText: "Search" }).click();
+await p.waitForSelector(".food-search-row");
+const photoBtn = p.locator(".food-search-row .scan-btn", { hasText: "Photo" });
+check("the search tab offers a label photo", await photoBtn.count() === 1);
+
+await photoBtn.click();
+await p.waitForSelector(".food-custom-grid");
+check("it opens the nutrition form", await p.locator(".food-custom-grid").count() === 1);
+// Back has to return you where you came from, not to My foods.
+check("and Back points at search, not my foods",
+  /Back to search/.test(await p.locator(".food-custom .btn-ghost").first().innerText()),
+  await p.locator(".food-custom .btn-ghost").first().innerText());
+
+await p.setInputFiles('input[type=file][accept="image/*"]', { name: "l.jpg", mimeType: "image/jpeg", buffer: JPEG });
+await p.waitForTimeout(1500);
+check("the photo fills the form from here too",
+  await p.locator(".food-custom-grid input").first().inputValue() === "Sliced Swiss",
+  await p.locator(".food-custom-grid input").first().inputValue());
+
+await p.locator(".food-custom .btn-ghost").first().click();
+await p.waitForSelector(".food-search-row");
+check("backing out lands on search", await p.locator(".food-search-row").count() === 1);
+
 await b.close();
 console.log(bad.length ? `\n${bad.length} problem(s):\n- ` + bad.join("\n- ") : "\nAll checks passed.");
 process.exit(bad.length ? 1 : 0);
