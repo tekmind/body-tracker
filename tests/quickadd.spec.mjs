@@ -223,11 +223,12 @@ const btns = await p.locator(".food-row-edit .icon-btn").evaluateAll(els => els.
   cls: el.className, border: getComputedStyle(el).borderColor, color: getComputedStyle(el).color,
 })));
 const save = btns.find(x => x.cls.includes("food-row-save"));
-const cancel = btns.find(x => !x.cls.includes("food-row-save"));
+const cancel = btns.find(x => x.cls.includes("food-row-cancel"));
 check("the save tick is outlined green", save?.border === "rgb(54, 135, 39)", JSON.stringify(save));
 check("and its tick is green too", save?.color === "rgb(54, 135, 39)", save?.color);
-check("the cancel × is left alone, so the two don't read alike",
-  cancel && cancel.border !== save?.border, JSON.stringify(cancel));
+check("the cancel × is outlined red", cancel?.border === "rgb(199, 58, 47)", JSON.stringify(cancel));
+check("and its × is red too", cancel?.color === "rgb(199, 58, 47)", cancel?.color);
+check("so keep and discard don't read alike", cancel?.border !== save?.border);
 
 await b.close();
 console.log(bad.length ? `\n${bad.length} problem(s):\n- ` + bad.join("\n- ") : "\nAll checks passed.");

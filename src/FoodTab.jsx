@@ -835,7 +835,7 @@ export default function FoodTab({ targetsForDate, pacing, onDayTotalsChange }) {
                             {units.map(u => <option key={u} value={u}>{u}</option>)}
                           </select>
                           <button className="icon-btn food-row-save" onClick={handleSaveRowEdit} title="Save"><Check size={12} /></button>
-                          <button className="icon-btn" onClick={() => setEditingRow(null)} title="Cancel"><X size={12} /></button>
+                          <button className="icon-btn food-row-cancel" onClick={() => setEditingRow(null)} title="Cancel"><X size={12} /></button>
                         </div>
                       ) : (
                         <div className="food-row-qty">{fmt(r.qty)} {r.unit}</div>
@@ -2088,10 +2088,12 @@ export const FOOD_STYLES = `
   .food-row-brand { color: var(--text-faint); font-weight: 400; font-size: 12.6px; }
   .food-row-qty { font-family: 'Inter', sans-serif; font-size: 13px; color: var(--text-dim); margin-top: 2px; }
   .food-row-edit { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
-  /* The save tick reads green so it's distinguishable from the cancel × at a
-     glance — same green the tab uses for on-target everywhere else. */
+  /* Green to keep, red to drop — the tab's own on-target and off-target
+     colours, so the pair is readable without stopping to look at the glyphs. */
   .food-row-save { border-color: var(--good); color: var(--good); }
   .food-row-save:hover { background: var(--good); border-color: var(--good); color: #ffffff; }
+  .food-row-cancel { border-color: var(--bad); color: var(--bad); }
+  .food-row-cancel:hover { background: var(--bad); border-color: var(--bad); color: #ffffff; }
   .food-row-edit .qty-input { width: 58px; }
   .food-row-edit input, .food-row-edit select { background: var(--panel-2); border: 1px solid var(--border); border-radius: 7px; color: var(--text); padding: 4px 7px; font-family: 'Inter', sans-serif; font-size: 12px; outline: none; }
   .food-row-macros { display: flex; flex-direction: column; align-items: flex-end; flex-shrink: 0; }
