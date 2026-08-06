@@ -12,8 +12,12 @@ work through the queue.
   - Energy comes back as **kilojoules**, on both the daily cycle and each workout (`kcal = kJ / 4.184`). It can't go in `daily_metrics.cal` — that field means calories *eaten*, which is what `calGoal` is compared against and what pacing divides up. Burned calories need their own column.
   - **Workouts need a new table**; nothing in the schema holds a session. Strength Trainer sessions do come through `/workout` (type, duration, strain, kilojoules, HR zones) — but the sets, reps and weights logged inside Strength Trainer are *not* exposed by the API. That's an open feature request on WHOOP's forum, so unlike steps it could change.
   - **Not steps** — the API has never exposed those and shows no sign of doing so (see SYNC.md).
-- Add alert configuration to the Goal Settings page: let the user set the trigger metric and thresholds for the derail/slipping alert system (currently hardcoded in src/Dashboard.jsx to calories-over-target, 3 weeks = derailed, 2 weeks = slipping — that logic would need to read from these settings instead).
 
 ## Done
 
 <!-- Completed items move here with the date, or just get deleted — your call. -->
+
+- **Alert configuration on Goal Settings** — 8/6/26. Trigger metric (Calories /
+  Steps / Muscle) and both thresholds are now set in an Alerts card; the
+  banners, the historical derail marking and the stat-card badges all read
+  them. Defaults are the calories / 2 / 3 that used to be hardcoded.
