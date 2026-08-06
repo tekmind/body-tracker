@@ -197,6 +197,38 @@ await p.waitForTimeout(900);
 const dbAdds = await p.locator(".food-result-group", { hasText: "Food database" }).locator(".food-quick-add").count();
 check("a food you've never eaten has nothing to remember", dbAdds === 0, `${dbAdds}`);
 
+// --- clearing the search box ------------------------------------------------
+const searchBox = p.locator(".food-search-row .food-search-box");
+check("the clear button is there once you've typed", await searchBox.locator(".food-search-clear").count() === 1);
+await searchBox.locator(".food-search-clear").click();
+await p.waitForTimeout(300);
+check("it empties the box", await p.locator(".food-search-row .food-search-box input").inputValue() === "",
+  await p.locator(".food-search-row .food-search-box input").inputValue());
+check("and takes itself away when there's nothing to clear",
+  await searchBox.locator(".food-search-clear").count() === 0);
+// You clear a search to type another one — the caret has to stay put, or the
+// phone's keyboard drops and it's two extra taps.
+check("the caret stays in the box",
+  await p.evaluate(() => document.activeElement?.tagName === "INPUT"),
+  await p.evaluate(() => document.activeElement?.tagName));
+
+await p.locator(".food-sheet-head .icon-btn").click();
+await p.waitForSelector(".food-sheet", { state: "detached", timeout: 6000 });
+
+// --- the save tick on a quantity edit reads green ---------------------------
+const beef = p.locator(".food-section").first().locator(".food-row").filter({ hasText: "Beef stick" }).first();
+await beef.locator(".food-row-actions .icon-btn").first().click();
+await p.waitForSelector(".food-row-edit");
+const btns = await p.locator(".food-row-edit .icon-btn").evaluateAll(els => els.map(el => ({
+  cls: el.className, border: getComputedStyle(el).borderColor, color: getComputedStyle(el).color,
+})));
+const save = btns.find(x => x.cls.includes("food-row-save"));
+const cancel = btns.find(x => !x.cls.includes("food-row-save"));
+check("the save tick is outlined green", save?.border === "rgb(54, 135, 39)", JSON.stringify(save));
+check("and its tick is green too", save?.color === "rgb(54, 135, 39)", save?.color);
+check("the cancel × is left alone, so the two don't read alike",
+  cancel && cancel.border !== save?.border, JSON.stringify(cancel));
+
 await b.close();
 console.log(bad.length ? `\n${bad.length} problem(s):\n- ` + bad.join("\n- ") : "\nAll checks passed.");
 process.exit(bad.length ? 1 : 0);

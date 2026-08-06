@@ -834,7 +834,7 @@ export default function FoodTab({ targetsForDate, pacing, onDayTotalsChange }) {
                             onChange={(e) => setEditingRow({ ...editingRow, unit: e.target.value })}>
                             {units.map(u => <option key={u} value={u}>{u}</option>)}
                           </select>
-                          <button className="icon-btn" onClick={handleSaveRowEdit} title="Save"><Check size={12} /></button>
+                          <button className="icon-btn food-row-save" onClick={handleSaveRowEdit} title="Save"><Check size={12} /></button>
                           <button className="icon-btn" onClick={() => setEditingRow(null)} title="Cancel"><X size={12} /></button>
                         </div>
                       ) : (
@@ -1557,6 +1557,14 @@ function AddFoodSheet({
                     placeholder="Search your foods and the food database…"
                   />
                   {searching && <Loader2 size={14} className="spin" />}
+                  {query && (
+                    // mousedown is where focus moves, so refusing it there keeps
+                    // the caret (and the phone's keyboard) in the field — you
+                    // clear a search to type another one, not to put it away.
+                    <button className="food-search-clear" aria-label="Clear search" title="Clear search"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => setQuery("")}><X size={12} /></button>
+                  )}
                 </div>
                 <button className="scan-btn" onClick={openScanner} title="Scan a barcode">
                   <ScanLine size={18} />
@@ -1699,6 +1707,11 @@ function AddFoodSheet({
                 <div className="food-search-box mine-filter">
                   <Search size={14} />
                   <input value={mineQuery} onChange={(e) => setMineQuery(e.target.value)} placeholder="Filter your foods…" />
+                  {mineQuery && (
+                    <button className="food-search-clear" aria-label="Clear filter" title="Clear filter"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => setMineQuery("")}><X size={12} /></button>
+                  )}
                 </div>
               )}
 
@@ -2075,6 +2088,10 @@ export const FOOD_STYLES = `
   .food-row-brand { color: var(--text-faint); font-weight: 400; font-size: 12.6px; }
   .food-row-qty { font-family: 'Inter', sans-serif; font-size: 13px; color: var(--text-dim); margin-top: 2px; }
   .food-row-edit { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
+  /* The save tick reads green so it's distinguishable from the cancel × at a
+     glance — same green the tab uses for on-target everywhere else. */
+  .food-row-save { border-color: var(--good); color: var(--good); }
+  .food-row-save:hover { background: var(--good); border-color: var(--good); color: #ffffff; }
   .food-row-edit .qty-input { width: 58px; }
   .food-row-edit input, .food-row-edit select { background: var(--panel-2); border: 1px solid var(--border); border-radius: 7px; color: var(--text); padding: 4px 7px; font-family: 'Inter', sans-serif; font-size: 12px; outline: none; }
   .food-row-macros { display: flex; flex-direction: column; align-items: flex-end; flex-shrink: 0; }
@@ -2108,6 +2125,10 @@ export const FOOD_STYLES = `
   .food-search-row { display: flex; align-items: stretch; gap: 8px; }
   .food-search-box { flex: 1; display: flex; align-items: center; gap: 8px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; color: var(--text-faint); min-width: 0; }
   .food-search-box input { flex: 1; min-width: 0; background: transparent; border: none; outline: none; color: var(--text); font-family: 'Inter', sans-serif; font-size: 14.5px; }
+  /* Small, but a circle rather than a bare glyph — on a phone a lone 12px x is
+     a target you miss. Only rendered when there's something to clear. */
+  .food-search-clear { flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; width: 19px; height: 19px; padding: 0; border: none; border-radius: 50%; background: rgba(0,0,0,0.09); color: var(--text-dim); cursor: pointer; }
+  .food-search-clear:hover { background: rgba(0,0,0,0.16); color: var(--text); }
   .scan-btn { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; flex-shrink: 0; padding: 6px 12px; border-radius: 12px; border: 1px solid var(--border); background: var(--panel-2); color: var(--text-dim); font-family: 'Inter', sans-serif; font-size: 9.6px; letter-spacing: 0.05em; text-transform: uppercase; cursor: pointer; }
   .scan-btn:hover:not(:disabled) { color: var(--text); border-color: var(--text-dim); }
   .scan-btn:disabled { opacity: 0.45; cursor: default; }
