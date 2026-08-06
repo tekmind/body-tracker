@@ -24,10 +24,17 @@ const HABITS_TARGETS_KEY = "habits_targets";
 const DEFAULT_HABIT_TARGETS = { walking: 5, conditioning: 3, weightLifting: 3, cardio: 3 };
 
 const ALERTS_KEY = "alert_settings";
-// Which metric drives the derail/slipping banner, and how long a run has to be
-// before it says so. These were hardcoded to calories / 2 / 3; the numbers are
-// unchanged as defaults, so an install with nothing saved behaves as before.
-const DEFAULT_ALERTS = { metric: "cal", slipping: 2, derailed: 3 };
+// One ladder for everything that counts weeks: how long a run of off-target
+// weeks has to be to go amber, and to go red. The stat-card chips and the
+// dashboard banners both read it, so they can't disagree about how bad the
+// same run is — which they did, the chips going amber after one week while
+// the settings claimed two.
+//
+// `slipping` defaults to 1 because that's where the chips have always turned
+// amber. The banner used to wait for 2; sharing the ladder means it now warns
+// at 1 too. Raise it to 2 if the banner turns out too eager — the chips move
+// with it, which is the point of there being one number.
+const DEFAULT_ALERTS = { metric: "cal", slipping: 1, derailed: 3 };
 
 // One row per metric the banner can watch: where its actual and target live on
 // a weekly row, what counts as being off, and how that reads in a sentence.
@@ -1917,21 +1924,23 @@ export default function Dashboard() {
   // is also fat-mass-driven despite being labeled "Body Fat").
   const fatMassBadge = mkBadge(onTrackStreak, "good");
   const bodyFatBadge = fatMassBadge;
-  // A run as long as the derail threshold reads as bad; anything shorter is a
-  // warning. Same number the banner uses, so a card and a banner can't
-  // disagree about how serious the same run of weeks is.
-  const badBadgeAt = alerts.derailed;
-  const muscleBadge = muscleStreak > 0
-    ? mkBadge(muscleStreak, muscleStreak >= badBadgeAt ? "bad" : "warn")
-    : mkBadge(muscleOnTrackStreak, "good");
+  // The chips climb the same ladder as the banners: a run as long as the amber
+  // threshold warns, as long as the red one alarms. A miss shorter than the
+  // amber threshold shows nothing — it's a bad week, not yet a run. It can't
+  // show the green badge either, which would claim you were on track.
+  const runBadge = (streak, onTrackStreak) => {
+    if (streak >= alerts.derailed) return mkBadge(streak, "bad");
+    if (streak >= alerts.slipping) return mkBadge(streak, "warn");
+    if (streak > 0) return null;
+    return onTrackStreak != null ? mkBadge(onTrackStreak, "good") : null;
+  };
+  const muscleBadge = runBadge(muscleStreak, muscleOnTrackStreak);
   // Same shape as muscle: weeks over target earn a warn/bad badge, and weeks
   // at or under it earn the green one. Without the second half the card went
   // blank the moment you got back on track, while the alert banner was showing
   // a green streak pill for the very same run of weeks.
-  const calBadge = calStreak > 0
-    ? mkBadge(calStreak, calStreak >= badBadgeAt ? "bad" : "warn")
-    : mkBadge(calOnTrackStreak, "good");
-  const stepsBadge = mkBadge(stepsStreak, stepsStreak >= badBadgeAt ? "bad" : "warn");
+  const calBadge = runBadge(calStreak, calOnTrackStreak);
+  const stepsBadge = runBadge(stepsStreak, null);
   // Every non-Weight card always resolves to one of good/warn/bad so its
   // icon, week-value box, and "since start" line share one color scheme.
   // No active badge just means "currently on track" (good). Weight stays
@@ -2604,11 +2613,11 @@ export default function Dashboard() {
 
           <div className="panel" style={{ paddingBottom: 18 }}>
             <div className="panel-head">
-              <div className="panel-title">Alerts<span className="dim">what the derail banner watches, and how long it waits</span></div>
+              <div className="panel-title">Alerts<span className="dim">how long a run of off-target weeks has to be before the stat chips and the dashboard banners say so</span></div>
             </div>
             <div className="alert-settings">
               <div className="alert-setting-row">
-                <span className="alert-setting-label">Watch</span>
+                <span className="alert-setting-label">Banner watches<span className="alert-setting-hint">the chips always cover all three</span></span>
                 <div className="toggle-group">
                   {ALERT_METRICS.map(m => (
                     <button key={m.key}
@@ -2620,8 +2629,8 @@ export default function Dashboard() {
                 </div>
               </div>
               {[
-                { key: "slipping", label: "Slipping after", hint: "the early warning" },
-                { key: "derailed", label: "Derailed after", hint: "the full alert, and what marks a run in your history" },
+                { key: "slipping", label: "Amber after", hint: "chips turn amber, banner warns you're slipping" },
+                { key: "derailed", label: "Red after", hint: "chips turn red, banner calls it a derail, and the run is marked in your history" },
               ].map(f => (
                 <div key={f.key} className="alert-setting-row">
                   <span className="alert-setting-label">{f.label}<span className="alert-setting-hint">{f.hint}</span></span>
@@ -2636,8 +2645,15 @@ export default function Dashboard() {
               ))}
               <div className="alert-settings-note">
                 {alerts.slipping === alerts.derailed
-                  ? <>Both set to {alerts.derailed} weeks, so the warning and the alert land together — raise <em>Derailed after</em> to get the early nudge back.</>
-                  : <>{alerts.slipping} weeks of {watched.blurb} shows the amber warning; {alerts.derailed} shows the red one and marks the whole run in your weekly log, the trend chart and the phase timeline.</>}
+                  ? <>Both set to {alerts.derailed} weeks, so amber and red land together — raise <em>Red after</em> to get the early warning back.</>
+                  : <>
+                      {alerts.slipping === 1 ? "A single week" : `${alerts.slipping} weeks`} off target turns that metric's
+                      chip amber; {alerts.derailed} turns it red and marks the whole run in your weekly log, the trend chart
+                      and the phase timeline. The banner follows the same two numbers, for {watched.label.toLowerCase()} only.
+                    </>}
+                <br />
+                Day-to-day colours are a different thing: the Food tab's tiles and bar chart shade on how far a single
+                number is from its goal, set by your phase and the calorie alert buffer above — not by weeks.
               </div>
             </div>
           </div>
