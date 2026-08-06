@@ -23,6 +23,24 @@ const HABITS_KEY = "habits_log";
 const HABITS_TARGETS_KEY = "habits_targets";
 const DEFAULT_HABIT_TARGETS = { walking: 5, conditioning: 3, weightLifting: 3, cardio: 3 };
 
+const ALERTS_KEY = "alert_settings";
+// Which metric drives the derail/slipping banner, and how long a run has to be
+// before it says so. These were hardcoded to calories / 2 / 3; the numbers are
+// unchanged as defaults, so an install with nothing saved behaves as before.
+const DEFAULT_ALERTS = { metric: "cal", slipping: 2, derailed: 3 };
+
+// One row per metric the banner can watch: where its actual and target live on
+// a weekly row, what counts as being off, and how that reads in a sentence.
+const ALERT_METRICS = [
+  { key: "cal", label: "Calories", actual: "aCal", target: "tCal",
+    off: (a, t) => a > t, word: "over target", blurb: "eating over your calorie goal" },
+  { key: "steps", label: "Steps", actual: "steps", target: "tSteps",
+    off: (a, t) => a < t, word: "under goal", blurb: "falling short of your step goal" },
+  { key: "muscle", label: "Muscle", actual: "aM", target: "tM",
+    off: (a, t) => a < t, word: "below target", blurb: "losing ground on muscle" },
+];
+const alertMetric = (key) => ALERT_METRICS.find(m => m.key === key) || ALERT_METRICS[0];
+
 const HABITS = [
   { key: "walking",      label: "Walking",      color: "#5b8dee", Icon: Footprints },
   { key: "conditioning", label: "Conditioning", color: "#dba236", Icon: Activity },
@@ -880,6 +898,19 @@ export default function Dashboard() {
     try { await window.storage.set(HABITS_TARGETS_KEY, JSON.stringify(next)); setHabitTargets(next); } catch (e) {}
   }, []);
 
+  const [alerts, setAlerts] = useState(DEFAULT_ALERTS);
+  const persistAlerts = useCallback(async (next) => {
+    // Slipping has to come first, or the earlier warning could never fire.
+    const clean = {
+      metric: alertMetric(next.metric).key,
+      slipping: Math.min(Math.max(1, next.slipping | 0), 12),
+      derailed: Math.min(Math.max(1, next.derailed | 0), 12),
+    };
+    if (clean.derailed < clean.slipping) clean.derailed = clean.slipping;
+    setAlerts(clean);
+    try { await window.storage.set(ALERTS_KEY, JSON.stringify(clean)); } catch (e) {}
+  }, []);
+
   const fetchHealthkitDaily = useCallback(async () => {
     try {
       const { data, error } = await supabase.from("daily_metrics").select("date,cal,steps,weight,fat_mass,muscle_mass");
@@ -1080,6 +1111,11 @@ export default function Dashboard() {
         const res = await window.storage.get(HABITS_TARGETS_KEY);
         const parsed = JSON.parse(res.value);
         if (parsed && typeof parsed === "object") setHabitTargets({ ...DEFAULT_HABIT_TARGETS, ...parsed });
+      } catch (e) { /* use defaults */ }
+      try {
+        const res = await window.storage.get(ALERTS_KEY);
+        const parsed = JSON.parse(res.value);
+        if (parsed && typeof parsed === "object") setAlerts({ ...DEFAULT_ALERTS, ...parsed });
       } catch (e) { /* use defaults */ }
     })();
   }, []);
@@ -1445,19 +1481,23 @@ export default function Dashboard() {
 
   // Metric watchlist: flags a tracked metric that's off target on the latest
   // logged week, and counts how many consecutive weeks it's been off. Severity
-  // escalates from a warning (orange) to an alert (red) past two weeks running.
-  // Adding a metric later is just another entry in `rules`. (Calories has its
-  // own streak-based derail banner above, so it's not duplicated here.)
+  // escalates from a warning (orange) to an alert (red) once the run is as
+  // long as the derail threshold. Adding a metric later is just another entry
+  // in `rules`. Whichever metric the derail banner watches is dropped here, so
+  // it isn't reported twice.
   const notifications = useMemo(() => {
     if (effectiveActual.length === 0) return [];
     const rules = [
+      { id: "cal", metric: "Calories", isOff: r => r.aCal != null && r.tCal != null && r.aCal > r.tCal,
+        word: "over target",
+        detail: r => `${Math.round(r.aCal - r.tCal).toLocaleString()} over (${Math.round(r.aCal).toLocaleString()} vs ${Math.round(r.tCal).toLocaleString()})` },
       { id: "steps", metric: "Steps", isOff: r => r.steps != null && r.tSteps != null && r.tSteps - r.steps > 300,
         word: "under goal",
         detail: r => `${(r.tSteps - r.steps).toLocaleString()} under (${r.steps.toLocaleString()} vs ${r.tSteps.toLocaleString()})` },
       { id: "muscle", metric: "Muscle", isOff: r => r.aM != null && r.tM != null && r.aM < r.tM,
         word: "below target",
         detail: r => `${round1(r.tM - r.aM)} lb below (${r.aM} vs ${r.tM})` },
-    ];
+    ].filter(rule => rule.id !== alerts.metric);
     const out = [];
     rules.forEach(rule => {
       const last = effectiveActual[effectiveActual.length - 1];
@@ -1467,14 +1507,14 @@ export default function Dashboard() {
       for (let i = effectiveActual.length - 1; i >= 0; i--) {
         if (rule.isOff(effectiveActual[i])) streak++; else break;
       }
-      const severity = streak >= 3 ? "alert" : "warn";
+      const severity = streak >= alerts.derailed ? "alert" : "warn";
       out.push({
         id: rule.id, metric: rule.metric, severity, streak,
         message: rule.detail(last),
       });
     });
     return out;
-  }, [effectiveActual]);
+  }, [effectiveActual, alerts.metric, alerts.derailed]);
 
   // Per-metric streaks for the stat-card badges — 1-2 weeks off target is a
   // "warn" badge, 3+ is "bad".
@@ -1484,10 +1524,20 @@ export default function Dashboard() {
   const calStreak = useMemo(() => missStreak(effectiveActual, "aCal", "tCal", (a, t) => a > t), [effectiveActual]);
   const stepsStreak = useMemo(() => missStreak(effectiveActual, "steps", "tSteps", (a, t) => a < t), [effectiveActual]);
 
-  // Derail trigger: the trailing streak of weeks with calories over target
-  // (calStreak, above) — 3+ running is a full derail, 2 is an early
-  // "slipping" warning.
-  const alertLevel = calStreak >= 3 ? "derailed" : calStreak >= 2 ? "slipping" : null;
+  // Derail trigger: the trailing run of weeks the watched metric has been off
+  // target. Which metric, and how long a run each level needs, come from Goal
+  // Settings — the defaults are the calories / 2 / 3 this used to hardcode.
+  const watched = alertMetric(alerts.metric);
+  const alertStreak = useMemo(
+    () => missStreak(effectiveActual, watched.actual, watched.target, watched.off),
+    [effectiveActual, watched]);
+  const alertLevel = alertStreak >= alerts.derailed ? "derailed"
+    : alertStreak >= alerts.slipping ? "slipping" : null;
+  // Positive counterpart: consecutive weeks (newest first) that were ON target
+  // — the green streak pill.
+  const alertOnTrackStreak = useMemo(
+    () => missStreak(effectiveActual, watched.actual, watched.target, (a, t) => !watched.off(a, t)),
+    [effectiveActual, watched]);
   // Positive counterpart: consecutive weeks (newest first) with calories AT
   // or UNDER target — the on-track streak shown as a green pill.
   const calOnTrackStreak = useMemo(() => missStreak(effectiveActual, "aCal", "tCal", (a, t) => a <= t), [effectiveActual]);
@@ -1523,25 +1573,26 @@ export default function Dashboard() {
     };
   }, [alertLevel, effectiveActual, goals]);
 
-  // Derail = a run of 3+ consecutive weeks with calories over target. Once a
-  // run reaches 3, the WHOLE run is marked — including its first two weeks —
-  // so historical highlights show the full off-track stretch, not just week
-  // 3+, across the trend chart shading, the weekly log rows, and the phase
-  // timeline.
+  // Derail = a run of consecutive weeks the watched metric was off target, as
+  // long as the derail threshold. Once a run reaches it the WHOLE run is
+  // marked — including the weeks before the threshold — so historical
+  // highlights show the full off-track stretch, not just its tail, across the
+  // trend chart shading, the weekly log rows, and the phase timeline.
   const derailedRows = useMemo(() => {
-    const miss = effectiveActual.map(r => r.aCal != null && r.tCal != null && r.aCal > r.tCal);
+    const miss = effectiveActual.map(r =>
+      r[watched.actual] != null && r[watched.target] != null && watched.off(r[watched.actual], r[watched.target]));
     const derailed = new Array(ACTUAL.length).fill(false);
     let start = -1;
     for (let i = 0; i <= ACTUAL.length; i++) {
       const m = i < ACTUAL.length && miss[i];
       if (m && start === -1) start = i;
       if (!m && start !== -1) {
-        if (i - start >= 3) { for (let j = start; j < i; j++) derailed[j] = true; }
+        if (i - start >= alerts.derailed) { for (let j = start; j < i; j++) derailed[j] = true; }
         start = -1;
       }
     }
     return ACTUAL.map((r, i) => ({ ...r, derailed: derailed[i] }));
-  }, [ACTUAL, effectiveActual]);
+  }, [ACTUAL, effectiveActual, watched, alerts.derailed]);
   // Dates of historically-derailed weeks, for red log rows and timeline marks.
   const derailedDates = useMemo(() => new Set(derailedRows.filter(r => r.derailed).map(r => r.date)), [derailedRows]);
   // Background phase bands for the Actual vs. Target chart — one shaded
@@ -1866,17 +1917,21 @@ export default function Dashboard() {
   // is also fat-mass-driven despite being labeled "Body Fat").
   const fatMassBadge = mkBadge(onTrackStreak, "good");
   const bodyFatBadge = fatMassBadge;
+  // A run as long as the derail threshold reads as bad; anything shorter is a
+  // warning. Same number the banner uses, so a card and a banner can't
+  // disagree about how serious the same run of weeks is.
+  const badBadgeAt = alerts.derailed;
   const muscleBadge = muscleStreak > 0
-    ? mkBadge(muscleStreak, muscleStreak >= 3 ? "bad" : "warn")
+    ? mkBadge(muscleStreak, muscleStreak >= badBadgeAt ? "bad" : "warn")
     : mkBadge(muscleOnTrackStreak, "good");
   // Same shape as muscle: weeks over target earn a warn/bad badge, and weeks
   // at or under it earn the green one. Without the second half the card went
   // blank the moment you got back on track, while the alert banner was showing
   // a green streak pill for the very same run of weeks.
   const calBadge = calStreak > 0
-    ? mkBadge(calStreak, calStreak >= 3 ? "bad" : "warn")
+    ? mkBadge(calStreak, calStreak >= badBadgeAt ? "bad" : "warn")
     : mkBadge(calOnTrackStreak, "good");
-  const stepsBadge = mkBadge(stepsStreak, stepsStreak >= 3 ? "bad" : "warn");
+  const stepsBadge = mkBadge(stepsStreak, stepsStreak >= badBadgeAt ? "bad" : "warn");
   // Every non-Weight card always resolves to one of good/warn/bad so its
   // icon, week-value box, and "since start" line share one color scheme.
   // No active badge just means "currently on track" (good). Weight stays
@@ -2233,7 +2288,7 @@ export default function Dashboard() {
 
   function openExport() {
     setBackupMsg("");
-    setBackupText(JSON.stringify({ entries, goals, daily: dailyEntries, habits: habitLog, habitTargets }, null, 2));
+    setBackupText(JSON.stringify({ entries, goals, daily: dailyEntries, habits: habitLog, habitTargets, alerts }, null, 2));
     setBackupMode("export");
   }
   function openImport() {
@@ -2327,6 +2382,11 @@ export default function Dashboard() {
       if (parsed.habitTargets && typeof parsed.habitTargets === "object") {
         persistHabitTargets({ ...DEFAULT_HABIT_TARGETS, ...parsed.habitTargets });
       }
+      // Same rule as habits: alert settings post-date some exports, so an
+      // older backup leaves the current ones alone rather than resetting them.
+      if (parsed.alerts && typeof parsed.alerts === "object") {
+        persistAlerts({ ...DEFAULT_ALERTS, ...parsed.alerts });
+      }
       setBackupMode(null);
       setBackupText("");
       setBackupMsg("Backup restored.");
@@ -2404,39 +2464,41 @@ export default function Dashboard() {
 
       {tab === "dashboard" && (
         <>
-          {alertLevel === "slipping" && !isAlertDismissed("calories-slipping", `${latestDataVersion}::${calStreak}`) && (
+          {alertLevel === "slipping" && !isAlertDismissed("alert-slipping", `${latestDataVersion}::${watched.key}::${alertStreak}`) && (
             <div className="banner-alert slipping">
               <AlertTriangle size={22} />
               <div className="banner-alert-text">
-                <strong>Calories — you're slipping.</strong> <span className="notif-weeks">{calStreak}w</span> Calories have been over target for {calStreak} weeks straight. <strong style={{ textDecoration: "underline" }}>Tighten up now, before it turns into a full derail.</strong>
-                {recovery && <RecoveryFooter r={recovery} />}
+                <strong>{watched.label} — you're slipping.</strong> <span className="notif-weeks">{alertStreak}w</span> {watched.label} {watched.label === "Calories" ? "have" : "has"} been {watched.word} for {alertStreak} weeks straight. <strong style={{ textDecoration: "underline" }}>Tighten up now, before it turns into a full derail.</strong>
+                {watched.key === "cal" && recovery && <RecoveryFooter r={recovery} />}
               </div>
-              <button className="alert-close-btn" onClick={() => dismissAlert("calories-slipping", `${latestDataVersion}::${calStreak}`)} aria-label="Dismiss"><X size={16} /></button>
+              <button className="alert-close-btn" onClick={() => dismissAlert("alert-slipping", `${latestDataVersion}::${watched.key}::${alertStreak}`)} aria-label="Dismiss"><X size={16} /></button>
             </div>
           )}
-          {alertLevel === "derailed" && !isAlertDismissed("calories-derailed", `${latestDataVersion}::${calStreak}`) && (
+          {alertLevel === "derailed" && !isAlertDismissed("alert-derailed", `${latestDataVersion}::${watched.key}::${alertStreak}`) && (
             <div className="banner-alert derailed">
               <AlertCircle size={30} />
               <div className="banner-alert-text">
-                <strong>You've derailed.</strong> <span className="notif-weeks">{calStreak}w</span> Calories have been over target for {calStreak} weeks in a row — this isn't a rough week, it's a pattern.
-                {recovery && <RecoveryFooter r={recovery} />}
+                <strong>You've derailed.</strong> <span className="notif-weeks">{alertStreak}w</span> {watched.label} {watched.label === "Calories" ? "have" : "has"} been {watched.word} for {alertStreak} weeks in a row — this isn't a rough week, it's a pattern.
+                {watched.key === "cal" && recovery && <RecoveryFooter r={recovery} />}
               </div>
-              <button className="alert-close-btn" onClick={() => dismissAlert("calories-derailed", `${latestDataVersion}::${calStreak}`)} aria-label="Dismiss"><X size={16} /></button>
+              <button className="alert-close-btn" onClick={() => dismissAlert("alert-derailed", `${latestDataVersion}::${watched.key}::${alertStreak}`)} aria-label="Dismiss"><X size={16} /></button>
             </div>
           )}
-          {!alertLevel && ACTUAL.length > 0 && !isAlertDismissed("calories-ontrack", `${latestDataVersion}::${calOnTrackStreak}`) && (() => {
+          {!alertLevel && ACTUAL.length > 0 && !isAlertDismissed("alert-ontrack", `${latestDataVersion}::${watched.key}::${alertOnTrackStreak}`) && (() => {
             const last = effectiveActual[effectiveActual.length - 1];
-            const overTarget = last.aCal != null && last.tCal != null && last.aCal > last.tCal;
+            const isOff = last[watched.actual] != null && last[watched.target] != null
+              && watched.off(last[watched.actual], last[watched.target]);
+            const toSlip = alerts.slipping - alertStreak;
             return (
               <div className="banner-ontrack">
                 <Check size={15} />
                 <span className="banner-ontrack-text">
-                  <strong>Calories — </strong>
-                  {calStreak === 1 || overTarget
-                    ? "over target this week. One more over-target week triggers a slipping alert."
-                    : <>on track — at or under target for {calOnTrackStreak} week{calOnTrackStreak === 1 ? "" : "s"}. <span className="notif-weeks ontrack-pill">{calOnTrackStreak}w</span></>}
+                  <strong>{watched.label} — </strong>
+                  {alertStreak > 0 || isOff
+                    ? `${watched.word} this week. ${toSlip <= 1 ? "One more" : `${toSlip} more`} triggers a slipping alert.`
+                    : <>on track for {alertOnTrackStreak} week{alertOnTrackStreak === 1 ? "" : "s"}. <span className="notif-weeks ontrack-pill">{alertOnTrackStreak}w</span></>}
                 </span>
-                <button className="alert-close-btn" onClick={() => dismissAlert("calories-ontrack", `${latestDataVersion}::${calOnTrackStreak}`)} aria-label="Dismiss"><X size={14} /></button>
+                <button className="alert-close-btn" onClick={() => dismissAlert("alert-ontrack", `${latestDataVersion}::${watched.key}::${alertOnTrackStreak}`)} aria-label="Dismiss"><X size={14} /></button>
               </div>
             );
           })()}
@@ -2542,6 +2604,46 @@ export default function Dashboard() {
 
           <div className="panel" style={{ paddingBottom: 18 }}>
             <div className="panel-head">
+              <div className="panel-title">Alerts<span className="dim">what the derail banner watches, and how long it waits</span></div>
+            </div>
+            <div className="alert-settings">
+              <div className="alert-setting-row">
+                <span className="alert-setting-label">Watch</span>
+                <div className="toggle-group">
+                  {ALERT_METRICS.map(m => (
+                    <button key={m.key}
+                      className={"toggle-btn" + (alerts.metric === m.key ? " active" : "")}
+                      onClick={() => persistAlerts({ ...alerts, metric: m.key })}>
+                      {m.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {[
+                { key: "slipping", label: "Slipping after", hint: "the early warning" },
+                { key: "derailed", label: "Derailed after", hint: "the full alert, and what marks a run in your history" },
+              ].map(f => (
+                <div key={f.key} className="alert-setting-row">
+                  <span className="alert-setting-label">{f.label}<span className="alert-setting-hint">{f.hint}</span></span>
+                  <div className="habit-target-stepper">
+                    <button className="habit-step-btn"
+                      onClick={() => persistAlerts({ ...alerts, [f.key]: alerts[f.key] - 1 })}>−</button>
+                    <span className="habit-target-val">{alerts[f.key]}w</span>
+                    <button className="habit-step-btn"
+                      onClick={() => persistAlerts({ ...alerts, [f.key]: alerts[f.key] + 1 })}>+</button>
+                  </div>
+                </div>
+              ))}
+              <div className="alert-settings-note">
+                {alerts.slipping === alerts.derailed
+                  ? <>Both set to {alerts.derailed} weeks, so the warning and the alert land together — raise <em>Derailed after</em> to get the early nudge back.</>
+                  : <>{alerts.slipping} weeks of {watched.blurb} shows the amber warning; {alerts.derailed} shows the red one and marks the whole run in your weekly log, the trend chart and the phase timeline.</>}
+              </div>
+            </div>
+          </div>
+
+          <div className="panel" style={{ paddingBottom: 18 }}>
+            <div className="panel-head">
               <div className="panel-title">Habit Weekly Targets<span className="dim">days per week needed to count as a streak</span></div>
             </div>
             <div className="habit-targets-grid">
@@ -2561,7 +2663,7 @@ export default function Dashboard() {
 
           <div className="panel" style={{ paddingBottom: 18 }}>
             <div className="panel-head">
-              <div className="panel-title">Backup & Restore<span className="dim">weekly log + goals + daily log + habits, one JSON blob — the food log lives in its own tables and isn't in here</span></div>
+              <div className="panel-title">Backup & Restore<span className="dim">weekly log + goals + daily log + habits + alert settings, one JSON blob — the food log lives in its own tables and isn't in here</span></div>
               <div style={{ display: "flex", gap: 8 }}>
                 <button className="btn-ghost" onClick={handleDedupe}>Dedupe</button>
                 <button className="btn-ghost" onClick={openExport}>Export</button>
@@ -3454,6 +3556,12 @@ const BASE_STYLES = `
   th.daily-date, td.daily-date { text-align: left; }
   .daily-date-row { display: flex; align-items: center; gap: 8px; }
   .daily-date-row .this-block-tag { margin-left: 0; }
+  .alert-settings { display: flex; flex-direction: column; gap: 10px; }
+  .alert-setting-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 9px 12px; border: 1px solid var(--border); border-radius: 12px; }
+  .alert-setting-label { flex: 1; min-width: 140px; display: flex; flex-direction: column; gap: 2px; font-family: 'Inter', sans-serif; font-size: 13.4px; color: var(--text); }
+  .alert-setting-hint { font-size: 11.6px; color: var(--text-faint); }
+  .alert-settings-note { font-family: 'Inter', sans-serif; font-size: 12.4px; color: var(--text-faint); line-height: 1.55; padding: 0 2px; }
+
   .cell-undo { display: flex; align-items: center; gap: 10px; margin-top: 4px; padding: 9px 12px; border: 1px solid var(--border); border-radius: 12px; font-family: 'Inter', sans-serif; font-size: 13px; color: var(--text-dim); }
   .cell-undo span { flex: 1; }
   .table-hint { font-family: 'Inter', sans-serif; font-size: 12.4px; color: var(--text-faint); line-height: 1.55; margin-top: 12px; padding-bottom: 4px; }
