@@ -493,14 +493,18 @@ export function macroStatus(value, target, { band = "ceiling", buffer = null } =
  *             buffer sits entirely ABOVE it: 50 over is amber, more is red.
  *   Gain      the mirror image — over the goal is good, so the buffer sits
  *             BELOW it: 50 short is amber, more is red.
- *   Maintain  a number to land on, so the buffer splits half either side.
+ *   Maintain  also a ceiling. This used to split the buffer either side, on
+ *             the theory that maintenance is a number to land on — but coming
+ *             in under your calories turned the tile amber, which reads as a
+ *             warning about the one thing that wasn't a problem. Amber is for
+ *             eating past the goal; under it is green in every phase but Gain.
  *
  * Carbs follow the same shape, because they're a slice of the same calorie
  * budget — a gain day that's green for being over on calories would otherwise
  * be red for being over on carbs. Protein is a floor in every phase (a goal to
  * reach, not a limit) and fat stays a ceiling, so neither moves with the phase.
  */
-export const CAL_BAND_BY_PHASE = { Cut: "ceiling", Gain: "floor", Maintain: "window" };
+export const CAL_BAND_BY_PHASE = { Cut: "ceiling", Gain: "floor", Maintain: "ceiling" };
 
 export function calBandFor(phase) {
   return CAL_BAND_BY_PHASE[phase] || "window";

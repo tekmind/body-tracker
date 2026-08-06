@@ -1756,20 +1756,17 @@ export default function Dashboard() {
     };
   }, [goals]);
 
-  const dailyEntryFor = useCallback((dateStr) => {
-    const d = parseDate(dateStr);
-    if (!d) return null;
-    return mergedDailyEntries.find(r => {
-      const rd = parseDate(r.date);
-      return rd && rd.getTime() === d.getTime();
-    }) || null;
-  }, [mergedDailyEntries]);
-
   // Logging food fills in that day's calorie number so pacing, streaks, and
-  // the alerts keep working without double entry. A number typed by hand on
-  // the Daily tab is left alone — the Food tab surfaces the disagreement and
-  // offers the swap rather than overwriting it silently.
-  const writeFoodCalories = useCallback((dateStr, cal, { force }) => {
+  // the alerts keep working without double entry. The Food tab owns any day it
+  // has entries for: what you actually logged is the answer, and whatever else
+  // put a number on that row — a stray automation posting Active Energy, a
+  // form saved without being changed — isn't a figure you chose.
+  //
+  // This used to defer to anything not marked calSource "food" and offer a
+  // swap instead. It read as the app arguing with you: the Daily tab said
+  // 1,200, the Food tab added up to 2,488, and the number that was wrong was
+  // the one on display.
+  const writeFoodCalories = useCallback((dateStr, cal) => {
     const d = parseDate(dateStr);
     if (!d) return;
     const idx = dailyEntries.findIndex(r => {
@@ -1787,7 +1784,9 @@ export default function Dashboard() {
     }
 
     const existing = dailyEntries[idx];
-    if (!force && existing.cal != null && existing.calSource !== "food") return;
+    // A day with nothing logged is an empty day, not a correction — it must
+    // not blank a number you typed on the Daily tab for a day you ate out.
+    if (cal == null && existing.cal != null && existing.calSource !== "food") return;
     if (existing.cal === cal && (cal == null || existing.calSource === "food")) return;
 
     persistDaily(dailyEntries.map((r, i) => (i === idx
@@ -1796,11 +1795,7 @@ export default function Dashboard() {
   }, [dailyEntries, persistDaily]);
 
   const syncFoodCalories = useCallback((dateStr, cal, rowCount) => {
-    writeFoodCalories(dateStr, rowCount === 0 ? null : cal, { force: false });
-  }, [writeFoodCalories]);
-
-  const forceFoodCalories = useCallback((dateStr, cal) => {
-    writeFoodCalories(dateStr, cal, { force: true });
+    writeFoodCalories(dateStr, rowCount === 0 ? null : cal);
   }, [writeFoodCalories]);
 
   if (status === "loading") {
@@ -2155,10 +2150,16 @@ export default function Dashboard() {
   }
 
   function openEditDaily(entry) {
-    // A synced-only row (not in dailyEntries) isn't found here, so idx is -1 —
-    // treat that as null (add), which upserts a new manual entry by date and
-    // makes it take precedence over the synced value from then on.
-    const idx = dailyEntries.indexOf(entry);
+    // Match by date, not object identity. The table renders copies — dailyRows
+    // maps every row to attach _i/_d — so indexOf never matched anything and
+    // *every* edit fell through to the add path below, where a blanked field
+    // reads as "leave this one alone". Emptying calories, steps or a weight in
+    // this form and saving quietly did nothing.
+    //
+    // A synced-only day really does have no row here, and -1 is still right
+    // for it: the add path upserts a manual entry that takes precedence over
+    // the synced value from then on.
+    const idx = dailyEntries.findIndex(r => sameDay(r.date, entry.date));
     setDailyForm({
       date: entry.date, cal: entry.cal ?? "", steps: entry.steps ?? "",
       weight: entry.weight ?? "", fatMass: entry.fatMass ?? "", muscleMass: entry.muscleMass ?? "",
@@ -2858,9 +2859,7 @@ export default function Dashboard() {
         <FoodTab
           targetsForDate={targetsForDate}
           pacing={{ recCal: pacing.recCal, daysRemaining: pacing.daysRemaining }}
-          dailyEntryFor={dailyEntryFor}
           onDayTotalsChange={syncFoodCalories}
-          onForceDailyCalories={forceFoodCalories}
         />
       ) : tab === "labs" ? (
         <LabsTab />

@@ -223,6 +223,48 @@ check("a refused edit holds the editor in place", at === "Calories on 7/27/26", 
 check("and the complaint is still on screen", /isn't a number/.test(await p.locator(".banner-error").first().innerText()));
 await p.keyboard.press("Escape");
 
+// --- the pencil form: clearing a field actually clears it --------------------
+// Reported: a weight typed into the Calories box by mistake couldn't be
+// removed — emptying the field and saving left the number where it was.
+// openEditDaily matched the row with indexOf against dailyRows, which renders
+// copies, so it never matched and every edit took the *add* path, where a
+// blank field means "leave this one alone". Nothing in this form could ever
+// be cleared: not calories, not steps, not a weight.
+const formField = (label) => p.locator(".entry-form label", { hasText: label }).first().locator("input");
+const openPencil = async (date) => {
+  await rowFor(date).locator(".row-actions .icon-btn").first().click();
+  await p.waitForSelector(".entry-form");
+};
+
+await openPencil("7/27/26");
+check("the pencil opens as an edit, not an add",
+  /Save changes/.test(await p.locator(".entry-form .btn-primary").innerText()),
+  await p.locator(".entry-form .btn-primary").innerText());
+
+// Mirror the report: a weight in the calories box, then take it out again.
+await formField("Calories").fill("214.5");
+await p.locator(".entry-form .btn-primary").click();
+await p.waitForTimeout(300);
+check("the mistyped number lands", await cellText("7/27/26", COL.cal) === "214.5", await cellText("7/27/26", COL.cal));
+
+const stepsBefore = await cellText("7/27/26", COL.steps);
+await openPencil("7/27/26");
+await formField("Calories").fill("");
+await p.locator(".entry-form .btn-primary").click();
+await p.waitForTimeout(300);
+check("emptying calories in the form clears the cell", await cellText("7/27/26", COL.cal) === "–",
+  await cellText("7/27/26", COL.cal));
+check("and clears it in the log, as blank rather than zero", dayIn("7/27/26")?.cal === null,
+  JSON.stringify(dayIn("7/27/26")?.cal));
+check("the day stops claiming a hand-typed calorie figure", dayIn("7/27/26")?.calSource == null,
+  String(dayIn("7/27/26")?.calSource));
+check("without taking the rest of the row with it", await cellText("7/27/26", COL.steps) === stepsBefore,
+  `${await cellText("7/27/26", COL.steps)} vs ${stepsBefore}`);
+
+// It has to still be an edit, not a duplicate day.
+const dupes = await p.locator(".table-wrap table tbody tr").filter({ hasText: "7/27/26" }).count();
+check("editing doesn't leave two rows for the day", dupes === 1, `${dupes} rows`);
+
 // --- touch: one tap, because iOS spends double-tap on zoom -------------------
 const ctx = await b.newContext({ viewport: { width: 390, height: 780 }, hasTouch: true, isMobile: true });
 const m = await ctx.newPage();
