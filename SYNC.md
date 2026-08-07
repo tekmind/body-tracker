@@ -200,6 +200,15 @@ Only the keys sent get written, so this merges onto the same day's row as the
 steps shortcut without touching `steps` or `cal`. Automate it to run on a
 morning schedule, after your usual weigh-in time.
 
+**Name it `Scale Sync`, exactly.** The Daily Log's **Sync scale** button is a
+`shortcuts://run-shortcut?name=Scale%20Sync` link, so renaming the shortcut
+breaks the button until `SCALE_SHORTCUT_NAME` in `src/Dashboard.jsx` changes
+to match. iOS won't let a web page run a Shortcut in the background — the
+x-callback "come back when you're done" scheme is Shortcuts-to-Shortcuts
+only — so the button hands off and you swipe back; returning to the app
+re-reads `daily_metrics` on its own. The button only renders on a touch
+device, since the link goes nowhere on a laptop.
+
 ## Steps from WHOOP
 
 **WHOOP's API can't do this — Apple Health can.** WHOOP has counted steps in
