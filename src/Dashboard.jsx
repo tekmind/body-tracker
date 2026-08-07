@@ -865,7 +865,7 @@ export default function Dashboard() {
   // sync never has to read-modify-write the daily_log blob.
   const [healthkitDaily, setHealthkitDaily] = useState([]);
   const [dailyFormOpen, setDailyFormOpen] = useState(false);
-  const [dailyEditIndex, setDailyEditIndex] = useState(null);
+  const [dailyEditDate, setDailyEditDate] = useState(null);
   const [dailyForm, setDailyForm] = useState({ date: "", cal: "", steps: "", weight: "", fatMass: "", muscleMass: "" });
   const [dailySaving, setDailySaving] = useState(false);
   const [dailyErrMsg, setDailyErrMsg] = useState("");
@@ -1032,7 +1032,16 @@ export default function Dashboard() {
     }
   }, []);
 
+  // Nothing may write the daily log before it has been read. `status` flips to
+  // ready as soon as the WEEKLY log lands, two round-trips before this one, so
+  // the app renders — Food tab included — with dailyEntries still []. Any
+  // automatic write in that window rebuilds the blob from an empty list and
+  // takes every logged day with it. That is exactly what happened once: the
+  // Food tab's reconcile-on-open fired first and left a single row behind.
+  const dailyLoaded = useRef(false);
+
   const persistDaily = useCallback(async (next) => {
+    if (!dailyLoaded.current) return;
     setDailySaving(true);
     try {
       const res = await window.storage.set(DAILY_KEY, JSON.stringify(next));
@@ -1092,13 +1101,18 @@ export default function Dashboard() {
         const res = await window.storage.get(DAILY_KEY);
         const parsed = JSON.parse(res.value);
         setDailyEntries(Array.isArray(parsed) ? parsed : []);
+        dailyLoaded.current = true;
       } catch (e) {
         try {
           await window.storage.set(DAILY_KEY, JSON.stringify([]));
           setDailyEntries([]);
+          dailyLoaded.current = true;
         } catch (e2) {
+          // Storage is unreachable, so we do NOT know what's in there. Leaving
+          // dailyLoaded false keeps every write path shut rather than letting
+          // the app persist this empty list over real data.
           setDailyEntries([]);
-          setDailyErrMsg("Couldn’t reach storage for daily log. (Normal in the unpublished preview: data only loads in the published app.)");
+          setDailyErrMsg("Couldn’t reach storage for the daily log — it's read-only until that works. Reload once you're back online.");
         }
       }
       await fetchHealthkitDaily();
@@ -2109,7 +2123,7 @@ export default function Dashboard() {
   function openAddDaily(presetDate) {
     const d = presetDate || formatMDY(new Date());
     setDailyForm({ date: d, cal: "", steps: "", weight: "", fatMass: "", muscleMass: "" });
-    setDailyEditIndex(null);
+    setDailyEditDate(null);
     setDailyFormOpen(true);
   }
   // --- Daily Log cell editing ----------------------------------------------
@@ -2228,15 +2242,19 @@ export default function Dashboard() {
       date: entry.date, cal: entry.cal ?? "", steps: entry.steps ?? "",
       weight: entry.weight ?? "", fatMass: entry.fatMass ?? "", muscleMass: entry.muscleMass ?? "",
     });
-    setDailyEditIndex(idx >= 0 ? idx : null);
+    // The date, not the position. A row can arrive or leave while the form is
+    // open — the Food tab writes to this list on its own — and a remembered
+    // index would then be pointing at somebody else's day.
+    setDailyEditDate(idx >= 0 ? entry.date : null);
     setDailyFormOpen(true);
   }
   function handleSaveDaily() {
     const d = buildDaily(dailyForm);
     if (!parseDate(d.date)) { setDailyFormErr("Date needs to look like 7/10/26 (month/day/year)."); return; }
     setDailyFormErr("");
-    if (dailyEditIndex != null) {
-      persistDaily(dailyEntries.map((r, i) => (i === dailyEditIndex ? d : r)));
+    if (dailyEditDate != null) {
+      const at = dailyEntries.findIndex(r => sameDay(r.date, dailyEditDate));
+      if (at >= 0) persistDaily(dailyEntries.map((r, i) => (i === at ? d : r)));
     } else {
       // Upsert by date: logging a day that already exists updates that row
       // instead of creating a duplicate. Blank fields don't wipe existing values.
@@ -2259,7 +2277,7 @@ export default function Dashboard() {
       }
     }
     setDailyFormOpen(false);
-    setDailyEditIndex(null);
+    setDailyEditDate(null);
   }
   // Match by date, not object identity — the table renders copies of the
   // entries (merged/sorted), so indexOf against dailyEntries would miss.
@@ -2894,8 +2912,8 @@ export default function Dashboard() {
             {withingsMsg && <div className="banner-error"><AlertCircle size={13} /> {withingsMsg}</div>}
 
             {dailyFormOpen && (
-              <DailyEntryForm form={dailyForm} setForm={setDailyForm} isEdit={dailyEditIndex != null} error={dailyFormErr}
-                onCancel={() => { setDailyFormOpen(false); setDailyEditIndex(null); setDailyFormErr(""); }}
+              <DailyEntryForm form={dailyForm} setForm={setDailyForm} isEdit={dailyEditDate != null} error={dailyFormErr}
+                onCancel={() => { setDailyFormOpen(false); setDailyEditDate(null); setDailyFormErr(""); }}
                 onSave={handleSaveDaily} />
             )}
 
