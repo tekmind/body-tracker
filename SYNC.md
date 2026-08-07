@@ -186,6 +186,13 @@ writing Weight and Body Fat Percentage.
    Quick Look*. Health returns a percentage (`18.44…`, not `0.1844`), so
    divide by 100 after multiplying. Confirm it rather than assuming — getting
    this wrong is a 100× error, which is why it's step 3 and not a footnote.
+   Set **Unit** to `lbs` on both Find actions while you're there — Health will
+   otherwise hand back kilograms and the weight arrives as ~69 instead of 152.
+
+   Guard the no-weigh-in case with **If → Health Samples → has any value**,
+   and put every remaining action *inside* that If. Delete the `Otherwise`
+   branch (the ⊗ on its row): a day you didn't weigh should post nothing at
+   all, and an empty Otherwise is a branch waiting to be filled in by mistake.
 4. **Round both numbers to 1 decimal.** Health hands back raw floats —
    `18.44000053405762` for a body fat reading, `152.40000152587891` for a
    weight — and posting those unrounded puts a fifteen-digit number in the
@@ -206,8 +213,8 @@ Only the keys sent get written, so this merges onto the same day's row as the
 steps shortcut without touching `steps` or `cal`. Automate it to run on a
 morning schedule, after your usual weigh-in time.
 
-**Name it `Scale Sync`, exactly.** The Daily Log's **Sync scale** button is a
-`shortcuts://run-shortcut?name=Scale%20Sync` link, so renaming the shortcut
+**Name it `Weight Sync`, exactly.** The Daily Log's **Sync scale** button is a
+`shortcuts://run-shortcut?name=Weight%20Sync` link, so renaming the shortcut
 breaks the button until `SCALE_SHORTCUT_NAME` in `src/Dashboard.jsx` changes
 to match. iOS won't let a web page run a Shortcut in the background — the
 x-callback "come back when you're done" scheme is Shortcuts-to-Shortcuts

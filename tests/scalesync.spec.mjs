@@ -47,7 +47,7 @@ const btn = p.locator(".panel-head-actions .sync-scale-btn");
 check("the phone gets a Sync scale button", await btn.count() === 1);
 const href = await btn.getAttribute("href");
 check("it opens the Shortcuts app", (href || "").startsWith("shortcuts://run-shortcut"), href);
-check("naming the scale shortcut", (href || "").includes("name=Scale%20Sync"), href);
+check("naming the scale shortcut", (href || "").includes("name=Weight%20Sync"), href);
 
 // --- returning to the app re-reads, and the new row shows ---------------------
 metrics = [{ date: TODAY, cal: null, steps: null, weight: 152.4, fat_mass: 27.6, muscle_mass: null }];
