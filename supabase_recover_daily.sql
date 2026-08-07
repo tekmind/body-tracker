@@ -24,8 +24,11 @@
 -- 1. Look first. How much is left, and when did it change?
 -- ---------------------------------------------------------------------------
 select key,
-       length(value)                                as chars,
-       jsonb_array_length(nullif(value, '')::jsonb) as rows,
+       length(value) as chars,
+       -- Only arrays have a length; habits_targets and alert_settings are
+       -- objects, and asking would abort the whole script.
+       case when jsonb_typeof(nullif(value, '')::jsonb) = 'array'
+            then jsonb_array_length(nullif(value, '')::jsonb) end as rows,
        updated_at
 from kv_store
 order by updated_at desc;
