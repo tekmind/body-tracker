@@ -352,12 +352,17 @@ function num(v) {
 // it's the key the log and the sync are matched on, so retyping it in place
 // would silently re-key the row onto another day's data. The pencil still
 // handles that, where a collision can be seen before it's saved.
+// `decimals` is the DISPLAY precision, not a rounding of what's stored. The
+// body columns show one place so the column reads as a column — 152 and 152.4
+// on adjacent rows otherwise look like different kinds of measurement — and so
+// a raw HealthKit float (152.40000152587891) can't sprawl across the table if
+// one ever arrives unrounded.
 const DAILY_CELLS = [
   { key: "cal", label: "Calories", mode: "numeric" },
   { key: "steps", label: "Steps", mode: "numeric" },
-  { key: "weight", label: "Weight", mode: "decimal" },
-  { key: "fatMass", label: "Fat mass", mode: "decimal" },
-  { key: "muscleMass", label: "Lean mass", mode: "decimal" },
+  { key: "weight", label: "Weight", mode: "decimal", decimals: 1 },
+  { key: "fatMass", label: "Fat mass", mode: "decimal", decimals: 1 },
+  { key: "muscleMass", label: "Lean mass", mode: "decimal", decimals: 1 },
 ];
 
 // Lean = weight − fat mass, derived at display time for a day with those two
@@ -3092,8 +3097,8 @@ export default function Dashboard() {
                                     lies over it, so opening one can't change
                                     what the column measures. */}
                                 {c.key === "muscleMass" && d.muscleMass == null && inferredLean(d) != null
-                                  ? <span className="cell-inferred" title="Derived: weight − fat mass. Type a value to override it.">{fmtNum(inferredLean(d))}</span>
-                                  : fmtNum(d[c.key])}
+                                  ? <span className="cell-inferred" title="Derived: weight − fat mass. Type a value to override it.">{fmtNum(inferredLean(d), c.decimals)}</span>
+                                  : fmtNum(d[c.key], c.decimals)}
                                 {active && (
                                   <input
                                     className="cell-input"

@@ -133,7 +133,8 @@ check("and it shows as blank, not zero", await cellText("7/27/26", COL.fatMass) 
 // --- a real zero is not the same as blank ----------------------------------
 await edit("7/27/26", "fatMass", "0");
 check("a typed zero is kept as zero", dayIn("7/27/26")?.fatMass === 0, JSON.stringify(dayIn("7/27/26")?.fatMass));
-check("and renders as 0", await cellText("7/27/26", COL.fatMass) === "0", await cellText("7/27/26", COL.fatMass));
+check("and renders as a real zero, one decimal like the rest of the column",
+  await cellText("7/27/26", COL.fatMass) === "0.0", await cellText("7/27/26", COL.fatMass));
 
 // --- rubbish is refused -----------------------------------------------------
 const before = dayIn("7/27/26")?.steps;
@@ -271,7 +272,7 @@ check("editing doesn't leave two rows for the day", dupes === 1, `${dupes} rows`
 // a frozen copy would stop following a later fat-mass correction.
 // 7/29 already got weight 150 typed earlier in this spec; give it a fat mass.
 await edit("7/29/26", "fatMass", "30");
-check("lean fills itself in from weight − fat mass", await cellText("7/29/26", COL.muscleMass) === "120",
+check("lean fills itself in from weight − fat mass", await cellText("7/29/26", COL.muscleMass) === "120.0",
   await cellText("7/29/26", COL.muscleMass));
 check("but marked as derived, not a reading",
   await rowFor("7/29/26").locator("td").nth(COL.muscleMass).locator(".cell-inferred").count() === 1);
@@ -297,7 +298,7 @@ check("which is no longer marked derived",
 
 // Clearing the override goes back to deriving.
 await edit("7/29/26", "muscleMass", "");
-check("clearing it returns to the derived display", await cellText("7/29/26", COL.muscleMass) === "120",
+check("clearing it returns to the derived display", await cellText("7/29/26", COL.muscleMass) === "120.0",
   await cellText("7/29/26", COL.muscleMass));
 check("with the log blank again", dayIn("7/29/26")?.muscleMass == null,
   JSON.stringify(dayIn("7/29/26")?.muscleMass));
