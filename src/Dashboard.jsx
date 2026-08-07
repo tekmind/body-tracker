@@ -23,6 +23,10 @@ const HABITS_KEY = "habits_log";
 const HABITS_TARGETS_KEY = "habits_targets";
 const DEFAULT_HABIT_TARGETS = { walking: 5, conditioning: 3, weightLifting: 3, cardio: 3 };
 
+// The Sync scale button opens this by name, so the shortcut on the phone has
+// to match exactly — renaming it there means changing it here. See SYNC.md.
+const SCALE_SHORTCUT_NAME = "Scale Sync";
+
 const ALERTS_KEY = "alert_settings";
 // One ladder for everything that counts weeks: how long a run of off-target
 // weeks has to be to go amber, and to go red. The stat-card chips and the
@@ -905,8 +909,8 @@ export default function Dashboard() {
     () => typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches,
     []);
 
-  const [withingsSyncing, setWithingsSyncing] = useState(false);
-  const [withingsMsg, setWithingsMsg] = useState("");
+  const [syncMsg, setSyncMsg] = useState("");
+  const awaitingSync = useRef(false);
   const [withingsBanner, setWithingsBanner] = useState("");
 
   const [habitLog, setHabitLog] = useState([]);
@@ -1186,25 +1190,42 @@ export default function Dashboard() {
     window.history.replaceState({}, "", window.location.pathname + (rest ? `?${rest}` : ""));
   }, []);
 
-  async function handleSyncWithings() {
-    setWithingsSyncing(true);
-    setWithingsMsg("");
-    try {
-      const res = await fetch("/api/withings-sync", { method: "POST" });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Sync failed.");
-      if (data.message) {
-        setWithingsMsg(data.message);
-      } else {
-        await fetchHealthkitDaily();
-        setWithingsMsg(`Synced ${data.date} — ${data.weight ?? "–"} lb`);
+  // iOS won't let a web page run a Shortcut in the background — the x-callback
+  // "return here afterwards" scheme is Shortcuts-to-Shortcuts only. So this
+  // hands off to the Shortcuts app, which runs it and leaves you to swipe
+  // back; the refresh happens on return (see the visibility effect below)
+  // rather than being something else to remember to press.
+  // A real link, not a scripted navigation: a custom scheme set through
+  // location.href is the kind of thing browsers quietly refuse, and an anchor
+  // also long-presses and opens like any other link.
+  const scaleShortcutHref = `shortcuts://run-shortcut?name=${encodeURIComponent(SCALE_SHORTCUT_NAME)}`;
+  function handleRunShortcut() {
+    setSyncMsg("");
+    awaitingSync.current = true;
+    // Nothing consumed the link if we're still here and visible a moment
+    // later — no Shortcuts app, or no shortcut by that name.
+    setTimeout(() => {
+      if (!document.hidden && awaitingSync.current) {
+        awaitingSync.current = false;
+        setSyncMsg(`Couldn't open Shortcuts. This needs the iPhone, and a shortcut named exactly "${SCALE_SHORTCUT_NAME}".`);
       }
-    } catch (e) {
-      setWithingsMsg(e.message || "Sync failed.");
-    } finally {
-      setWithingsSyncing(false);
-    }
+    }, 2000);
   }
+
+  // Coming back from Shortcuts is the signal that new rows may exist. Re-read
+  // rather than assume: the shortcut may have posted nothing (no weigh-in), and
+  // this is also the moment a tab that sat in the background all night catches
+  // up on whatever the automations wrote.
+  useEffect(() => {
+    function onVisible() {
+      if (document.hidden) return;
+      const wasWaiting = awaitingSync.current;
+      awaitingSync.current = false;
+      fetchHealthkitDaily().then(() => { if (wasWaiting) setSyncMsg("Checked for new readings."); });
+    }
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [fetchHealthkitDaily]);
 
   // Build the full schedule: real logged weeks + auto-generated Friday weeks
   // from each goal's duration. Real weeks always win; generation only fills
@@ -3014,9 +3035,12 @@ export default function Dashboard() {
             <div className="panel-head">
               <div className="panel-title">Daily Log<span className="dim">{mergedDailyEntries.length} days logged</span></div>
               <div className="panel-head-actions">
-                <button className="btn-primary sm" onClick={handleSyncWithings} disabled={withingsSyncing}>
-                  <RefreshCw size={13} className={withingsSyncing ? "spin" : ""} /> Withings
-                </button>
+                {coarsePointer && (
+                  <a className="btn-primary sm sync-scale-btn" href={scaleShortcutHref} onClick={handleRunShortcut}
+                    title={`Runs the "${SCALE_SHORTCUT_NAME}" shortcut, then swipe back`}>
+                    <RefreshCw size={13} /> Sync scale
+                  </a>
+                )}
                 <button className="btn-primary sm" onClick={() => openAddDaily()} disabled={dailySaving}>
                   {dailySaving ? <Loader2 size={13} className="spin" /> : <Plus size={13} />} Log
                 </button>
@@ -3024,7 +3048,12 @@ export default function Dashboard() {
             </div>
 
             {dailyErrMsg && <div className="banner-error"><AlertCircle size={13} /> {dailyErrMsg}</div>}
-            {withingsMsg && <div className="banner-error"><AlertCircle size={13} /> {withingsMsg}</div>}
+            {syncMsg && (
+              <div className="form-note sync-note">
+                {syncMsg}
+                <button className="alert-close-btn" onClick={() => setSyncMsg("")} aria-label="Dismiss"><X size={12} /></button>
+              </div>
+            )}
 
             {dailyFormOpen && (
               <DailyEntryForm form={dailyForm} setForm={setDailyForm} isEdit={dailyEditDate != null} error={dailyFormErr}
@@ -3696,6 +3725,8 @@ const BASE_STYLES = `
      busier than one you can just read. */
   /* Derived, not stored: dimmed so a computed lean can't pass for a reading. */
   .cell-inferred { color: var(--text-faint); }
+  .sync-note { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+  .sync-note span { flex: 1; }
   .cell-edit { cursor: cell; position: relative; }
   .cell-edit:hover { box-shadow: inset 0 0 0 1px var(--border); }
   .cell-editing { box-shadow: inset 0 0 0 2px var(--cut); }
@@ -3920,7 +3951,7 @@ const BASE_STYLES = `
   .backup-ta { width: 100%; min-height: 160px; resize: vertical; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-family: 'JetBrains Mono', monospace; font-size: 12.1px; line-height: 1.5; padding: 10px; }
   .backup-ta:focus { outline: 2px solid var(--cut); outline-offset: 1px; }
 
-  .btn-primary { display: inline-flex; align-items: center; gap: 6px; background: var(--cut); color: #0f1115; border: none; border-radius: 8px; padding: 8px 13px; font-family: 'JetBrains Mono', monospace; font-size: 12.6px; font-weight: 600; letter-spacing: 0.03em; cursor: pointer; }
+  .btn-primary { display: inline-flex; align-items: center; gap: 6px; background: var(--cut); color: #0f1115; border: none; border-radius: 8px; padding: 8px 13px; font-family: 'JetBrains Mono', monospace; font-size: 12.6px; font-weight: 600; letter-spacing: 0.03em; cursor: pointer; text-decoration: none; }
   .btn-primary:hover { filter: brightness(1.1); }
   .btn-primary.sm { padding: 6px 11px; }
   .btn-ghost.sm { padding: 6px 11px; font-size: 11px; }
