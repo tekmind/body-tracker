@@ -75,6 +75,23 @@ const cells = await row.locator("td").allInnerTexts();
 check("with weight and fat mass from the shortcut", cells[3].trim() === "152.4" && cells[4].trim() === "27.6",
   cells.slice(3, 6).join(" | "));
 check("and lean derived from them", cells[5].trim() === "124.8", cells[5]);
+
+// --- the derived lean reaches the stat card too ------------------------------
+// It's never stored, so a card reading the raw field goes blank on exactly the
+// days the shortcut writes — no value, no TODAY tag, no week box, while Weight
+// and Fat Mass beside it are fully populated.
+await p.locator(".tab-btn", { hasText: "Home" }).click();
+await p.waitForSelector(".stat-card");
+const leanCard = p.locator(".stat-card", { hasText: "Lean Mass" }).first();
+const leanText = await leanCard.innerText();
+check("the Lean Mass card shows today's derived value", /124\.8/.test(leanText), leanText.replace(/\n/g, " | "));
+check("tagged as today, like the cards beside it", /TODAY/i.test(leanText), leanText.replace(/\n/g, " | "));
+check("and it keeps its week box", await leanCard.locator(".stat-week, .stat-week-box").count() > 0
+  || /FRI|SAT|SUN|MON|TUE|WED|THU/i.test(leanText), leanText.replace(/\n/g, " | "));
+// Fat Mass is the control: it stores its value, so it was never affected.
+const fatText = await p.locator(".stat-card", { hasText: "Fat Mass" }).first().innerText();
+check("fat mass still reads today as before", /27\.6/.test(fatText) && /TODAY/i.test(fatText),
+  fatText.replace(/\n/g, " | "));
 await p.context().close();
 
 // --- desktop doesn't offer it -------------------------------------------------

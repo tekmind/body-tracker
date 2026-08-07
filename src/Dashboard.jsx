@@ -1768,7 +1768,14 @@ export default function Dashboard() {
       .map(d => ({ ...d, _d: parseDate(d.date) }))
       .filter(d => d._d)
       .sort((a, b) => b._d.getTime() - a._d.getTime())
-      .map(d => ({ ...d, bodyFat: (d.fatMass != null && d.weight) ? round1(d.fatMass / d.weight * 100) : null }));
+      // Body fat is derived here; lean has to be too, or the Lean Mass card
+      // goes blank for exactly the days the scale Shortcut writes — it sends
+      // weight and fat mass, and lean is never stored (see inferredLean).
+      .map(d => ({
+        ...d,
+        bodyFat: (d.fatMass != null && d.weight) ? round1(d.fatMass / d.weight * 100) : null,
+        muscleMass: d.muscleMass ?? inferredLean(d),
+      }));
 
     function pick(key) {
       const t = sorted.find(d => d.date === todayStr);
