@@ -857,6 +857,9 @@ export default function Dashboard() {
   const [goalForm, setGoalForm] = useState({ date: "", phase: "Cut", muscleRate: "", fatRate: "", stepGoal: "", calGoal: "", proteinGoal: "", fatGoal: "", calBuffer: "", proteinBuffer: "", durationWeeks: "", notes: "" });
   const [goalSaving, setGoalSaving] = useState(false);
   const [goalErrMsg, setGoalErrMsg] = useState("");
+  // What a goal edit did beyond the row itself — chain shifts are easy to
+  // miss, and a silent one looks like the app rewrote dates on its own.
+  const [goalMsg, setGoalMsg] = useState("");
 
   const [dailyEntries, setDailyEntries] = useState([]);
   // Day rows written by the HealthKit->Supabase Shortcut. Kept separate from
@@ -2122,9 +2125,39 @@ export default function Dashboard() {
     setGoalFormErr("");
     const g = buildGoal(goalForm);
     if (goalEditIndex != null) {
-      persistGoals(goals.map((r, i) => (i === goalEditIndex ? g : r)));
+      // Phases are a chain: a goal runs until the next one starts, so its
+      // stored duration only matters through where the NEXT goal's date sits.
+      // When an edit moves this goal's end (date + duration), every
+      // later-dated goal slides by the same amount — extending a maintain by
+      // two weeks pushes the cut and gain behind it two weeks out, expands
+      // the range on screen, and the date-driven statuses follow on their
+      // own. A goal without a duration has no end to move, so nothing shifts.
+      const before = goals[goalEditIndex];
+      const endOf = (goal) => {
+        const d = parseDate(goal?.date);
+        return d && Number.isFinite(goal.durationWeeks) && goal.durationWeeks > 0
+          ? addDays(d, Math.floor(goal.durationWeeks) * 7) : null;
+      };
+      const oldEnd = endOf(before), newEnd = endOf(g);
+      const deltaDays = oldEnd && newEnd ? daysBetween(oldEnd, newEnd) : 0;
+      const oldStart = parseDate(before?.date);
+      let shifted = 0;
+      const next = goals.map((r, i) => {
+        if (i === goalEditIndex) return g;
+        const d = parseDate(r.date);
+        if (deltaDays !== 0 && oldStart && d && d > oldStart) {
+          shifted++;
+          return { ...r, date: formatMDY(addDays(d, deltaDays)) };
+        }
+        return r;
+      });
+      persistGoals(next);
+      setGoalMsg(shifted
+        ? `Moved ${shifted} later goal${shifted === 1 ? "" : "s"} ${deltaDays > 0 ? "out" : "in"} by ${Math.abs(deltaDays / 7) % 1 === 0 ? Math.abs(deltaDays) / 7 + " week" + (Math.abs(deltaDays) === 7 ? "" : "s") : Math.abs(deltaDays) + " days"} to keep the phases back-to-back.`
+        : "");
     } else {
       persistGoals([...goals, g]);
+      setGoalMsg("");
     }
     setGoalFormOpen(false);
     setGoalEditIndex(null);
@@ -2601,6 +2634,12 @@ export default function Dashboard() {
             </div>
 
             {goalErrMsg && <div className="banner-error"><AlertCircle size={13} /> {goalErrMsg}</div>}
+            {goalMsg && (
+              <div className="form-note goal-shift-note" style={{ marginBottom: 12 }}>
+                {goalMsg}
+                <button className="alert-close-btn" onClick={() => setGoalMsg("")} aria-label="Dismiss"><X size={12} /></button>
+              </div>
+            )}
 
             {goalFormOpen && (
               <GoalForm form={goalForm} setForm={setGoalForm} isEdit={goalEditIndex != null} error={goalFormErr}
