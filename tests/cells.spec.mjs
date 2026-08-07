@@ -265,6 +265,43 @@ check("without taking the rest of the row with it", await cellText("7/27/26", CO
 const dupes = await p.locator(".table-wrap table tbody tr").filter({ hasText: "7/27/26" }).count();
 check("editing doesn't leave two rows for the day", dupes === 1, `${dupes} rows`);
 
+// --- lean derives from weight and fat mass when nothing is stored ------------
+// The scale Shortcut writes weight and fat_mass only, so the Lean cell would
+// read "–" forever without this. Derived at display time, never persisted —
+// a frozen copy would stop following a later fat-mass correction.
+// 7/29 already got weight 150 typed earlier in this spec; give it a fat mass.
+await edit("7/29/26", "fatMass", "30");
+check("lean fills itself in from weight − fat mass", await cellText("7/29/26", COL.muscleMass) === "120",
+  await cellText("7/29/26", COL.muscleMass));
+check("but marked as derived, not a reading",
+  await rowFor("7/29/26").locator("td").nth(COL.muscleMass).locator(".cell-inferred").count() === 1);
+check("and it is NOT written into the log", dayIn("7/29/26")?.muscleMass == null,
+  JSON.stringify(dayIn("7/29/26")?.muscleMass));
+
+// Opening it shows the derived number, and looking is not editing.
+saved = null;
+await rowFor("7/29/26").locator("td").nth(COL.muscleMass).dblclick();
+await p.locator(".cell-input").waitFor();
+check("the editor seeds with the derived value", await p.locator(".cell-input").inputValue() === "120",
+  await p.locator(".cell-input").inputValue());
+await p.locator(".panel-title").first().click();
+await p.waitForTimeout(300);
+check("clicking away writes nothing", saved === null);
+
+// A typed value overrides the derivation and IS stored.
+await edit("7/29/26", "muscleMass", "118.5");
+check("typing over it stores a real reading", dayIn("7/29/26")?.muscleMass === 118.5,
+  JSON.stringify(dayIn("7/29/26")?.muscleMass));
+check("which is no longer marked derived",
+  await rowFor("7/29/26").locator("td").nth(COL.muscleMass).locator(".cell-inferred").count() === 0);
+
+// Clearing the override goes back to deriving.
+await edit("7/29/26", "muscleMass", "");
+check("clearing it returns to the derived display", await cellText("7/29/26", COL.muscleMass) === "120",
+  await cellText("7/29/26", COL.muscleMass));
+check("with the log blank again", dayIn("7/29/26")?.muscleMass == null,
+  JSON.stringify(dayIn("7/29/26")?.muscleMass));
+
 // --- touch: one tap, because iOS spends double-tap on zoom -------------------
 const ctx = await b.newContext({ viewport: { width: 390, height: 780 }, hasTouch: true, isMobile: true });
 const m = await ctx.newPage();

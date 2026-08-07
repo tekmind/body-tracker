@@ -356,6 +356,16 @@ const DAILY_CELLS = [
   { key: "muscleMass", label: "Lean mass", mode: "decimal" },
 ];
 
+// Lean = weight − fat mass, derived at display time for a day with those two
+// but no stored value — which is every day the scale Shortcut writes, since
+// it sends weight and fat mass only. Never persisted: a derived number that
+// got frozen into the log would stop following a later fat-mass correction.
+function inferredLean(row) {
+  return row?.muscleMass == null && row?.weight != null && row?.fatMass != null
+    ? Math.round((row.weight - row.fatMass) * 10) / 10
+    : null;
+}
+
 function delta(curr, prev) { return curr - prev; }
 
 function cellClass(kind, actual, target) {
@@ -2198,7 +2208,12 @@ export default function Dashboard() {
     // so it still isn't yours until you actually change it.
     const manual = dailyEntries.find(r => sameDay(r.date, entry.date));
     const own = manual ? manual[field] : null;
-    const shown = own == null ? entry[field] : own;
+    // The derived lean counts as "what the cell shows" too — an editor that
+    // opens empty over a cell reading 124.8 looks like the number was thrown
+    // away (the exact complaint the synced-value seeding fixed).
+    const shown = own == null
+      ? (entry[field] ?? (field === "muscleMass" ? inferredLean(entry) : null))
+      : own;
     setCellEdit({ date: entry.date, field, value: shown == null ? "" : String(shown) });
     setDailyErrMsg("");
   }
@@ -2224,6 +2239,12 @@ export default function Dashboard() {
     // edit: leave it the sync's to keep updating rather than claiming it as
     // hand-logged the moment you looked at it.
     if (own == null && value != null && num(entry[field]) === value) { setDailyErrMsg(""); return true; }
+    // Same rule for the derived lean: handing the inferred number back
+    // unchanged is looking, not editing. Writing it would freeze a value
+    // that's supposed to keep following weight and fat mass.
+    if (field === "muscleMass" && own == null && value != null && inferredLean(entry) === value) {
+      setDailyErrMsg(""); return true;
+    }
     if (own === value) { setDailyErrMsg(""); return true; } // nothing changed
 
     const claim = field === "cal" ? { calSource: value == null ? undefined : "manual" } : null;
@@ -3041,7 +3062,9 @@ export default function Dashboard() {
                                 {/* The number stays in the flow and the editor
                                     lies over it, so opening one can't change
                                     what the column measures. */}
-                                {fmtNum(d[c.key])}
+                                {c.key === "muscleMass" && d.muscleMass == null && inferredLean(d) != null
+                                  ? <span className="cell-inferred" title="Derived: weight − fat mass. Type a value to override it.">{fmtNum(inferredLean(d))}</span>
+                                  : fmtNum(d[c.key])}
                                 {active && (
                                   <input
                                     className="cell-input"
@@ -3671,6 +3694,8 @@ const BASE_STYLES = `
   /* Spreadsheet-style cells on the Daily Log. The affordance stays quiet until
      you're over it — a table where every number looks like a form field reads
      busier than one you can just read. */
+  /* Derived, not stored: dimmed so a computed lean can't pass for a reading. */
+  .cell-inferred { color: var(--text-faint); }
   .cell-edit { cursor: cell; position: relative; }
   .cell-edit:hover { box-shadow: inset 0 0 0 1px var(--border); }
   .cell-editing { box-shadow: inset 0 0 0 2px var(--cut); }
