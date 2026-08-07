@@ -22,9 +22,10 @@
 --   range no longer auto-fills from the daily log — it will say there's
 --   nothing logged in the seven days before, rather than inventing a number.
 
--- Set the cutoff. Rows ON or AFTER this day are kept; earlier ones go.
--- 7/31/26 is a Friday, so this keeps whole Fri–Thu blocks.
-\set cutoff '7/31/26'
+-- THE CUTOFF: rows ON or AFTER 7/31/26 are kept; earlier ones go. 7/31/26 is
+-- a Friday, so this keeps whole Fri–Thu blocks. To use a different date,
+-- change '7/31/26' in BOTH places it appears below (steps 1 and 3) — the
+-- Supabase SQL editor has no variables, so the date is written out twice.
 
 -- ---------------------------------------------------------------------------
 -- 1. Dry run: what would go, and what would stay.
@@ -38,7 +39,7 @@ with rows as (
 )
 select case
          when day is null then 'kept — unreadable date, never dropped blind'
-         when day >= to_date(:'cutoff', 'FMMM/FMDD/YY') then 'kept'
+         when day >= to_date('7/31/26', 'FMMM/FMDD/YY') then 'kept'
          else 'dropped'
        end as verdict,
        count(*) as rows,
@@ -70,7 +71,7 @@ with rows as (
 kept as (
   select coalesce(jsonb_agg(row), '[]'::jsonb) as rows
   from rows
-  where day is null or day >= to_date(:'cutoff', 'FMMM/FMDD/YY')
+  where day is null or day >= to_date('7/31/26', 'FMMM/FMDD/YY')
 )
 update kv_store set value = (select rows::text from kept), updated_at = now()
 where key = 'daily_log';
