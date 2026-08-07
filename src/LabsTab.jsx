@@ -63,6 +63,9 @@ export default function LabsTab() {
   const [err, setErr] = useState("");
   const [panels, setPanels] = useState([]);
   const [results, setResults] = useState([]);
+  // null means the table isn't there yet, which is a normal state until
+  // supabase_labs.sql has been re-run — the Pathology view just stays hidden.
+  const [pathology, setPathology] = useState(null);
 
   const [view, setView] = useState(() => localStorage.getItem("bt_labs_view") || "panels");
   const [expanded, setExpanded] = useState(null);
@@ -86,6 +89,9 @@ export default function LabsTab() {
     const rs = await labsApi.fetchResults(ps.map(p => p.id));
     setPanels(ps);
     setResults(rs);
+    // Supplementary, and on a table that may not exist yet — so it must not
+    // hold up the first render or fail the whole tab if it's slow or absent.
+    labsApi.fetchPathology().then(setPathology).catch(() => setPathology(null));
     return ps;
   }, []);
 
@@ -399,7 +405,27 @@ export default function LabsTab() {
     setResults(rs => rs.filter(r => r.panel_id !== id));
   }, "Couldn't delete that report"), [runWrite]);
 
+  const removePathology = useCallback((id) => runWrite(async () => {
+    await labsApi.deletePathology(id);
+    setPathology(rs => (rs || []).filter(r => r.id !== id));
+  }, "Couldn't delete that report"), [runWrite]);
+
   // --- render --------------------------------------------------------------
+
+  // Newest first, same rule as the report list.
+  const orderedPathology = useMemo(() => {
+    return [...(pathology || [])].sort((a, b) => {
+      const da = parseDate(a.date), db = parseDate(b.date);
+      if (da && db) return db - da;
+      if (da) return -1;
+      if (db) return 1;
+      return String(b.created_at || "").localeCompare(String(a.created_at || ""));
+    });
+  }, [pathology]);
+  const hasPathology = orderedPathology.length > 0;
+  // The choice is remembered across reloads, so it can outlive the reports it
+  // pointed at — fall back rather than showing an empty view with no toggle.
+  const activeView = view === "pathology" && !hasPathology ? "panels" : view;
 
   if (status === "loading") {
     return (
@@ -497,18 +523,23 @@ export default function LabsTab() {
         </div>
       )}
 
-      {panels.length > 0 && (
+      {(panels.length > 0 || hasPathology) && (
         <>
           <div className="labs-view-toggle toggle-group">
-            <button className={"toggle-btn" + (view === "panels" ? " active" : "")} onClick={() => setView("panels")}>
+            <button className={"toggle-btn" + (activeView === "panels" ? " active" : "")} onClick={() => setView("panels")}>
               By report
             </button>
-            <button className={"toggle-btn" + (view === "markers" ? " active" : "")} onClick={() => setView("markers")}>
+            <button className={"toggle-btn" + (activeView === "markers" ? " active" : "")} onClick={() => setView("markers")}>
               By marker
             </button>
+            {hasPathology && (
+              <button className={"toggle-btn" + (activeView === "pathology" ? " active" : "")} onClick={() => setView("pathology")}>
+                Pathology
+              </button>
+            )}
           </div>
 
-          {view === "panels" ? (
+          {activeView === "panels" ? (
             <div className="labs-panels">
               {orderedPanels.map(p => {
                 const rows = resultsByPanel.get(p.id) || [];
@@ -544,6 +575,55 @@ export default function LabsTab() {
                         <div className="labs-panel-foot">
                           {p.file_name && <span className="labs-file"><FileText size={11} /> {p.file_name}</span>}
                           <DeleteBtn id={`panel:${p.id}`} onDelete={() => removePanel(p.id)} size={13} />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ) : activeView === "pathology" ? (
+            <div className="labs-panels">
+              {orderedPathology.map(r => {
+                const open = expanded === r.id;
+                return (
+                  <div className="panel labs-panel" key={r.id}>
+                    <button className="labs-panel-head" onClick={() => setExpanded(open ? null : r.id)}>
+                      {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                      <span className="labs-panel-date">{r.date}</span>
+                      <span className="labs-panel-name">
+                        {r.report_name || "Pathology report"}
+                        {r.lab_name && <span className="labs-panel-lab"> · {r.lab_name}</span>}
+                      </span>
+                      <span className="labs-panel-counts">{r.specimen ? "biopsy" : "report"}</span>
+                    </button>
+
+                    {open && (
+                      <div className="labs-panel-body">
+                        {/* Diagnosis first and on its own: it is the line you
+                            came to read, and burying it under the specimen
+                            description is how you end up not reading it. */}
+                        {r.diagnosis && (
+                          <div className="labs-path-section labs-path-diagnosis">
+                            <div className="labs-path-label">Diagnosis</div>
+                            <div className="labs-path-text">{r.diagnosis}</div>
+                          </div>
+                        )}
+                        {[
+                          ["Specimen", r.specimen],
+                          ["Clinical history", r.clinical_history],
+                          ["Gross description", r.gross_description],
+                          ["Microscopic description", r.microscopic_description],
+                          ["Comments", r.comments],
+                        ].filter(([, v]) => v && String(v).trim()).map(([label, value]) => (
+                          <div className="labs-path-section" key={label}>
+                            <div className="labs-path-label">{label}</div>
+                            <div className="labs-path-text">{value}</div>
+                          </div>
+                        ))}
+                        <div className="labs-panel-foot">
+                          {r.accession && <span className="labs-file"><FileText size={11} /> {r.accession}</span>}
+                          <DeleteBtn id={`path:${r.id}`} onDelete={() => removePathology(r.id)} size={13} />
                         </div>
                       </div>
                     )}
@@ -1008,6 +1088,14 @@ export const LAB_STYLES = `
   .labs-panel-flagged { background: #f8ddd9; color: #a5342a; padding: 2px 8px; border-radius: 999px; font-weight: 600; }
   .labs-panel-body { padding: 0 16px 14px; }
   .labs-panel-note { font-family: 'Inter', sans-serif; font-size: 12.6px; color: var(--text-faint); line-height: 1.55; padding-bottom: 10px; }
+
+  /* Pathology is prose, so it gets reading measure and line height rather than
+     the tight numeric grid the result table uses. */
+  .labs-path-section { padding: 0 0 12px; }
+  .labs-path-label { font-family: 'Inter', sans-serif; font-size: 11.5px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-faint); margin-bottom: 4px; }
+  .labs-path-text { font-family: 'Inter', sans-serif; font-size: 13.4px; line-height: 1.62; color: var(--text-dim); white-space: pre-wrap; overflow-wrap: anywhere; }
+  .labs-path-diagnosis { border-left: 3px solid #cfd8e6; padding-left: 11px; margin-bottom: 4px; }
+  .labs-path-diagnosis .labs-path-text { color: var(--text); font-size: 14px; }
   .labs-panel-foot { display: flex; align-items: center; gap: 10px; padding-top: 12px; }
   .labs-file { display: inline-flex; align-items: center; gap: 5px; flex: 1; min-width: 0; font-family: 'Inter', sans-serif; font-size: 12.2px; color: var(--text-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 

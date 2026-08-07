@@ -97,10 +97,13 @@ const MARKERS = [
   { key: "ferritin", name: "Ferritin", unit: "ng/mL", category: "Vitamins & minerals" },
   { key: "iron", name: "Iron", unit: "ug/dL", category: "Vitamins & minerals",
     aliases: ["iron total", "iron serum"] },
+  // "iron binding capacity" without the "total" is required: Quest prints it
+  // that way, and without it the name falls back to the 1-token "iron" match
+  // and TIBC lands on the same trend line as serum iron.
   { key: "tibc", name: "TIBC", unit: "ug/dL", category: "Vitamins & minerals",
-    aliases: ["total iron binding capacity"] },
+    aliases: ["total iron binding capacity", "iron binding capacity"] },
   { key: "iron_saturation", name: "Iron saturation", unit: "%", category: "Vitamins & minerals",
-    aliases: ["transferrin saturation", "iron sat", "iron saturation"] },
+    aliases: ["transferrin saturation", "iron sat", "iron saturation", "saturation", "percent saturation"] },
   { key: "magnesium", name: "Magnesium", unit: "mg/dL", category: "Vitamins & minerals",
     aliases: ["mag", "magnesium rbc"] },
   { key: "zinc", name: "Zinc", unit: "ug/dL", category: "Vitamins & minerals" },
@@ -119,10 +122,35 @@ const MARKERS = [
   { key: "mch", name: "MCH", unit: "pg", category: "Blood count" },
   { key: "mchc", name: "MCHC", unit: "g/dL", category: "Blood count" },
   { key: "rdw", name: "RDW", unit: "%", category: "Blood count" },
+  { key: "mpv", name: "MPV", unit: "fL", category: "Blood count",
+    aliases: ["mean platelet volume"] },
+
+  // A differential is printed twice: once as a percentage and once as an
+  // absolute count. They are different measurements on different scales —
+  // 43.2% and 2635 cells/uL — so they must not share a marker key. The
+  // absolute forms carry two-token aliases because the matcher takes the
+  // longest phrase contained in the name, and a bare "neutrophils" would
+  // otherwise win and merge the two onto one trend line.
   { key: "neutrophils", name: "Neutrophils", unit: "%", category: "Blood count",
-    aliases: ["neutrophils absolute", "neuts"] },
+    aliases: ["neuts"] },
+  { key: "neutrophils_abs", name: "Neutrophils (absolute)", unit: "cells/uL", category: "Blood count",
+    aliases: ["absolute neutrophils", "neutrophils absolute", "abs neutrophils", "neutrophil count"] },
   { key: "lymphocytes", name: "Lymphocytes", unit: "%", category: "Blood count",
-    aliases: ["lymphocytes absolute", "lymphs"] },
+    aliases: ["lymphs"] },
+  { key: "lymphocytes_abs", name: "Lymphocytes (absolute)", unit: "cells/uL", category: "Blood count",
+    aliases: ["absolute lymphocytes", "lymphocytes absolute", "abs lymphocytes", "lymphocyte count"] },
+  { key: "monocytes", name: "Monocytes", unit: "%", category: "Blood count",
+    aliases: ["monos"] },
+  { key: "monocytes_abs", name: "Monocytes (absolute)", unit: "cells/uL", category: "Blood count",
+    aliases: ["absolute monocytes", "monocytes absolute", "abs monocytes", "monocyte count"] },
+  { key: "eosinophils", name: "Eosinophils", unit: "%", category: "Blood count",
+    aliases: ["eos"] },
+  { key: "eosinophils_abs", name: "Eosinophils (absolute)", unit: "cells/uL", category: "Blood count",
+    aliases: ["absolute eosinophils", "eosinophils absolute", "abs eosinophils", "eosinophil count"] },
+  { key: "basophils", name: "Basophils", unit: "%", category: "Blood count",
+    aliases: ["basos"] },
+  { key: "basophils_abs", name: "Basophils (absolute)", unit: "cells/uL", category: "Blood count",
+    aliases: ["absolute basophils", "basophils absolute", "abs basophils", "basophil count"] },
 
   // --- Liver ---------------------------------------------------------------
   { key: "alt", name: "ALT", unit: "U/L", category: "Liver", higher: "bad",
@@ -134,6 +162,11 @@ const MARKERS = [
   { key: "bilirubin_total", name: "Bilirubin, total", unit: "mg/dL", category: "Liver",
     aliases: ["bilirubin", "total bilirubin"] },
   { key: "albumin", name: "Albumin", unit: "g/dL", category: "Liver" },
+  { key: "globulin", name: "Globulin", unit: "g/dL", category: "Liver" },
+  // Three tokens, so it beats the bare "albumin" match — otherwise a ratio of
+  // 1.6 charts against albumin's 4.6 g/dL.
+  { key: "albumin_globulin_ratio", name: "Albumin / globulin ratio", unit: "ratio", category: "Liver",
+    aliases: ["albumin globulin ratio", "a g ratio"] },
   { key: "protein_total", name: "Total protein", unit: "g/dL", category: "Liver",
     aliases: ["protein total"] },
   { key: "ggt", name: "GGT", unit: "U/L", category: "Liver", higher: "bad",
@@ -144,6 +177,13 @@ const MARKERS = [
     aliases: ["creatinine serum"] },
   { key: "egfr", name: "eGFR", unit: "mL/min/1.73", category: "Kidney & electrolytes", higher: "good",
     aliases: ["egfr", "gfr", "gfr estimated", "egfr non afr american", "egfr if nonafricn am"] },
+  // Older reports print a race-adjusted pair. The non-African-American value
+  // is aliased to eGFR above and continues the main trend; this keeps the
+  // African-American variant on its own line rather than interleaving two
+  // different calculations from the same draw.
+  { key: "egfr_african_american", name: "eGFR (African American)", unit: "mL/min/1.73",
+    category: "Kidney & electrolytes", higher: "good",
+    aliases: ["egfr african american", "egfr if africn am"] },
   { key: "bun", name: "BUN", unit: "mg/dL", category: "Kidney & electrolytes",
     aliases: ["urea nitrogen", "blood urea nitrogen"] },
   { key: "bun_creatinine_ratio", name: "BUN / creatinine ratio", unit: "ratio", category: "Kidney & electrolytes",

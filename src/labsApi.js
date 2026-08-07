@@ -9,6 +9,9 @@ import { supabase } from "./supabaseClient.js";
 const PANEL_COLUMNS = "id,date,lab_name,panel_name,source,file_name,note,created_at";
 const RESULT_COLUMNS =
   "id,panel_id,marker,name,category,value,value_text,unit,ref_low,ref_high,ref_text,flag,sort_order";
+const PATHOLOGY_COLUMNS =
+  "id,date,report_name,specimen,accession,lab_name,diagnosis,clinical_history," +
+  "gross_description,microscopic_description,comments,raw_text,source,created_at";
 
 function unwrap({ data, error }) {
   if (error) throw error;
@@ -35,6 +38,22 @@ export async function fetchResults(panelIds) {
   return unwrap(
     await supabase.from("lab_results").select(RESULT_COLUMNS).in("panel_id", panelIds).order("sort_order")
   ) || [];
+}
+
+/**
+ * Pathology reports — biopsies and histology, which carry prose instead of
+ * markers. Missing table is not an error: the Labs tab works without it and
+ * only offers the Pathology view once supabase_labs.sql has been re-run.
+ */
+export async function fetchPathology(limit = 200) {
+  try {
+    return unwrap(
+      await supabase.from("lab_pathology").select(PATHOLOGY_COLUMNS).order("created_at", { ascending: false }).limit(limit)
+    ) || [];
+  } catch (e) {
+    if (/relation .* does not exist|schema cache|could not find the table/i.test(e.message || "")) return null;
+    throw e;
+  }
 }
 
 // --- writes ----------------------------------------------------------------
@@ -84,6 +103,10 @@ export async function updateResult(id, patch) {
 
 export async function deleteResult(id) {
   unwrap(await supabase.from("lab_results").delete().eq("id", id));
+}
+
+export async function deletePathology(id) {
+  unwrap(await supabase.from("lab_pathology").delete().eq("id", id));
 }
 
 // --- the reader endpoint ---------------------------------------------------
