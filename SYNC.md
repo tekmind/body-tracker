@@ -32,7 +32,7 @@ their values — nothing reads them for a day the Food tab has covered.
 
 So **a `cal` value appearing on a new row means something else is still
 posting one.** Nothing in the browser app writes this table — it only reads
-and deletes — and `withings-sync.js` writes body composition only. A stray
+and deletes — and the scale Shortcut writes weight and fat mass only. A stray
 `cal` can only have come from a shortcut or automation, so it's worth hunting
 down at the source.
 
@@ -50,8 +50,9 @@ entry.
 **What you log by hand always wins — field by field.** A synced value only
 fills in a blank you haven't logged, so a day with your own step count keeps
 it, and a day where the Food tab has written calories still shows its synced
-steps. Rows carrying anything borrowed from Health are marked `synced` in the
-Daily Log table.
+steps. (The `synced` badge that used to mark those rows is gone — once the
+Food tab started filling days in, nearly every row carried one and it stopped
+distinguishing anything.)
 
 This used to work per whole row, which had a nasty edge: logging food creates
 a calories-only daily-log row, that row hid the synced row for the date, and
@@ -66,7 +67,7 @@ is the only thing you type: everything else is read off the Daily log.
 
 | Field | Where it comes from |
 | --- | --- |
-| Weight, muscle, fat mass | The daily entry **on that exact date** |
+| Weight, lean, fat mass | The daily entry **on that exact date** (lean inferred if not stored) |
 | Calories, steps | The **average of the seven days before it** |
 
 The split is deliberate. Body composition is a reading — it belongs to the
@@ -182,14 +183,19 @@ writing Weight and Body Fat Percentage.
 2. **Find Health Samples** → Body Fat Percentage, same settings.
 3. Fat mass = weight × body fat. **Check the scale of the percentage first**:
    run a throwaway shortcut of *Find Health Samples → Body Fat Percentage →
-   Quick Look*. If it shows `23`, divide by 100 before multiplying; if it
-   shows `0.23`, multiply as-is. Getting this wrong is a 100× error, which is
-   why it's step 3 and not a footnote.
-4. Date = the **weight sample's date**, Format Date → Custom → `M/d/yy` — no
+   Quick Look*. Health returns a percentage (`18.44…`, not `0.1844`), so
+   divide by 100 after multiplying. Confirm it rather than assuming — getting
+   this wrong is a 100× error, which is why it's step 3 and not a footnote.
+4. **Round both numbers to 1 decimal.** Health hands back raw floats —
+   `18.44000053405762` for a body fat reading, `152.40000152587891` for a
+   weight — and posting those unrounded puts a fifteen-digit number in the
+   table and in every average built from it. Round Number → tenths, on the
+   weight as well as the computed fat mass.
+5. Date = the **weight sample's date**, Format Date → Custom → `M/d/yy` — no
    leading zeros, same as the steps shortcut. Do **not** copy the steps
    shortcut's minus-4-hours trick: that compensates for WHOOP's late bulk
    drop, and a weigh-in is timestamped at the moment you stand on the scale.
-5. **Get Contents of URL** → POST, same URL and all four headers as the steps
+6. **Get Contents of URL** → POST, same URL and all four headers as the steps
    shortcut (including `Prefer: resolution=merge-duplicates`), body:
 
    ```json
