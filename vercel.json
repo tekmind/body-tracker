@@ -1,5 +1,5 @@
 {
   "crons": [
-    { "path": "/api/withings-sync", "schedule": "0 12 * * *" }
+    { "path": "/api/backup", "schedule": "0 11 * * *" }
   ]
 }

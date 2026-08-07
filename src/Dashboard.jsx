@@ -943,6 +943,23 @@ export default function Dashboard() {
   const [backupMode, setBackupMode] = useState(null); // null | 'export' | 'import'
   const [backupText, setBackupText] = useState("");
   const [backupMsg, setBackupMsg] = useState("");
+  // Latest nightly server snapshot, so the panel can say when one last ran —
+  // a backup system whose failures are silent is the one that's missing the
+  // day it's needed. { day, taken_at } | { none } | { missing } | null.
+  const [serverBackup, setServerBackup] = useState(null);
+  const [serverBackupBusy, setServerBackupBusy] = useState(false);
+  const fetchServerBackup = useCallback(async () => {
+    try {
+      const { data, error } = await supabase.from("backups")
+        .select("day,taken_at").order("day", { ascending: false }).limit(1);
+      if (error) throw error;
+      setServerBackup(data && data.length ? data[0] : { none: true });
+    } catch (e) {
+      // Table not created yet — say so rather than showing a blank.
+      setServerBackup({ missing: true });
+    }
+  }, []);
+  useEffect(() => { fetchServerBackup(); }, [fetchServerBackup]);
 
   // Note popup: { title, text } of the note being viewed, or null.
   const [noteOpen, setNoteOpen] = useState(null);
@@ -2313,6 +2330,22 @@ export default function Dashboard() {
     </button>
   );
 
+  async function runServerBackup() {
+    setServerBackupBusy(true);
+    setBackupMsg("");
+    try {
+      const res = await fetch("/api/backup", { method: "POST" });
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.ok) throw new Error(json?.error || `HTTP ${res.status}`);
+      const parts = Object.entries(json.sections || {}).map(([k, v]) => `${k} ${v}`).join(" · ");
+      setBackupMsg(`Server backup ${isoToMDY(json.day)} written — ${parts}.`);
+      fetchServerBackup();
+    } catch (e) {
+      setBackupMsg(`Server backup failed: ${e.message}`);
+    } finally {
+      setServerBackupBusy(false);
+    }
+  }
   function openExport() {
     setBackupMsg("");
     setBackupText(JSON.stringify({ entries, goals, daily: dailyEntries, habits: habitLog, habitTargets, alerts }, null, 2));
@@ -2697,12 +2730,27 @@ export default function Dashboard() {
 
           <div className="panel" style={{ paddingBottom: 18 }}>
             <div className="panel-head">
-              <div className="panel-title">Backup & Restore<span className="dim">weekly log + goals + daily log + habits + alert settings, one JSON blob — the food log lives in its own tables and isn't in here</span></div>
-              <div style={{ display: "flex", gap: 8 }}>
+              <div className="panel-title">Backup & Restore<span className="dim">Export covers the in-app blobs; the nightly server backup snapshots everything — food log, labs and synced days included</span></div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 <button className="btn-ghost" onClick={handleDedupe}>Dedupe</button>
                 <button className="btn-ghost" onClick={openExport}>Export</button>
                 <button className="btn-ghost" onClick={openImport}>Import</button>
+                <button className="btn-ghost" onClick={runServerBackup} disabled={serverBackupBusy}>
+                  {serverBackupBusy ? <Loader2 size={13} className="spin" /> : <RefreshCw size={13} />} Back up now
+                </button>
+                <a className="btn-ghost" href="/api/backup?download=1" title="Download today's full snapshot as a file">
+                  <Download size={13} /> Download all
+                </a>
               </div>
+            </div>
+            <div className="form-note backup-status" style={{ marginBottom: 12 }}>
+              {serverBackup?.missing
+                ? <>Nightly server backups aren't set up yet — run <code>supabase_backups.sql</code> in the Supabase SQL editor, then press Back up now.</>
+                : serverBackup?.none
+                  ? "No server backup exists yet — the nightly job hasn't run. Back up now takes one immediately."
+                  : serverBackup
+                    ? `Last server backup: ${isoToMDY(serverBackup.day)}. Runs nightly, keeps 30 days, and includes the food log, labs and synced days.`
+                    : "Checking server backups…"}
             </div>
             {backupMode === "export" && (
               <div className="backup-box">
@@ -3806,7 +3854,7 @@ const BASE_STYLES = `
   .btn-primary.sm { padding: 6px 11px; }
   .btn-ghost.sm { padding: 6px 11px; font-size: 11px; }
   .btn-primary:disabled { opacity: 0.6; cursor: default; }
-  .btn-ghost { display: inline-flex; align-items: center; gap: 6px; background: transparent; color: var(--text-dim); border: 1px solid var(--border); border-radius: 8px; padding: 8px 13px; font-family: 'JetBrains Mono', monospace; font-size: 12.6px; cursor: pointer; }
+  .btn-ghost { display: inline-flex; align-items: center; gap: 6px; background: transparent; color: var(--text-dim); border: 1px solid var(--border); border-radius: 8px; padding: 8px 13px; font-family: 'JetBrains Mono', monospace; font-size: 12.6px; cursor: pointer; text-decoration: none; }
   .btn-ghost:hover { color: var(--text); }
 
   .entry-form { background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin-bottom: 14px; }
