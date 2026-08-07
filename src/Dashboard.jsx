@@ -43,8 +43,8 @@ const ALERT_METRICS = [
     off: (a, t) => a > t, word: "over target", blurb: "eating over your calorie goal" },
   { key: "steps", label: "Steps", actual: "steps", target: "tSteps",
     off: (a, t) => a < t, word: "under goal", blurb: "falling short of your step goal" },
-  { key: "muscle", label: "Muscle", actual: "aM", target: "tM",
-    off: (a, t) => a < t, word: "below target", blurb: "losing ground on muscle" },
+  { key: "muscle", label: "Lean", actual: "aM", target: "tM",
+    off: (a, t) => a < t, word: "below target", blurb: "losing ground on lean mass" },
 ];
 const alertMetric = (key) => ALERT_METRICS.find(m => m.key === key) || ALERT_METRICS[0];
 
@@ -57,36 +57,36 @@ const HABITS = [
 
 // ---------- Seed data (only used the very first time, to migrate off the sheet) ----------
 const SEED = [
-  { wk: "Pre", date: "1/18/26", phase: "Off", tW: null, aW: 164, tM: null, aM: 118.7, tF: null, aF: 39, tBF: null, aBF: 23.8, aCal: null, tCal: null, steps: null, notes: "" },
-  { wk: 0, date: "3/1/26", phase: "Cut", tW: 160.4, aW: 160.4, tM: 119.7, aM: 119.7, tF: 34.3, aF: 34.3, tBF: 21.4, aBF: 21.4, aCal: null, tCal: null, steps: null, notes: "" },
-  { wk: 1, date: "3/6/26", phase: "Cut", tW: 159.9, aW: 157.9, tM: 119.7, aM: 118.9, tF: 33.8, aF: 32.7, tBF: 21.1, aBF: 20.7, aCal: 1551, tCal: 2100, steps: 4096, notes: "" },
-  { wk: 2, date: "3/13/26", phase: "Cut", tW: 159.4, aW: 158.9, tM: 119.7, aM: 120, tF: 33.3, aF: 32.7, tBF: 20.9, aBF: 20.6, aCal: 1614, tCal: 2100, steps: 5037, notes: "" },
-  { wk: 3, date: "3/20/26", phase: "Cut", tW: 158.9, aW: 157.8, tM: 119.7, aM: 119.3, tF: 32.8, aF: 32.1, tBF: 20.6, aBF: 20.3, aCal: 1689, tCal: 2100, steps: 11784, notes: "" },
-  { wk: 4, date: "3/27/26", phase: "Cut", tW: 158.4, aW: 158.1, tM: 119.7, aM: 120.8, tF: 32.3, aF: 31, tBF: 20.4, aBF: 19.6, aCal: 1841, tCal: 2100, steps: 5714, notes: "" },
-  { wk: 5, date: "4/3/26", phase: "Cut", tW: 157.9, aW: 156.8, tM: 119.7, aM: 120.3, tF: 31.8, aF: 30.2, tBF: 20.1, aBF: 19.3, aCal: 1977, tCal: 2100, steps: 7193, notes: "" },
-  { wk: 6, date: "4/10/26", phase: "Cut", tW: 157.4, aW: 157.6, tM: 119.7, aM: 120.1, tF: 31.3, aF: 31.2, tBF: 19.9, aBF: 19.8, aCal: 1765, tCal: 1900, steps: 7106, notes: "" },
-  { wk: 7, date: "4/17/26", phase: "Cut", tW: 156.9, aW: 157.7, tM: 119.7, aM: 120.9, tF: 30.8, aF: 30.3, tBF: 19.6, aBF: 19.2, aCal: 1832, tCal: 1600, steps: 9456, notes: "" },
-  { wk: 8, date: "4/24/26", phase: "Cut", tW: 156.4, aW: 156.8, tM: 119.7, aM: 120.6, tF: 30.3, aF: 29.8, tBF: 19.4, aBF: 19.0, aCal: 1754, tCal: 1600, steps: 10122, notes: "" },
-  { wk: 9, date: "5/1/26", phase: "Cut", tW: 155.9, aW: 154.7, tM: 119.7, aM: 119.2, tF: 29.8, aF: 29.1, tBF: 19.1, aBF: 18.8, aCal: 1739, tCal: 1600, steps: 10202, notes: "tracked Thu 4/30, vacation" },
-  { wk: 10, date: "5/8/26", phase: "Cut", tW: 155.4, aW: 154.6, tM: 119.7, aM: 119.6, tF: 29.3, aF: 28.6, tBF: 18.9, aBF: 18.5, aCal: 1561, tCal: 1600, steps: 10712, notes: "" },
-  { wk: 11, date: "5/15/26", phase: "Cut", tW: 154.7, aW: 153.6, tM: 119.7, aM: 119.6, tF: 28.6, aF: 27.6, tBF: 18.5, aBF: 18.0, aCal: 1542, tCal: 1500, steps: 11154, notes: "Mon 40hr fast · Tue–Thu 1100cal · 10.5k steps" },
-  { wk: 12, date: "5/22/26", phase: "Cut", tW: 153.9, aW: 152.6, tM: 119.7, aM: 119.2, tF: 27.8, aF: 27.1, tBF: 18.1, aBF: 17.8, aCal: 1456, tCal: 1500, steps: 12157, notes: "Mon 24hr fast · Tue–Thu 1450cal · 11.15k steps" },
-  { wk: 13, date: "5/29/26", phase: "Cut", tW: 153.9, aW: 153, tM: 119.7, aM: 119.5, tF: 27.8, aF: 27.2, tBF: 17.8, aBF: 17.8, aCal: 2048, tCal: null, steps: 10393, notes: "" },
-  { wk: 14, date: "6/5/26", phase: "Cut", tW: 153.9, aW: 151.8, tM: 119.7, aM: 118.4, tF: 27.8, aF: 27.2, tBF: 17.8, aBF: 17.9, aCal: 2200, tCal: null, steps: 7401, notes: "" },
-  { wk: 15, date: "6/12/26", phase: "Cut", tW: 153.9, aW: 152.8, tM: 119.7, aM: 118.7, tF: 27.8, aF: 27.8, tBF: 17.8, aBF: 18.2, aCal: 2328, tCal: null, steps: 6086, notes: "" },
-  { wk: 16, date: "6/19/26", phase: "Cut", tW: 153.9, aW: 153.3, tM: 119.7, aM: 119.5, tF: 27.8, aF: 27.5, tBF: 17.8, aBF: 17.9, aCal: 2200, tCal: null, steps: 5588, notes: "" },
-  { wk: 17, date: "6/26/26", phase: "Cut", tW: 153.9, aW: 152.9, tM: 119.7, aM: 117.9, tF: 27.8, aF: 28.7, tBF: 17.8, aBF: 18.8, aCal: 2395, tCal: null, steps: 5402, notes: "" },
-  { wk: 18, date: "7/3/26", phase: "Cut", tW: 153.9, aW: 153.9, tM: 119.7, aM: 118.4, tF: 27.8, aF: 29.3, tBF: 17.8, aBF: 19.0, aCal: 2522, tCal: null, steps: 7579, notes: "" },
-  { wk: 19, date: "7/4/26", phase: "Maintain", tW: 153.9, aW: null, tM: 120.2, aM: null, tF: 27.8, aF: null, tBF: 17.8, aBF: null, aCal: null, tCal: 2000, steps: null, notes: "" },
-  { wk: 20, date: "7/5/26", phase: "Maintain", tW: 153.9, aW: null, tM: 120.7, aM: null, tF: 27.8, aF: null, tBF: 17.8, aBF: null, aCal: null, tCal: 2000, steps: null, notes: "" },
-  { wk: 21, date: "7/6/26", phase: "Maintain", tW: 153.9, aW: null, tM: 121.2, aM: null, tF: 27.8, aF: null, tBF: 17.8, aBF: null, aCal: null, tCal: 2000, steps: null, notes: "" },
-  { wk: 22, date: "7/31/26", phase: "Maintain", tW: 153.9, aW: null, tM: 121.7, aM: null, tF: 27.8, aF: null, tBF: 17.8, aBF: null, aCal: null, tCal: 2000, steps: null, notes: "" },
-  { wk: 23, date: "8/7/26", phase: "Maintain", tW: 153.9, aW: null, tM: 122.2, aM: null, tF: 27.8, aF: null, tBF: 17.8, aBF: null, aCal: null, tCal: 2000, steps: null, notes: "" },
-  { wk: 24, date: "8/14/26", phase: "Gain", tW: 154.5, aW: null, tM: 122.7, aM: null, tF: 27.9, aF: null, tBF: 18.1, aBF: null, aCal: null, tCal: null, steps: null, notes: "" },
-  { wk: 25, date: "8/21/26", phase: "Gain", tW: 154.9, aW: null, tM: 123.0, aM: null, tF: 28.1, aF: null, tBF: 18.1, aBF: null, aCal: null, tCal: null, steps: null, notes: "" },
-  { wk: 26, date: "8/28/26", phase: "Gain", tW: 155.3, aW: null, tM: 123.2, aM: null, tF: 28.2, aF: null, tBF: 18.1, aBF: null, aCal: null, tCal: null, steps: null, notes: "" },
-  { wk: 27, date: "9/4/26", phase: "Gain", tW: 155.7, aW: null, tM: 123.5, aM: null, tF: 28.3, aF: null, tBF: 18.2, aBF: null, aCal: null, tCal: null, steps: null, notes: "" },
-  { wk: 28, date: "9/11/26", phase: "Gain", tW: 156.0, aW: null, tM: 123.7, aM: null, tF: 28.4, aF: null, tBF: 18.2, aBF: null, aCal: null, tCal: null, steps: null, notes: "" },
+  { wk: "Pre", date: "1/18/26", phase: "Off", tW: null, aW: 164, tM: null, aM: 125, tF: null, aF: 39, tBF: null, aBF: 23.8, aCal: null, tCal: null, steps: null, notes: "" },
+  { wk: 0, date: "3/1/26", phase: "Cut", tW: 160.4, aW: 160.4, tM: 126.1, aM: 126.1, tF: 34.3, aF: 34.3, tBF: 21.4, aBF: 21.4, aCal: null, tCal: null, steps: null, notes: "" },
+  { wk: 1, date: "3/6/26", phase: "Cut", tW: 159.9, aW: 157.9, tM: 126.1, aM: 125.2, tF: 33.8, aF: 32.7, tBF: 21.1, aBF: 20.7, aCal: 1551, tCal: 2100, steps: 4096, notes: "" },
+  { wk: 2, date: "3/13/26", phase: "Cut", tW: 159.4, aW: 158.9, tM: 126.1, aM: 126.2, tF: 33.3, aF: 32.7, tBF: 20.9, aBF: 20.6, aCal: 1614, tCal: 2100, steps: 5037, notes: "" },
+  { wk: 3, date: "3/20/26", phase: "Cut", tW: 158.9, aW: 157.8, tM: 126.1, aM: 125.7, tF: 32.8, aF: 32.1, tBF: 20.6, aBF: 20.3, aCal: 1689, tCal: 2100, steps: 11784, notes: "" },
+  { wk: 4, date: "3/27/26", phase: "Cut", tW: 158.4, aW: 158.1, tM: 126.1, aM: 127.1, tF: 32.3, aF: 31, tBF: 20.4, aBF: 19.6, aCal: 1841, tCal: 2100, steps: 5714, notes: "" },
+  { wk: 5, date: "4/3/26", phase: "Cut", tW: 157.9, aW: 156.8, tM: 126.1, aM: 126.6, tF: 31.8, aF: 30.2, tBF: 20.1, aBF: 19.3, aCal: 1977, tCal: 2100, steps: 7193, notes: "" },
+  { wk: 6, date: "4/10/26", phase: "Cut", tW: 157.4, aW: 157.6, tM: 126.1, aM: 126.4, tF: 31.3, aF: 31.2, tBF: 19.9, aBF: 19.8, aCal: 1765, tCal: 1900, steps: 7106, notes: "" },
+  { wk: 7, date: "4/17/26", phase: "Cut", tW: 156.9, aW: 157.7, tM: 126.1, aM: 127.4, tF: 30.8, aF: 30.3, tBF: 19.6, aBF: 19.2, aCal: 1832, tCal: 1600, steps: 9456, notes: "" },
+  { wk: 8, date: "4/24/26", phase: "Cut", tW: 156.4, aW: 156.8, tM: 126.1, aM: 127, tF: 30.3, aF: 29.8, tBF: 19.4, aBF: 19.0, aCal: 1754, tCal: 1600, steps: 10122, notes: "" },
+  { wk: 9, date: "5/1/26", phase: "Cut", tW: 155.9, aW: 154.7, tM: 126.1, aM: 125.6, tF: 29.8, aF: 29.1, tBF: 19.1, aBF: 18.8, aCal: 1739, tCal: 1600, steps: 10202, notes: "tracked Thu 4/30, vacation" },
+  { wk: 10, date: "5/8/26", phase: "Cut", tW: 155.4, aW: 154.6, tM: 126.1, aM: 126, tF: 29.3, aF: 28.6, tBF: 18.9, aBF: 18.5, aCal: 1561, tCal: 1600, steps: 10712, notes: "" },
+  { wk: 11, date: "5/15/26", phase: "Cut", tW: 154.7, aW: 153.6, tM: 126.1, aM: 126, tF: 28.6, aF: 27.6, tBF: 18.5, aBF: 18.0, aCal: 1542, tCal: 1500, steps: 11154, notes: "Mon 40hr fast · Tue–Thu 1100cal · 10.5k steps" },
+  { wk: 12, date: "5/22/26", phase: "Cut", tW: 153.9, aW: 152.6, tM: 126.1, aM: 125.5, tF: 27.8, aF: 27.1, tBF: 18.1, aBF: 17.8, aCal: 1456, tCal: 1500, steps: 12157, notes: "Mon 24hr fast · Tue–Thu 1450cal · 11.15k steps" },
+  { wk: 13, date: "5/29/26", phase: "Cut", tW: 153.9, aW: 153, tM: 126.1, aM: 125.8, tF: 27.8, aF: 27.2, tBF: 17.8, aBF: 17.8, aCal: 2048, tCal: null, steps: 10393, notes: "" },
+  { wk: 14, date: "6/5/26", phase: "Cut", tW: 153.9, aW: 151.8, tM: 126.1, aM: 124.6, tF: 27.8, aF: 27.2, tBF: 17.8, aBF: 17.9, aCal: 2200, tCal: null, steps: 7401, notes: "" },
+  { wk: 15, date: "6/12/26", phase: "Cut", tW: 153.9, aW: 152.8, tM: 126.1, aM: 125, tF: 27.8, aF: 27.8, tBF: 17.8, aBF: 18.2, aCal: 2328, tCal: null, steps: 6086, notes: "" },
+  { wk: 16, date: "6/19/26", phase: "Cut", tW: 153.9, aW: 153.3, tM: 126.1, aM: 125.8, tF: 27.8, aF: 27.5, tBF: 17.8, aBF: 17.9, aCal: 2200, tCal: null, steps: 5588, notes: "" },
+  { wk: 17, date: "6/26/26", phase: "Cut", tW: 153.9, aW: 152.9, tM: 126.1, aM: 124.2, tF: 27.8, aF: 28.7, tBF: 17.8, aBF: 18.8, aCal: 2395, tCal: null, steps: 5402, notes: "" },
+  { wk: 18, date: "7/3/26", phase: "Cut", tW: 153.9, aW: 153.9, tM: 126.1, aM: 124.6, tF: 27.8, aF: 29.3, tBF: 17.8, aBF: 19.0, aCal: 2522, tCal: null, steps: 7579, notes: "" },
+  { wk: 19, date: "7/4/26", phase: "Maintain", tW: 153.9, aW: null, tM: 126.1, aM: null, tF: 27.8, aF: null, tBF: 17.8, aBF: null, aCal: null, tCal: 2000, steps: null, notes: "" },
+  { wk: 20, date: "7/5/26", phase: "Maintain", tW: 153.9, aW: null, tM: 126.1, aM: null, tF: 27.8, aF: null, tBF: 17.8, aBF: null, aCal: null, tCal: 2000, steps: null, notes: "" },
+  { wk: 21, date: "7/6/26", phase: "Maintain", tW: 153.9, aW: null, tM: 126.1, aM: null, tF: 27.8, aF: null, tBF: 17.8, aBF: null, aCal: null, tCal: 2000, steps: null, notes: "" },
+  { wk: 22, date: "7/31/26", phase: "Maintain", tW: 153.9, aW: null, tM: 126.1, aM: null, tF: 27.8, aF: null, tBF: 17.8, aBF: null, aCal: null, tCal: 2000, steps: null, notes: "" },
+  { wk: 23, date: "8/7/26", phase: "Maintain", tW: 153.9, aW: null, tM: 126.1, aM: null, tF: 27.8, aF: null, tBF: 17.8, aBF: null, aCal: null, tCal: 2000, steps: null, notes: "" },
+  { wk: 24, date: "8/14/26", phase: "Gain", tW: 154.5, aW: null, tM: 126.6, aM: null, tF: 27.9, aF: null, tBF: 18.1, aBF: null, aCal: null, tCal: null, steps: null, notes: "" },
+  { wk: 25, date: "8/21/26", phase: "Gain", tW: 154.9, aW: null, tM: 126.8, aM: null, tF: 28.1, aF: null, tBF: 18.1, aBF: null, aCal: null, tCal: null, steps: null, notes: "" },
+  { wk: 26, date: "8/28/26", phase: "Gain", tW: 155.3, aW: null, tM: 127.1, aM: null, tF: 28.2, aF: null, tBF: 18.1, aBF: null, aCal: null, tCal: null, steps: null, notes: "" },
+  { wk: 27, date: "9/4/26", phase: "Gain", tW: 155.7, aW: null, tM: 127.4, aM: null, tF: 28.3, aF: null, tBF: 18.2, aBF: null, aCal: null, tCal: null, steps: null, notes: "" },
+  { wk: 28, date: "9/11/26", phase: "Gain", tW: 156.0, aW: null, tM: 127.6, aM: null, tF: 28.4, aF: null, tBF: 18.2, aBF: null, aCal: null, tCal: null, steps: null, notes: "" },
 ];
 
 const PHASE_COLOR = { Off: "#6b7280", Cut: "#5b8dee", Derailed: "#c4534a", Maintain: "#dba236", Gain: "#4caf7d" };
@@ -353,7 +353,7 @@ const DAILY_CELLS = [
   { key: "steps", label: "Steps", mode: "numeric" },
   { key: "weight", label: "Weight", mode: "decimal" },
   { key: "fatMass", label: "Fat mass", mode: "decimal" },
-  { key: "muscleMass", label: "Muscle mass", mode: "decimal" },
+  { key: "muscleMass", label: "Lean mass", mode: "decimal" },
 ];
 
 function delta(curr, prev) { return curr - prev; }
@@ -609,13 +609,13 @@ function EntryForm({ form, setForm, onSave, onCancel, isEdit, error, pullFromDai
 
   return (
     <div className="entry-form">
-      <div className="form-note">Targets and phase are set automatically from your Goal Settings (the latest goal on or before each week's date decides its phase). Set the date and the rest fills itself from the Daily tab — weight, muscle and fat as they read that day, calories and steps averaged over the seven days before it. Everything stays editable.</div>
+      <div className="form-note">Targets and phase are set automatically from your Goal Settings (the latest goal on or before each week's date decides its phase). Set the date and the rest fills itself from the Daily tab — weight, lean and fat as they read that day, calories and steps averaged over the seven days before it. Everything stays editable.</div>
       <div className="form-grid">
         <label>Week<input value={form.wk} onChange={set("wk")} placeholder="e.g. 19" inputMode="numeric" /></label>
         {/* Dates keep the full keyboard — the numeric pads have no "/" key. */}
         <label>Date<input value={form.date} onChange={set("date")} placeholder="7/10/26" /></label>
         <label>Weight (actual)<input value={form.aW} onChange={set("aW")} placeholder="lb" inputMode="decimal" /></label>
-        <label>Muscle (actual)<input value={form.aM} onChange={set("aM")} placeholder="lb" inputMode="decimal" /></label>
+        <label>Lean (actual)<input value={form.aM} onChange={set("aM")} placeholder="lb" inputMode="decimal" /></label>
         <label>Fat mass (actual)<input value={form.aF} onChange={set("aF")} placeholder="lb" inputMode="decimal" /></label>
         <label>Calories (actual)<input value={form.aCal} onChange={set("aCal")} placeholder="kcal" inputMode="numeric" /></label>
         <label>Steps<input value={form.steps} onChange={set("steps")} placeholder="steps" inputMode="numeric" /></label>
@@ -626,7 +626,7 @@ function EntryForm({ form, setForm, onSave, onCancel, isEdit, error, pullFromDai
           <div className="pull-line">
             <Watch size={12} />
             {pulled.hasDay
-              ? <span>Weight, muscle and fat read off <strong>{pulled.from}</strong>.</span>
+              ? <span>Weight, lean and fat read off <strong>{pulled.from}</strong>.</span>
               : <span>No daily entry for <strong>{pulled.from}</strong>, so the body numbers are yours to fill in.</span>}
           </div>
           <div className="pull-line">
@@ -723,7 +723,7 @@ function GoalForm({ form, setForm, onSave, onCancel, isEdit, error, preview }) {
         {/* The two rates are the one place a minus sign gets typed — a cut's
             fat rate is negative — and no iOS numeric pad offers one, so these
             two deliberately keep the full keyboard. */}
-        <label>Muscle rate (lb/wk)<input value={form.muscleRate} onChange={set("muscleRate")} placeholder="blank = same as last goal" /></label>
+        <label>Lean rate (lb/wk)<input value={form.muscleRate} onChange={set("muscleRate")} placeholder="blank = same as last goal" /></label>
         <label>Fat rate (lb/wk)<input value={form.fatRate} onChange={set("fatRate")} placeholder="blank = same as last goal" /></label>
         <label>Step goal (avg/day)<input value={form.stepGoal} onChange={set("stepGoal")} placeholder="blank = same as last goal" inputMode="numeric" /></label>
         <label>Calorie goal (kcal/day)<input value={form.calGoal} onChange={set("calGoal")} placeholder="blank = same as last goal" inputMode="numeric" /></label>
@@ -754,7 +754,7 @@ function DailyEntryForm({ form, setForm, onSave, onCancel, isEdit, error }) {
         <label>Steps<input value={form.steps} onChange={set("steps")} placeholder="steps" inputMode="numeric" /></label>
         <label>Weight<input value={form.weight} onChange={set("weight")} placeholder="lb" inputMode="decimal" /></label>
         <label>Fat Mass<input value={form.fatMass} onChange={set("fatMass")} placeholder="lb" inputMode="decimal" /></label>
-        <label>Muscle Mass<input value={form.muscleMass} onChange={set("muscleMass")} placeholder="lb" inputMode="decimal" /></label>
+        <label>Lean Mass<input value={form.muscleMass} onChange={set("muscleMass")} placeholder="lb" inputMode="decimal" /></label>
       </div>
       {error && <div className="form-error"><AlertCircle size={12} /> {error}</div>}
       <div className="form-actions">
@@ -1014,7 +1014,7 @@ export default function Dashboard() {
   const wbfMetrics = {
     weight:   { label: "Weight",     actualKey: "aW",    targetKey: "tW",     color: "#3b82f6",      pad: 2,    decimals: 1 },
     fatMass:  { label: "Fat Mass",   actualKey: "aF",    targetKey: "tF",     color: "#c4534a",      pad: 1,    decimals: 1 },
-    muscle:   { label: "Muscle",     actualKey: "aM",    targetKey: "tM",     color: "#4caf7d",      pad: 1,    decimals: 1 },
+    muscle:   { label: "Lean",     actualKey: "aM",    targetKey: "tM",     color: "#4caf7d",      pad: 1,    decimals: 1 },
     calories: { label: "Calories",   actualKey: "aCal",  targetKey: "tCal",   color: "#dba236",      pad: 200,  decimals: 0 },
     steps:    { label: "Steps",      actualKey: "steps", targetKey: "tSteps", color: "#8b5cf6",      pad: 1000, decimals: 0 },
   };
@@ -1452,7 +1452,14 @@ export default function Dashboard() {
 
     return {
       weight: onDay?.weight ?? null,
-      muscleMass: onDay?.muscleMass ?? null,
+      // Lean is weight minus fat mass, so a day with those two but no lean
+      // reading still fills the field — which is every day the scale
+      // Shortcut writes, since it sends weight and fat mass only. A stored
+      // value still wins when one exists.
+      muscleMass: onDay?.muscleMass
+        ?? (onDay?.weight != null && onDay?.fatMass != null
+              ? Math.round((onDay.weight - onDay.fatMass) * 10) / 10
+              : null),
       fatMass: onDay?.fatMass ?? null,
       cal: avg("cal"),
       steps: avg("steps"),
@@ -1532,7 +1539,7 @@ export default function Dashboard() {
       { id: "steps", metric: "Steps", isOff: r => r.steps != null && r.tSteps != null && r.tSteps - r.steps > 300,
         word: "under goal",
         detail: r => `${(r.tSteps - r.steps).toLocaleString()} under (${r.steps.toLocaleString()} vs ${r.tSteps.toLocaleString()})` },
-      { id: "muscle", metric: "Muscle", isOff: r => r.aM != null && r.tM != null && r.aM < r.tM,
+      { id: "muscle", metric: "Lean", isOff: r => r.aM != null && r.tM != null && r.aM < r.tM,
         word: "below target",
         detail: r => `${round1(r.tM - r.aM)} lb below (${r.aM} vs ${r.tM})` },
     ].filter(rule => rule.id !== alerts.metric);
@@ -2605,7 +2612,7 @@ export default function Dashboard() {
             <div className="table-wrap">
               <table>
                 <thead>
-                  <tr><th>Date range</th><th>Phase</th><th>Status</th><th>Muscle rate</th><th>Fat rate</th><th>Step goal</th><th>Calorie goal</th><th>Protein</th><th>Carbs<span className="th-note">derived</span></th><th>Fat</th><th>Duration</th><th>Notes</th><th></th></tr>
+                  <tr><th>Date range</th><th>Phase</th><th>Status</th><th>Lean rate</th><th>Fat rate</th><th>Step goal</th><th>Calorie goal</th><th>Protein</th><th>Carbs<span className="th-note">derived</span></th><th>Fat</th><th>Duration</th><th>Notes</th><th></th></tr>
                 </thead>
                 <tbody>
                   {goals.length === 0 && (
@@ -2968,7 +2975,7 @@ export default function Dashboard() {
             <div className="table-wrap">
               <table>
                 <thead>
-                  <tr><th className="daily-date">Date</th><th>Calories</th><th>Steps</th><th>Weight</th><th>Fat Mass</th><th>Muscle Mass</th><th></th></tr>
+                  <tr><th className="daily-date">Date</th><th>Calories</th><th>Steps</th><th>Weight</th><th>Fat Mass</th><th>Lean Mass</th><th></th></tr>
                 </thead>
                 <tbody>
                   {mergedDailyEntries.length === 0 && (
@@ -3100,7 +3107,7 @@ export default function Dashboard() {
           trend={fatMassChange == null ? null : fatMassChange < 0 ? "down" : fatMassChange > 0 ? "up" : "flat"}
           statusLevel={fatMassStatus}
           accent={STATUS_COLOR[fatMassStatus]} badge={fatMassBadge} onClick={() => jumpToChart("fatMass")} />
-        <StatCard icon={TrendingUp} label="Muscle Mass" value={fmtNum(muscleMassCard.main)} valueTag={muscleMassCard.tag} unit="lb"
+        <StatCard icon={TrendingUp} label="Lean Mass" value={fmtNum(muscleMassCard.main)} valueTag={muscleMassCard.tag} unit="lb"
           weekValue={muscleMassCard.week != null ? fmtNum(muscleMassCard.week) : null} weekLabel={muscleMassCard.weekLabel}
           weekBg={STATUS_COLOR[muscleStatus] + "22"}
           sub={muscleChange != null ? `${muscleChange > 0 ? "+" : ""}${fmtNum(muscleChange, 1)} lb since start` : null}
@@ -3154,7 +3161,7 @@ export default function Dashboard() {
             <SeriesToggle
               items={[
                 { key: "fatMass", label: "FAT" },
-                { key: "muscle", label: "MUSCLE" },
+                { key: "muscle", label: "LEAN" },
                 { key: "weight", label: "WEIGHT" },
                 { key: "calories", label: "CALORIES" },
                 { key: "steps", label: "STEPS" },
@@ -3279,7 +3286,7 @@ export default function Dashboard() {
               <tr>
                 <th>Week</th><th>Date</th><th className="phase-col">Phase</th>
                 <th>Target Wt</th><th>Weight</th>
-                <th>Target Musc</th><th>Muscle</th>
+                <th>Target Lean</th><th>Lean</th>
                 <th>Target Fat</th><th>Fat</th>
                 <th>Tgt Fat Adj</th><th>Act Fat Adj</th>
                 <th>Target BF%</th><th>BF%</th>
@@ -3304,7 +3311,7 @@ export default function Dashboard() {
                               {g.singleEntry ? (
                                 <>
                                   {g.singleEntry.aW != null && <span className="gstat" style={{ borderColor: phaseColor(g.phase) + "66" }}><span className="gstat-label">Weight</span><span className="gstat-val">{fmtNum(g.singleEntry.aW)} lb</span></span>}
-                                  {g.singleEntry.aM != null && <span className="gstat" style={{ borderColor: phaseColor(g.phase) + "66" }}><span className="gstat-label">Muscle</span><span className="gstat-val">{fmtNum(g.singleEntry.aM)} lb</span></span>}
+                                  {g.singleEntry.aM != null && <span className="gstat" style={{ borderColor: phaseColor(g.phase) + "66" }}><span className="gstat-label">Lean</span><span className="gstat-val">{fmtNum(g.singleEntry.aM)} lb</span></span>}
                                   {g.singleEntry.aF != null && <span className="gstat" style={{ borderColor: phaseColor(g.phase) + "66" }}><span className="gstat-label">Fat Mass</span><span className="gstat-val">{fmtNum(g.singleEntry.aF)} lb</span></span>}
                                   {g.singleEntry.aBF != null && <span className="gstat" style={{ borderColor: phaseColor(g.phase) + "66" }}><span className="gstat-label">Body Fat %</span><span className="gstat-val">{fmtNum(g.singleEntry.aBF)}%</span></span>}
                                   {g.singleEntry.aCal != null && <span className="gstat" style={{ borderColor: phaseColor(g.phase) + "66" }}><span className="gstat-label">Avg Cal</span><span className="gstat-val">{fmtNum(g.singleEntry.aCal)}</span></span>}
@@ -3321,7 +3328,7 @@ export default function Dashboard() {
                                   )}
                                   {g.muscleChange != null && (
                                     <span className="gstat" style={{ borderColor: phaseColor(g.phase) + "66" }}>
-                                      <span className="gstat-label">Muscle</span>
+                                      <span className="gstat-label">Lean</span>
                                       <span className={"gstat-val " + (g.muscleChange > 0 ? "gstat-down" : g.muscleChange < 0 ? "gstat-up" : "")}>{g.muscleChange > 0 ? "+" : ""}{g.muscleChange} lb</span>
                                       {g.muscleRate != null && <span className="gstat-rate">{g.muscleRate > 0 ? "+" : ""}{g.muscleRate}/wk</span>}
                                     </span>
@@ -3356,7 +3363,7 @@ export default function Dashboard() {
                             </span>
                           ) : (
                             <span className="group-stats">
-                              {["Weight", "Muscle", "Fat Mass", "Body Fat %", "Avg Cal", "Avg Steps"].map(lbl => (
+                              {["Weight", "Lean", "Fat Mass", "Body Fat %", "Avg Cal", "Avg Steps"].map(lbl => (
                                 <span key={lbl} className="gstat gstat-empty" style={{ borderColor: phaseColor(g.phase) + "44" }}>
                                   <span className="gstat-label">{lbl}</span>
                                   <span className="gstat-val gstat-placeholder">–</span>
@@ -3371,7 +3378,7 @@ export default function Dashboard() {
                       <tr className="group-colhead">
                         <td>Week</td><td>Date</td><td className="phase-col">Phase</td>
                         <td>Target Wt</td><td>Weight</td>
-                        <td>Target Musc</td><td>Muscle</td>
+                        <td>Target Lean</td><td>Lean</td>
                         <td>Target Fat</td><td>Fat</td>
                         <td>Tgt Fat Adj</td><td>Act Fat Adj</td>
                         <td>Target BF%</td><td>BF%</td>

@@ -6,8 +6,20 @@ also arrive on their own. This is the map of which is which.
 | Number | Auto source | How it gets in |
 | --- | --- | --- |
 | Steps | Apple Health (iPhone, or **WHOOP** — see below) | iOS Shortcut → `daily_metrics.steps` |
-| Weight / fat mass / muscle mass | Withings scale | `api/withings-sync.js` → `daily_metrics` |
+| Weight / fat mass | Withings scale → Apple Health | second iOS Shortcut → `daily_metrics` (see below) |
+| Lean mass | Nowhere — **inferred**: weight − fat mass | computed in the app; nothing syncs it |
 | Calories eaten | The Food tab | written into the daily log directly |
+
+**Lean, not muscle.** The app tracks lean mass (weight minus fat mass), not
+Withings' muscle-mass figure — that number never leaves the Withings app, and
+lean needs nothing beyond the two values the scale already provides. The
+weekly log's whole history was migrated to the same rule
+([`supabase_migrate_lean.sql`](supabase_migrate_lean.sql)), so the series is
+consistent back to the start; it reads ~6 lb above the old muscle series
+(that's bone), with the trends unchanged. `daily_metrics.muscle_mass` and the
+daily log's `muscleMass` still exist for old rows; nothing writes them now,
+and the weekly pull infers lean whenever a day has weight and fat mass but no
+stored value.
 
 All the synced values land in one table, `daily_metrics`, keyed by the app's
 `M/D/YY` date string. See
@@ -155,6 +167,38 @@ which keys arrive.
 The anon key in the Shortcut is the same public key the browser bundle ships,
 so it's no more exposed there than it already is. What guards the table is its
 RLS policy, not the key.
+
+## Body composition from the scale
+
+A second Shortcut, beside the steps one. Health Mate writes each weigh-in to
+Apple Health; this reads it back out and posts weight and fat mass. Lean is
+not sent — the app infers it.
+
+Before building it, check **Health → Sharing → Apps → Health Mate** allows
+writing Weight and Body Fat Percentage.
+
+1. **Find Health Samples** → Weight, last 3 days, sorted by End Date, latest
+   first, **limit 1**.
+2. **Find Health Samples** → Body Fat Percentage, same settings.
+3. Fat mass = weight × body fat. **Check the scale of the percentage first**:
+   run a throwaway shortcut of *Find Health Samples → Body Fat Percentage →
+   Quick Look*. If it shows `23`, divide by 100 before multiplying; if it
+   shows `0.23`, multiply as-is. Getting this wrong is a 100× error, which is
+   why it's step 3 and not a footnote.
+4. Date = the **weight sample's date**, Format Date → Custom → `M/d/yy` — no
+   leading zeros, same as the steps shortcut. Do **not** copy the steps
+   shortcut's minus-4-hours trick: that compensates for WHOOP's late bulk
+   drop, and a weigh-in is timestamped at the moment you stand on the scale.
+5. **Get Contents of URL** → POST, same URL and all four headers as the steps
+   shortcut (including `Prefer: resolution=merge-duplicates`), body:
+
+   ```json
+   { "date": "8/8/26", "weight": 152.4, "fat_mass": 27.6, "source": "healthkit" }
+   ```
+
+Only the keys sent get written, so this merges onto the same day's row as the
+steps shortcut without touching `steps` or `cal`. Automate it to run on a
+morning schedule, after your usual weigh-in time.
 
 ## Steps from WHOOP
 
