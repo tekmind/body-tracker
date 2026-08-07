@@ -30,11 +30,22 @@ select key,
 from kv_store
 order by updated_at desc;
 
--- What the food log can give back, day by day.
+-- How far back the food log actually goes, and so how much of the daily log
+-- this can rebuild.
+select count(distinct date)                 as days_with_food,
+       count(*)                             as meals_logged,
+       min(to_date(date, 'FMMM/FMDD/YY'))   as earliest_day,
+       max(to_date(date, 'FMMM/FMDD/YY'))   as latest_day,
+       max(to_date(date, 'FMMM/FMDD/YY'))
+         - min(to_date(date, 'FMMM/FMDD/YY')) as span_days
+from food_log;
+
+-- What it can give back, day by day. Ordered by the day itself, not by when
+-- the rows were written — anything backfilled would sort to the wrong place.
 select date, count(*) as meals, round(sum(cal)) as calories
 from food_log
 group by date
-order by min(created_at);
+order by to_date(date, 'FMMM/FMDD/YY');
 
 -- ---------------------------------------------------------------------------
 -- 2. Keep what's there now, before touching it.
@@ -52,24 +63,28 @@ on conflict (key) do nothing;
 --    lost. Days still present are left exactly as they are — this only fills
 --    gaps, so running it twice changes nothing the second time.
 --
---    Dates are matched as text. The app writes M/D/YY with no leading zeros in
---    both tables, so they line up; a hand-typed "08/06/26" would not match and
---    would come back as a second row for that day. Step 4 finds those.
+--    Dates are matched by VALUE, not spelling: "08/06/26" and "8/6/26" are the
+--    same day, and comparing the text would bring the second one back as a
+--    duplicate row. A date that doesn't parse at all yields null, matches
+--    nothing, and is simply carried through untouched — step 4 reports any
+--    day that ended up with two rows either way.
 -- ---------------------------------------------------------------------------
 with existing as (
-  select e.row, e.row->>'date' as date
+  select e.row,
+         case when e.row->>'date' ~ '^\d{1,2}/\d{1,2}/\d{2}$'
+              then to_date(e.row->>'date', 'FMMM/FMDD/YY') end as day
   from kv_store k, lateral jsonb_array_elements(k.value::jsonb) as e(row)
   where k.key = 'daily_log'
 ),
 from_food as (
-  select date, round(sum(cal))::int as cal
+  select date, to_date(date, 'FMMM/FMDD/YY') as day, round(sum(cal))::int as cal
   from food_log
   group by date
 ),
 missing as (
   select f.date, f.cal
   from from_food f
-  where not exists (select 1 from existing x where x.date = f.date)
+  where not exists (select 1 from existing x where x.day = f.day)
 ),
 merged as (
   select coalesce(jsonb_agg(row), '[]'::jsonb) as rows
@@ -94,10 +109,14 @@ select 'daily_log', rows::text from merged
 on conflict (key) do update set value = excluded.value, updated_at = now();
 
 -- ---------------------------------------------------------------------------
--- 4. Check the result. Any date appearing twice here needs one row deleting by
---    hand in the app — see the note in step 3 about date spelling.
+-- 4. Check the result. Any day listed here has two rows and needs one deleting
+--    by hand in the app. Grouped by the parsed day, so two spellings of the
+--    same date are caught rather than looking like two different days.
 -- ---------------------------------------------------------------------------
-select e.row->>'date' as date, count(*) as rows
+select coalesce(to_char(case when e.row->>'date' ~ '^\d{1,2}/\d{1,2}/\d{2}$'
+                             then to_date(e.row->>'date', 'FMMM/FMDD/YY') end, 'FMMM/FMDD/YY'),
+                e.row->>'date') as day,
+       count(*) as rows
 from kv_store k, lateral jsonb_array_elements(k.value::jsonb) as e(row)
 where k.key = 'daily_log'
 group by 1
