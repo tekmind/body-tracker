@@ -222,6 +222,25 @@ Two details worth knowing if you build another one of these:
 
 ## Backups
 
-Backup & Restore on the Goal Settings tab covers the key/value blobs — weekly
-log, goals, daily log, habits. It does **not** cover `daily_metrics` or the
-food and lab tables. Use a Supabase backup for those.
+Two layers, because they fail differently:
+
+- **Nightly server snapshot.** `vercel.json` runs `/api/backup` every morning
+  (11:00 UTC). It copies every `kv_store` blob (parsed) and every table —
+  food log, labs, `daily_metrics` — into a `backups` table
+  ([`supabase_backups.sql`](supabase_backups.sql)), one row per day, 30 kept.
+  "Back up now" on Goal Settings hits the same endpoint on demand, and
+  `/api/backup?download=1` returns the whole snapshot as a file. This layer
+  protects against the app writing something wrong — which has happened; a
+  bad write once replaced the entire daily log — but not against losing the
+  Supabase project itself, since the copies live inside it.
+- **Export / Import on Goal Settings.** The in-app JSON blob: weekly log,
+  goals, daily log, habits, alert settings. Download one occasionally and
+  keep it somewhere that isn't Supabase — that's the offsite copy.
+
+Restore shapes for the snapshot rows are written out in
+`supabase_backups.sql`. Adding this cron replaced the daily Withings-sync one
+in `vercel.json`: that API integration was never configured (registration
+stalled at Withings' end), and the plan of record for scale data is Apple
+Health plus a second Shortcut — weight and fat mass in, lean mass inferred.
+The `api/withings-*.js` files stay as the pattern for any future OAuth
+source.
