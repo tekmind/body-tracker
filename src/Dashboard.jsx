@@ -25,7 +25,7 @@ const DEFAULT_HABIT_TARGETS = { walking: 5, conditioning: 3, weightLifting: 3, c
 
 // The Sync scale button opens this by name, so the shortcut on the phone has
 // to match exactly — renaming it there means changing it here. See SYNC.md.
-const SCALE_SHORTCUT_NAME = "Scale Sync";
+const SCALE_SHORTCUT_NAME = "Weight Sync";
 
 const ALERTS_KEY = "alert_settings";
 // One ladder for everything that counts weeks: how long a run of off-target
