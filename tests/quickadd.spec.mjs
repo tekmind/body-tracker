@@ -230,6 +230,44 @@ check("the cancel × is outlined red", cancel?.border === "rgb(199, 58, 47)", JS
 check("and its × is red too", cancel?.color === "rgb(199, 58, 47)", cancel?.color);
 check("so keep and discard don't read alike", cancel?.border !== save?.border);
 
+// --- the macros follow the amount as you type it ----------------------------
+// Beef stick is 100 kcal / 10p / 0c / 6f per stick, logged at 3.
+const macros = () => beef.locator(".food-row-macros").innerText();
+check("it starts at what was logged", /300/.test(await macros()), await macros());
+
+const qtyBox = beef.locator(".food-row-edit .qty-input");
+await qtyBox.fill("5");
+await p.waitForTimeout(200);
+let live = await macros();
+check("typing a new amount reprices it straight away", /500/.test(live), live);
+check("and the macros move with it", /50p/.test(live) && /30f/.test(live), live);
+check("the preview is marked as unsaved", await beef.locator(".food-row-macros.frm-live").count() === 1);
+
+// Half-typed input must not show NaN — it falls back to what's stored.
+await qtyBox.fill("");
+await p.waitForTimeout(200);
+check("an empty box shows the logged numbers, not NaN", /300/.test(await macros()), await macros());
+
+// What you were looking at is what gets written.
+await qtyBox.fill("5");
+await p.waitForTimeout(200);
+const previewed = await macros();
+await beef.locator(".food-row-save").click();
+await p.waitForTimeout(600);
+check("saving keeps the numbers you were shown", (await macros()) === previewed,
+  `${await macros()} vs ${previewed}`);
+check("the unsaved marker clears", await beef.locator(".food-row-macros.frm-live").count() === 0);
+
+// Cancelling puts the stored numbers back.
+await beef.locator(".food-row-actions .icon-btn").first().click();
+await p.waitForSelector(".food-row-edit");
+await beef.locator(".food-row-edit .qty-input").fill("9");
+await p.waitForTimeout(200);
+check("the preview moves again", /900/.test(await macros()), await macros());
+await beef.locator(".food-row-cancel").click();
+await p.waitForTimeout(300);
+check("cancelling restores what's actually logged", /500/.test(await macros()), await macros());
+
 await b.close();
 console.log(bad.length ? `\n${bad.length} problem(s):\n- ` + bad.join("\n- ") : "\nAll checks passed.");
 process.exit(bad.length ? 1 : 0);

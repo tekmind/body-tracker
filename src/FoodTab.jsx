@@ -348,26 +348,35 @@ export default function FoodTab({ targetsForDate, pacing, onDayTotalsChange }) {
     }, "Couldn't delete that");
   }, [commitRows, syncDay, runWrite]);
 
+  /**
+   * What a logged row's macros become at a given amount. Both the live preview
+   * shown while you're editing and the numbers actually written come from here
+   * — computing them twice is how a row ends up saving something other than
+   * what you were looking at. Returns null for an amount that isn't usable yet,
+   * so a half-typed quantity shows the stored numbers rather than NaN.
+   */
+  const rowMacrosAt = useCallback((row, qty, unitText) => {
+    if (!row || qty == null || qty <= 0) return null;
+    const unit = normalizeUnit(unitText) || row.unit;
+    const food = row.food_id ? foodById(row.food_id) : null;
+    // With the food still in the catalog, rescale from its real serving data.
+    // Without it, all we can honestly do is scale the row's own snapshot.
+    if (food) return macroColumns(food, qty, unit);
+    const f = qty / (Number(row.qty) || 1);
+    return {
+      cal: Math.round(row.cal * f),
+      protein: Math.round(row.protein * f * 10) / 10,
+      carbs: Math.round(row.carbs * f * 10) / 10,
+      fat: Math.round(row.fat * f * 10) / 10,
+    };
+  }, [foodById]);
+
   const handleSaveRowEdit = useCallback(async () => {
     const row = rowsRef.current.find(r => r.id === editingRow.id);
     const qty = num(editingRow.qty);
     if (!row || qty == null || qty <= 0) { setEditingRow(null); return; }
     const unit = normalizeUnit(editingRow.unit) || row.unit;
-    const food = row.food_id ? foodById(row.food_id) : null;
-
-    // With the food still in the catalog, rescale from its real serving data.
-    // Without it, all we can honestly do is scale the row's own snapshot.
-    const macros = food
-      ? macroColumns(food, qty, unit)
-      : (() => {
-          const f = (Number(row.qty) || 1) === 0 ? 1 : qty / (Number(row.qty) || 1);
-          return {
-            cal: Math.round(row.cal * f),
-            protein: Math.round(row.protein * f * 10) / 10,
-            carbs: Math.round(row.carbs * f * 10) / 10,
-            fat: Math.round(row.fat * f * 10) / 10,
-          };
-        })();
+    const macros = rowMacrosAt(row, qty, editingRow.unit);
 
     await runWrite(async () => {
       const updated = await foodApi.updateFoodRow(row.id, { qty, unit, ...macros });
@@ -377,7 +386,7 @@ export default function FoodTab({ targetsForDate, pacing, onDayTotalsChange }) {
       return true;
     }, "Couldn't update that");
     setEditingRow(null);
-  }, [editingRow, foodById, commitRows, syncDay, runWrite]);
+  }, [editingRow, rowMacrosAt, commitRows, syncDay, runWrite]);
 
   const handleSaveMealFromSection = useCallback(async () => {
     const { section, name } = mealDraft;
@@ -812,6 +821,12 @@ export default function FoodTab({ targetsForDate, pacing, onDayTotalsChange }) {
                   const rowFood = foodById(r.food_id);
                   const units = unitOptions(rowFood || { serving_unit: r.unit });
                   if (!units.includes(r.unit)) units.push(r.unit);
+                  // While you're changing the amount, the macros beside it
+                  // follow what you've typed — seeing 2 oz still priced as 1
+                  // is the moment you doubt whether the edit took. Falls back
+                  // to the stored numbers for an amount that isn't usable yet.
+                  const editing = editingRow?.id === r.id;
+                  const shown = (editing && rowMacrosAt(r, num(editingRow.qty), editingRow.unit)) || r;
                   return (
                   <div className="food-row" key={r.id}>
                     <div className="food-row-main">
@@ -819,7 +834,7 @@ export default function FoodTab({ targetsForDate, pacing, onDayTotalsChange }) {
                         {r.name}
                         {r.brand && <span className="food-row-brand"> · {r.brand}</span>}
                       </div>
-                      {editingRow?.id === r.id ? (
+                      {editing ? (
                         <div className="food-row-edit">
                           <input
                             className="qty-input"
@@ -841,9 +856,9 @@ export default function FoodTab({ targetsForDate, pacing, onDayTotalsChange }) {
                         <div className="food-row-qty">{fmt(r.qty)} {r.unit}</div>
                       )}
                     </div>
-                    <div className="food-row-macros">
-                      <span className="frm-cal">{fmt(r.cal)}</span>
-                      <span className="frm-sub">{fmt(r.protein)}p · {fmt(r.carbs)}c · {fmt(r.fat)}f</span>
+                    <div className={"food-row-macros" + (editing ? " frm-live" : "")}>
+                      <span className="frm-cal">{fmt(shown.cal)}</span>
+                      <span className="frm-sub">{fmt(shown.protein)}p · {fmt(shown.carbs)}c · {fmt(shown.fat)}f</span>
                     </div>
                     <div className="food-row-actions">
                       <button className="icon-btn" title="Change amount"
@@ -2109,6 +2124,9 @@ export const FOOD_STYLES = `
   .food-row-macros { display: flex; flex-direction: column; align-items: flex-end; flex-shrink: 0; }
   .frm-cal { font-family: 'Inter', sans-serif; letter-spacing: -0.02em; font-size: 17px; font-weight: 700; }
   .frm-sub { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--text-faint); margin-top: 3px; white-space: nowrap; }
+  /* Unsaved while you're editing — coloured like the tick that would commit
+     it, so a preview can't be mistaken for what's already in the log. */
+  .frm-live .frm-cal { color: var(--good); }
   .food-row-actions { display: flex; gap: 4px; flex-shrink: 0; }
   .food-meal-draft { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 10px 0 4px; }
   .food-meal-draft input { flex: 1; min-width: 180px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; color: var(--text); padding: 8px 10px; font-family: 'Inter', sans-serif; font-size: 13.5px; outline: none; }
