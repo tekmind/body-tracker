@@ -193,6 +193,14 @@ writing Weight and Body Fat Percentage.
    and put every remaining action *inside* that If. Delete the `Otherwise`
    branch (the ⊗ on its row): a day you didn't weigh should post nothing at
    all, and an empty Otherwise is a branch waiting to be filled in by mistake.
+   **Name every value with a Set Variable action as you go** — `WeightRaw`,
+   `BFPct`, `FatMass`, `WeightLb`. Both Find actions output a chip labelled
+   "Health Samples" and both Round actions output "Rounded Number", so
+   without names the editor gives you four identical-looking chips and no way
+   to tell which is which. Building it unnamed produced a multiply pointing
+   at a deleted action, a Round that rounded the fat mass twice instead of
+   the weight, and a `fat_mass` field left as the literal `0` — none of which
+   look wrong on screen.
 4. **Round both numbers to 1 decimal.** Health hands back raw floats —
    `18.44000053405762` for a body fat reading, `152.40000152587891` for a
    weight — and posting those unrounded puts a fifteen-digit number in the
