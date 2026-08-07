@@ -177,7 +177,7 @@ check("raising slipping past derailed pushes derailed up with it",
   savedAlerts?.derailed >= savedAlerts?.slipping, JSON.stringify(savedAlerts));
 
 // And switching the metric persists too.
-await stepper("Banner watches").locator(".toggle-btn", { hasText: "Muscle" }).click();
+await stepper("Banner watches").locator(".toggle-btn", { hasText: "Lean" }).click();
 await p.waitForTimeout(250);
 check("the metric is saved", savedAlerts?.metric === "muscle", JSON.stringify(savedAlerts));
 

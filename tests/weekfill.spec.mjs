@@ -19,7 +19,7 @@ const DAILY = [
   { date: "7/30/26", cal: 6000, steps: 6000, weight: null, fatMass: null, muscleMass: null },
   // The reading day itself: body numbers come from here, and its cal/steps
   // must NOT be averaged in.
-  { date: "7/31/26", cal: 1111, steps: 11111, weight: 152.4, fatMass: 27.6, muscleMass: 167 },
+  { date: "7/31/26", cal: 1111, steps: 11111, weight: 152.4, fatMass: 27.6, muscleMass: null },
 ];
 // cal over 7/24-7/30: 1000+2000+3000+4000+5000+6000 = 21000 / 6 days = 3500
 // steps over the same: 1000+2000+3000+4000+6000 = 16000 / 5 days = 3200
@@ -64,7 +64,8 @@ check("changing the date re-pulls", await p.locator(".pull-note").count() === 1)
 
 // --- body composition comes from the day itself -----------------------------
 check("weight is read off that day", await field("Weight (actual)") === "152.4", await field("Weight (actual)"));
-check("muscle is read off that day", await field("Muscle (actual)") === "167", await field("Muscle (actual)"));
+check("lean is inferred from weight minus fat mass", await field("Lean (actual)") === "124.8",
+  await field("Lean (actual)"));
 check("fat mass is read off that day", await field("Fat mass (actual)") === "27.6", await field("Fat mass (actual)"));
 
 // --- calories and steps average the seven days BEFORE it --------------------
