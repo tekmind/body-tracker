@@ -9,7 +9,7 @@ Two setup steps, and only the first is required.
 ## 1. Create the tables (required)
 
 Open the Supabase SQL editor and run [`supabase_labs.sql`](supabase_labs.sql).
-It creates two tables and is safe to re-run:
+It creates the tables below and is safe to re-run:
 
 | Table | What's in it |
 | --- | --- |
@@ -93,8 +93,9 @@ before you save.
 - **By report** — each draw, collapsible, results grouped by category with
   out-of-range values in red. Tap any marker name for its trend.
 - **By marker** — one row per marker with its latest value, the range the lab
-  printed, a gauge showing where inside that range the value sits, and the
-  move since the previous draw. Grouped by priority rather than category:
+  printed, a bar showing where inside that range the value sits — and how far
+  past it when it's outside — and the move since the previous draw. Grouped by
+  priority rather than category:
   **Needs attention** (unfavourably out of range now), **Previously flagged**
   (was out of range at some point, is not now), then **In range** — so the
   glance stops at the top. A favourable excursion (high HDL, high eGFR) is
@@ -176,6 +177,34 @@ card's width a sparkline stretches its own slopes and puts the newest reading
 half off the edge, so it draws a shape the readings never had. The scale
 answers "where in the range am I", and **Full trend** on each card opens the
 real chart with a real axis.
+
+### The scale grows to hold the reading
+
+Drawn only to the range, every out-of-range value pins to the same end of the
+bar: a calprotectin of 51 and one of 160 looked identical, and how far past the
+bound you are is the only thing that bar exists to say. So the axis stretches
+to the reading — 0 to 160, not 0 to 50 — and the bound it ran past is marked
+where it falls, because otherwise the colour change is unexplained.
+
+The colours are the same three states the rest of the tab uses, so a bar can't
+disagree with the badge above it: green in range, amber across the borderline
+window (`borderlineFor`'s outer fifth), red outside. Drifting toward a bound is
+gradual, so green and amber blend into each other — the closer you sit to the
+cutoff, the warmer the bar already is. Crossing it is not gradual, so the red
+starts hard at exactly the number the lab set. Direction is honoured: nearing
+the good end of a higher-is-better marker isn't amber, and passing it isn't
+red.
+
+They are deliberately pale. Twenty of these run down a system's screen, and the
+verdict is the number and the dot — the bar is context, not an alarm.
+
+When a bound label lands on top of an axis label, the bound wins. An extended
+axis ends at the reading, which is already in large type at the top of the
+card; the bound is the number you can't get anywhere else.
+
+`gaugeScale` in [`src/labMarkers.js`](src/labMarkers.js) returns the geometry
+and the zone *levels*, not colours — the same bar is drawn on the chips, the
+marker rows, and here, and it stays one idea rather than three.
 
 The notes are the point. `MARKER_NOTES` in
 [`src/labMarkers.js`](src/labMarkers.js) gives each marker a **what it is** and

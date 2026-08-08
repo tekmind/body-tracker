@@ -758,21 +758,74 @@ export function borderlineFor(markerKey, value, refLow, refHigh) {
 }
 
 /**
- * Where a value sits inside its range, 0–1, for the position bars. Null when
- * there is no sensible axis to draw.
+ * The whole position bar: its axis, where the reading sits on it, where the
+ * range bounds fall, and what colour each stretch should be.
  *
- * A one-sided upper range ("< 50") still has one: a concentration cannot go
- * below zero, so the bar runs 0 to the bound. That is an axis, not a clinical
- * threshold — no judgement is being invented. A one-sided LOWER range has no
- * top to scale against, so it gets no bar rather than a made-up ceiling.
+ * The axis grows to hold the reading. Drawn only to the range, a calprotectin
+ * of 51 and one of 160 both pin to the right-hand end and look identical —
+ * which is exactly backwards, because how far past the bound you are is the
+ * entire story. Extending the axis to the value costs the in-range portion
+ * some width and buys back the only number that mattered.
+ *
+ * A bound the axis then runs past becomes a `mark`: the 50 on a 0–160 bar is
+ * where normal ended, and without it the colour change is unexplained.
+ *
+ * `zones` say what each stretch means, not what colour to paint it — the
+ * levels are the same three the rest of the tab uses (`ok`, `edge` for the
+ * borderline window, `off` for out of range), so a bar can't disagree with
+ * the badge above it. Direction is honoured: nearing the good end of a
+ * higher-is-better marker is not amber, and passing it is not red.
  */
-export function gaugePosition(value, refLow, refHigh) {
+export function gaugeScale(markerKey, value, refLow, refHigh) {
   if (!Number.isFinite(value)) return null;
   const lo = Number.isFinite(refLow) ? refLow : null;
   const hi = Number.isFinite(refHigh) ? refHigh : null;
-  if (lo != null && hi != null && hi > lo) return Math.min(1, Math.max(0, (value - lo) / (hi - lo)));
-  if (lo == null && hi != null && hi > 0 && value >= 0) return Math.min(1, Math.max(0, value / hi));
-  return null;
+
+  // The axis the range alone gives. A one-sided upper bound draws from zero —
+  // a concentration can't go below it — but zero is not a lower *bound*, so
+  // nothing below the range exists to mark or to colour.
+  let rangeLo, rangeHi, hasLowBound;
+  if (lo != null && hi != null && hi > lo) { rangeLo = lo; rangeHi = hi; hasLowBound = true; }
+  else if (lo == null && hi != null && hi > 0 && value >= 0) { rangeLo = 0; rangeHi = hi; hasLowBound = false; }
+  else return null;
+
+  const min = Math.min(rangeLo, value);
+  const max = Math.max(rangeHi, value);
+  const span = max - min;
+  if (!(span > 0)) return null;
+
+  const at = (v) => (v - min) / span;
+  const dir = BY_KEY.get(markerKey)?.higher;
+  const edge = (rangeHi - rangeLo) * EDGE_FRACTION;
+
+  // Same reckoning as borderlineFor and isFavorable, so one marker can't be
+  // amber in the list and green on its own bar.
+  const lowLevel = dir === "bad" ? "ok" : "edge";
+  const highLevel = dir === "good" ? "ok" : "edge";
+  const belowLevel = isFavorable(markerKey, "low") ? "ok" : "off";
+  const aboveLevel = isFavorable(markerKey, "high") ? "ok" : "off";
+
+  const zones = [];
+  const add = (from, to, level) => {
+    if (to - from <= 1e-9) return;
+    const last = zones[zones.length - 1];
+    if (last && last.level === level) last.to = to;       // merge, so the ramp is one run
+    else zones.push({ from, to, level });
+  };
+
+  if (min < rangeLo) add(at(min), at(rangeLo), belowLevel);
+  if (hasLowBound) add(at(rangeLo), at(rangeLo + edge), lowLevel);
+  add(at(hasLowBound ? rangeLo + edge : rangeLo), at(rangeHi - edge), "ok");
+  add(at(rangeHi - edge), at(rangeHi), highLevel);
+  if (max > rangeHi) add(at(rangeHi), at(max), aboveLevel);
+
+  // Only bounds the axis overran: when a bound *is* the end of the bar it's
+  // already labelled there, and a tick on top of it is noise.
+  const marks = [];
+  if (max > rangeHi) marks.push({ value: rangeHi, at: at(rangeHi), kind: "high" });
+  if (hasLowBound && min < rangeLo) marks.push({ value: rangeLo, at: at(rangeLo), kind: "low" });
+
+  return { min, max, pos: at(value), zones, marks, extended: min < rangeLo || max > rangeHi };
 }
 
 /** Is an out-of-range direction the good one? Used only for colour. */
