@@ -215,6 +215,26 @@ export default function LabsTab() {
     }).filter(s => s.rows.length || s.studies.length);
   }, [markerRows, pathology]);
 
+  /**
+   * Stat cards for the pinned systems. The headline is the first of the
+   * system's declared headline markers that has data; if none do, the first
+   * flagged marker in the system, then simply its first marker — a card with
+   * a stand-in number beats a blank card, and a system with no data at all
+   * gets no card.
+   */
+  const pinnedStats = useMemo(() => {
+    return SYSTEMS.filter(s => s.pinned).map(s => {
+      const rows = markerRows.filter(r => systemsFor(r.marker).some(x => x.key === s.key));
+      if (!rows.length) return null;
+      const row =
+        (s.headline || []).map(k => rows.find(r => r.marker === k)).find(Boolean) ||
+        rows.find(r => r.latest.flag && r.latest.flag !== "normal") ||
+        rows[0];
+      const flagged = rows.filter(r => r.latest.flag && r.latest.flag !== "normal").length;
+      return { key: s.key, name: s.name, short: s.short, row, flagged };
+    }).filter(Boolean);
+  }, [markerRows]);
+
   const filteredMarkers = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return markerRows;
@@ -523,6 +543,36 @@ export default function LabsTab() {
             <div className="labs-summary-value">{latestFlagged.length}</div>
             <div className="labs-summary-sub">on the latest draw</div>
           </div>
+        </div>
+      )}
+
+      {/* The owner's core areas, pinned. Each card leads with its system's
+          headline marker — the number you'd check first — and taps through to
+          the full system card. */}
+      {pinnedStats.length > 0 && (
+        <div className="labs-syscards">
+          {pinnedStats.map(s => (
+            <button
+              key={s.key}
+              className="labs-syscard"
+              onClick={() => { setView("systems"); setExpanded(`sys:${s.key}`); }}
+            >
+              <span className="lsc-head">
+                <span className="lsc-label">{s.short || s.name}</span>
+                {s.flagged > 0 && <span className="labs-panel-flagged">{s.flagged} flagged</span>}
+              </span>
+              <span className={"lsc-value" + flagClass(s.row.latest.flag, s.row.marker)}>
+                {s.row.latest.value != null ? fmtValue(s.row.latest.value) : (s.row.latest.value_text || "–")}
+                <span className="lsc-unit"> {s.row.latest.unit || ""}</span>
+              </span>
+              <span className="lsc-sub">
+                {s.row.name}
+                {s.row.delta != null && (
+                  <span className="lsc-delta"> · {s.row.delta > 0 ? "+" : ""}{fmtValue(s.row.delta)}</span>
+                )}
+              </span>
+            </button>
+          ))}
         </div>
       )}
 
@@ -1173,6 +1223,19 @@ export const LAB_STYLES = `
   .labs-panel-flagged { background: #f8ddd9; color: #a5342a; padding: 2px 8px; border-radius: 999px; font-weight: 600; }
   .labs-panel-body { padding: 0 16px 14px; }
   .labs-panel-note { font-family: 'Inter', sans-serif; font-size: 12.6px; color: var(--text-faint); line-height: 1.55; padding-bottom: 10px; }
+
+  /* Pinned system stat cards. Same family as the summary tiles above them,
+     one size down — these are shortcuts, not the headline of the page. */
+  .labs-syscards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 14px; }
+  .labs-syscard { min-width: 0; text-align: left; cursor: pointer; background: var(--panel); border: 1px solid var(--border); border-radius: 16px; padding: 11px 13px; box-shadow: 0 1px 2px rgba(20, 22, 27, 0.05); display: flex; flex-direction: column; gap: 3px; }
+  .lsc-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+  .lsc-label { font-family: 'Inter', sans-serif; font-size: 12.2px; font-weight: 600; letter-spacing: 0.01em; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .lsc-value { font-family: 'Inter', sans-serif; font-size: 21px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.15; color: var(--text); }
+  .lsc-value.lab-flag-off { color: #a5342a; }
+  .lsc-value.lab-flag-ok { color: #2b6e1e; }
+  .lsc-unit { font-size: 12px; font-weight: 600; color: var(--text-faint); letter-spacing: 0; }
+  .lsc-sub { font-family: 'Inter', sans-serif; font-size: 11.8px; color: var(--text-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .lsc-delta { color: var(--text-dim); }
 
   /* Studies attached to a system card — a quiet strip under the markers. */
   .labs-sys-studies { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 10px; }

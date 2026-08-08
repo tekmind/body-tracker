@@ -92,6 +92,12 @@ before you save.
   out-of-range values in red. Tap any marker name for its trend.
 - **By marker** — one row per marker with its latest value and the move since
   the previous draw. Search it when you want one number.
+- **Pinned system cards** — under the summary tiles, one stat card per pinned
+  system (Crohn's / IBD, Hormones, Vitamins, Metabolic), each leading with its
+  `headline` marker — the number the owner checks first: calprotectin, total
+  testosterone, vitamin D, glucose. Tapping a card opens that system expanded.
+  Which systems are pinned and what they lead with is data on the `SYSTEMS`
+  entries (`pinned`, `headline`), not layout code.
 - **By system** — the same markers regrouped by body system (Crohn's / IBD,
   Inflammation, Hormones, …) with each system's flagged count and its
   narrative studies. A marker appears in every system it informs.
