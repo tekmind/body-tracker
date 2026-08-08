@@ -388,6 +388,148 @@ export function systemsFor(markerKey) {
   return SYSTEMS.filter(s => s.keys.includes(k) || (s.patterns || []).some(p => p.test(k)));
 }
 
+// ---------------------------------------------------------------------------
+// Plain-language notes, written for the person whose blood this is.
+//
+// Deliberately GENERAL, not personal. `what` is what the test measures and
+// `moves` is what is generally known to shift it — the same things a decent
+// patient handout says. Neither reads this person's values, and nothing here
+// says what to do about a particular number: that depends on symptoms, the
+// infusion schedule and what the GI is thinking, so it belongs in a
+// conversation, not baked into the app where it would look permanent and
+// authoritative.
+//
+// Covers the markers on the pinned systems. Anything without an entry simply
+// shows no note — an absent explanation beats a vague one.
+// ---------------------------------------------------------------------------
+const MARKER_NOTES = {
+  calprotectin: {
+    what: "A protein shed by white blood cells into the gut wall. It measures inflammation in the intestine itself, not the whole body — which is why it moves in IBD while blood markers can stay quiet.",
+    moves: "Tracks intestinal disease activity. Also rises with NSAIDs (ibuprofen, naproxen) and gut infections, which is why a stool pathogen panel is usually run alongside it.",
+  },
+  crp: {
+    what: "An acute-phase protein made by the liver — a general, whole-body signal that something inflammatory is going on. It doesn't say where.",
+    moves: "Rises with infection, injury and active inflammatory disease; falls as they settle. Can stay normal in IBD that is confined to the gut lining.",
+  },
+  crp_hs: {
+    what: "The same protein as CRP, measured with a more sensitive assay so it can resolve the low end. Used for cardiovascular risk, where small differences matter.",
+    moves: "Same drivers as CRP. Any current infection makes a reading uninterpretable for risk purposes.",
+  },
+  esr: {
+    what: "How fast red cells settle in a tube — an old, indirect measure of inflammation. Slower to rise and slower to fall than CRP.",
+    moves: "Inflammation, anaemia and age all push it up. It lags real change by weeks, so it's read as a trend rather than a snapshot.",
+  },
+  elastase: {
+    what: "An enzyme the pancreas makes for digestion, measured in stool. It tests whether the pancreas is producing enough — low means it isn't.",
+    moves: "Falls with pancreatic insufficiency. A high result effectively rules that out as a cause of malabsorption.",
+  },
+  infliximab_level: {
+    what: "How much infliximab is actually circulating in your blood at the point it's drawn — usually just before the next infusion, when it's at its lowest.",
+    moves: "Dose and interval, body weight, and how fast your body clears it. Low albumin and high inflammation both speed up clearance, so a flare can eat the drug.",
+  },
+  infliximab_ab: {
+    what: "Antibodies your immune system may have made against infliximab. They bind the drug and clear it faster, which is one way a biologic stops working.",
+    moves: "More likely with gaps in dosing. Concurrent immunomodulators reduce the chance of forming them.",
+  },
+  ferritin: {
+    what: "Your stored iron. The best single measure of iron reserves — but it's also an acute-phase reactant, so inflammation inflates it.",
+    moves: "Falls with iron loss or poor absorption, rises with iron repletion and with inflammation. In IBD it can look falsely reassuring during a flare.",
+  },
+  iron: {
+    what: "Iron circulating in the blood right now. A snapshot, not a store — it swings through the day and with recent meals.",
+    moves: "Diet, absorption, blood loss and supplements or infusions. Reads highest in the morning.",
+  },
+  tibc: {
+    what: "How much capacity your blood has to carry iron — effectively how many empty seats there are on the transport protein.",
+    moves: "Rises when iron stores are low (the body makes more carrier), falls when stores are full. High TIBC with low saturation is the classic iron-deficiency pattern.",
+  },
+  iron_saturation: {
+    what: "What percentage of your iron-carrying capacity is actually occupied. Often the most informative number in an iron panel.",
+    moves: "Same drivers as iron and TIBC. Low saturation with normal ferritin can still mean functional iron deficiency when inflammation is present.",
+  },
+  vitamin_d: {
+    what: "The storage form of vitamin D, which is what reflects your overall status. It matters for bone, calcium handling and immune function.",
+    moves: "Sunlight, supplementation and body fat. Fat malabsorption — common in Crohn's involving the small intestine — reduces uptake of it and the other fat-soluble vitamins.",
+  },
+  vitamin_b12: {
+    what: "A vitamin absorbed in the terminal ileum, the very end of the small intestine. It's needed for red cells and nerve function.",
+    moves: "Dietary intake, and absorption in that specific stretch of bowel — which is why ileal Crohn's or ileal resection makes deficiency likely and injections are often used to bypass the gut entirely.",
+  },
+  folate: {
+    what: "A B vitamin used for making DNA and red blood cells. Absorbed mainly in the upper small intestine.",
+    moves: "Diet (leafy greens, legumes, fortified grains) and absorption. Some medications — methotrexate and sulfasalazine among them — interfere with it.",
+  },
+  vitamin_a: { what: "A fat-soluble vitamin for vision, skin and immune function.", moves: "Diet and fat absorption. Both deficiency and excess cause problems, so it is not a supplement to take casually." },
+  vitamin_b1: { what: "Thiamine, needed to turn carbohydrate into energy — nerves and heart muscle depend on it.", moves: "Diet, alcohol intake and absorption." },
+  vitamin_b2: { what: "Riboflavin, used across energy metabolism.", moves: "Diet and absorption; deficiency is uncommon on its own." },
+  vitamin_b3: { what: "Niacin, used across energy metabolism and cholesterol handling.", moves: "Diet and absorption." },
+  vitamin_b6: { what: "A B vitamin for protein metabolism and neurotransmitters.", moves: "Diet and supplements. Notably, sustained high intake from supplements can itself cause nerve symptoms — this is one where more is not better." },
+  vitamin_k: { what: "A fat-soluble vitamin needed for blood clotting and bone.", moves: "Diet (greens), gut bacteria, and fat absorption. Antibiotics and malabsorption both reduce it." },
+  albumin: {
+    what: "The main protein in blood, made by the liver. It doubles as a rough marker of nutrition and of ongoing inflammation.",
+    moves: "Falls with inflammation, protein loss through an inflamed gut, and liver disease. A drift down during a flare is common.",
+  },
+  hemoglobin: {
+    what: "The oxygen-carrying protein in red blood cells. Low is anaemia.",
+    moves: "Iron, B12 and folate availability; blood loss; and inflammation, which blunts red cell production independently of iron.",
+  },
+  hematocrit: { what: "The share of your blood volume made up of red cells — moves with haemoglobin.", moves: "Same as haemoglobin, plus hydration: dehydration concentrates it and reads high." },
+  wbc: { what: "Total white blood cells — the immune system's headcount.", moves: "Infection, inflammation and steroids push it up; some immunosuppressants push it down, which is part of why it's monitored on biologic therapy." },
+  platelets: { what: "Cell fragments that form clots. They also behave as an acute-phase reactant.", moves: "Rise with inflammation, iron deficiency and bleeding; fall with some medications and liver disease." },
+  testosterone_total: {
+    what: "All the testosterone in your blood, most of it bound to proteins and not directly usable. It's the standard screening number.",
+    moves: "Sleep, body composition, chronic illness and inflammation. Draw timing matters — levels peak in the morning, so comparing an afternoon draw to a morning one is not comparing like with like.",
+  },
+  testosterone_free: { what: "The small unbound fraction that can actually enter cells — often more informative than total when SHBG is unusual.", moves: "Total testosterone and SHBG together. Anything that changes SHBG changes this without total moving." },
+  testosterone_bioavailable: { what: "Free testosterone plus the loosely albumin-bound portion — the share realistically available to tissues.", moves: "Same as free testosterone." },
+  shbg: { what: "The protein that binds testosterone and controls how much stays free.", moves: "Rises with thyroid hormone, liver disease and age; falls with insulin resistance and obesity. It's the usual explanation when total and free testosterone disagree." },
+  estradiol: { what: "The main estrogen. Men make it too, largely by converting testosterone, and it matters for bone and libido.", moves: "Testosterone levels and body fat, since fat tissue does the conversion." },
+  estrogen_total: { what: "All estrogens together rather than estradiol alone — a broader, less specific measure.", moves: "Same drivers as estradiol." },
+  lh: { what: "A pituitary hormone that tells the testes to make testosterone. It says whether the signal to produce is being sent.", moves: "Rises when the testes are underperforming and the brain pushes harder; suppressed by external testosterone. Reading it alongside testosterone is what separates a testicular cause from a pituitary one." },
+  fsh: { what: "The pituitary hormone governing sperm production, read alongside LH.", moves: "Same axis as LH." },
+  prolactin: { what: "A pituitary hormone. When high, it suppresses the testosterone axis, which is why it's checked in a low-testosterone workup.", moves: "Stress, sleep, certain medications, and pituitary conditions. A single mildly high reading is usually repeated before it means anything." },
+  tsh: { what: "The pituitary's instruction to the thyroid — the first-line thyroid screen. It moves opposite to thyroid output: high TSH means the thyroid is underperforming.", moves: "Thyroid function, some medications, and illness." },
+  psa: { what: "A protein made by the prostate. Used for prostate screening.", moves: "Prostate size, age, inflammation, infection, and recent ejaculation or cycling — several benign things raise it, which is why trend matters more than one value." },
+  psa_free: { what: "The unbound share of PSA, measured to help interpret a raised total.", moves: "Read as a ratio against total rather than alone." },
+  psa_free_pct: { what: "Free PSA as a percentage of total. A higher percentage points away from cancer and toward benign enlargement.", moves: "Interpreted together with total PSA." },
+  glucose: {
+    what: "Blood sugar at the moment of the draw. A fasting value and a random one mean different things and shouldn't be compared.",
+    moves: "What and when you last ate, illness, steroids and insulin resistance. Prednisone in particular raises it substantially.",
+  },
+  hba1c: {
+    what: "The share of haemoglobin with sugar attached — an average of roughly the last three months, unaffected by what you ate this morning.",
+    moves: "Average blood sugar over that window. Anaemia and anything that shortens red cell lifespan can distort it, which matters if iron status is unstable.",
+  },
+  ldl: { what: "The cholesterol fraction that deposits in artery walls — the main lipid target for cardiovascular risk.", moves: "Saturated fat intake, genetics, thyroid function and medication." },
+  hdl: { what: "The fraction that carries cholesterol back to the liver. Here, higher is the good direction.", moves: "Exercise, alcohol and genetics; falls with inflammation." },
+  cholesterol_total: { what: "All cholesterol fractions added together — too blunt on its own, which is why the split matters.", moves: "The same drivers as its components." },
+  triglycerides: { what: "The main circulating fat, and the lipid most sensitive to recent food.", moves: "Alcohol, refined carbohydrate and fasting state. A non-fasting draw reads high." },
+  chol_hdl_ratio: { what: "Total cholesterol divided by HDL — a summary of the balance between the two.", moves: "Whatever moves either number." },
+  non_hdl: { what: "Everything except HDL — all the artery-depositing fractions in one number. Useful when triglycerides are high and calculated LDL gets unreliable.", moves: "The same drivers as LDL and triglycerides." },
+  protein_total: { what: "Albumin and globulin added together — the total protein circulating in blood.", moves: "Nutrition, liver function, inflammation and hydration. Read alongside albumin, since the two move for different reasons." },
+  prometheus_anser_ifx: { what: "The lab's combined report on infliximab: the drug level and whether antibodies to it were found, in one interpretive result.", moves: "The same things that move the individual level and antibody numbers." },
+};
+
+// Families where one note serves every member: a GI pathogen panel runs a
+// dozen organisms that all answer the same question, and writing twelve
+// near-identical entries would be worse, not better.
+const NOTE_PATTERNS = [
+  {
+    test: /campylobacter|salmonella|shigella|giardia|entamoeba|norovirus|rotavirus|adenovirus|vibrio|yersinia|clostridium|_coli_|shiga/,
+    note: {
+      what: "One organism on a stool pathogen panel. The panel asks a single question: is an infection causing these symptoms, rather than the underlying disease?",
+      moves: "Not something you influence — it's detected or it isn't. It matters most when gut inflammation rises, because ruling infection out is what points the finger back at disease activity.",
+    },
+  },
+];
+
+/** The plain-language note for a marker, or null if none is written. */
+export function markerNote(markerKey) {
+  const k = String(markerKey || "");
+  if (MARKER_NOTES[k]) return MARKER_NOTES[k];
+  return NOTE_PATTERNS.find(p => p.test.test(k))?.note || null;
+}
+
 /** Words labs sprinkle on test names that carry no identity. */
 const NOISE = new Set([
   "serum", "plasma", "blood", "level", "levels", "test", "calc", "calculated",
