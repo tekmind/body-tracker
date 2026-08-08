@@ -15,7 +15,7 @@
 // No browser here — this is a pure module, and the whole point is that it can
 // be checked without one.
 
-import { resolveMarker } from "../src/labMarkers.js";
+import { resolveMarker, systemsFor } from "../src/labMarkers.js";
 
 let failed = 0;
 function check(name, fn) {
@@ -181,6 +181,41 @@ check("panel context changes nothing on a blood panel", () => {
 check("no panel context keeps the old behavior", () => {
   const m = resolveMarker("Glucose");
   return m.key === "glucose" ? null : `got "${m.key}"`;
+});
+
+// Body systems: a marker belongs to every system it informs, not just one.
+const sys = (k) => systemsFor(k).map(s => s.key).sort().join(",");
+check("ferritin is iron AND inflammation AND IBD", () => {
+  const got = sys("ferritin");
+  for (const want of ["ibd", "inflammation", "vitamins"]) if (!got.includes(want)) return `missing ${want}: ${got}`;
+  return null;
+});
+check("calprotectin sits in IBD and inflammation", () => {
+  const got = sys("calprotectin");
+  return got.includes("ibd") && got.includes("inflammation") ? null : got;
+});
+check("a hepatitis slug pattern-matches into screening", () =>
+  sys("hepatitis_b_surface_ab_immunity_qn").includes("screening") ? null : sys("hepatitis_b_surface_ab_immunity_qn"));
+check("a GI pathogen slug pattern-matches into IBD", () =>
+  sys("giardia_lamblia").includes("ibd") ? null : sys("giardia_lamblia"));
+check("urine markers land in screening", () =>
+  sys("urine_glucose").includes("screening") ? null : sys("urine_glucose"));
+check("a future vitamin joins vitamins by pattern", () =>
+  sys("vitamin_e").includes("vitamins") ? null : sys("vitamin_e"));
+check("an unrelated slug belongs to no system", () => {
+  const got = systemsFor("some_unknown_test");
+  return got.length === 0 ? null : got.map(s => s.key).join(",");
+});
+// Labs rename the same test between draws; both spellings must land on the
+// canonical key so the IBD monitoring trends read as one line each.
+check("both labs' infliximab levels share a key", () => {
+  const a = resolveMarker("INFLIXIMAB LEVEL, IBD").key;
+  const b = resolveMarker("Serum infliximab (IFX) concentration").key;
+  return a === b && a === "infliximab_level" ? null : `${a} vs ${b}`;
+});
+check("calprotectin is canonical, not a slug", () => {
+  const m = resolveMarker("Calprotectin, Stool - QDx");
+  return m.key === "calprotectin" && m.known ? null : m.key;
 });
 
 console.log(failed ? `\n${failed} problem(s)` : "\nall good");

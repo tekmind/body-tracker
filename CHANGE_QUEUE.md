@@ -17,13 +17,14 @@ work through the queue.
   on a narrative. The four studies in there now were inserted by a script.
   Needs a narrative-reading endpoint plus its own review sheet — worth weighing
   against how rarely one of these arrives.
-- **Body-systems layer over the lab data** — group markers by the systems the
-  owner thinks in (Crohn's/IBD, inflammation, hormones, vitamins, metabolic,
-  screening/annual …) so each area can be read and interrogated as a unit.
-  Markers belong to several systems at once (ferritin is iron *and*
-  inflammation *and* IBD-monitoring). Taxonomy being designed 8/7/26.
 
 ## Done
+
+- **Body-systems view** — 8/7/26. SYSTEMS map in labMarkers.js (many-to-many,
+  exact keys + slug patterns), a fourth "By system" toggle on the Labs tab,
+  studies attached to their systems, and canonical markers for the IBD
+  monitoring set (calprotectin, elastase, infliximab level/ATI) so both labs'
+  renamings land on one trend each. Existing rows re-keyed by script.
 
 - **Urinalysis markers** — 8/7/26. `resolveMarker` now takes the panel name;
   on a urine panel, Glucose/Protein/Bilirubin/Leukocytes resolve to

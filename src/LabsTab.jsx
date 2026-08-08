@@ -10,6 +10,7 @@ import { parseDate, formatMDY, today as todayDate } from "./dateUtils.js";
 import {
   resolveMarker, markerDisplayName, markerInfo, flagFor, isFavorable,
   sortResults, fmtValue, fmtRange, fmtBounds, MARKER_CATEGORIES,
+  SYSTEMS, systemsFor,
 } from "./labMarkers.js";
 import { prepareLabFile, ACCEPTED_FILE_TYPES } from "./labFile.js";
 import * as labsApi from "./labsApi.js";
@@ -198,6 +199,21 @@ export default function LabsTab() {
     };
     return rows.sort((a, b) => rank(a.category) - rank(b.category) || a.name.localeCompare(b.name));
   }, [results, panelDate]);
+
+  /**
+   * One card per body system: its markers (latest reading each, reusing the
+   * marker rows so the numbers agree everywhere), its flagged count, and any
+   * narrative studies it claims. Markers appear in several cards on purpose —
+   * ferritin is iron and inflammation and IBD-monitoring at once.
+   */
+  const systemCards = useMemo(() => {
+    return SYSTEMS.map(s => {
+      const rows = markerRows.filter(r => systemsFor(r.marker).some(x => x.key === s.key));
+      const flagged = rows.filter(r => r.latest.flag && r.latest.flag !== "normal").length;
+      const studies = s.studies ? (pathology || []).filter(s.studies) : [];
+      return { ...s, rows, flagged, studies };
+    }).filter(s => s.rows.length || s.studies.length);
+  }, [markerRows, pathology]);
 
   const filteredMarkers = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -532,6 +548,9 @@ export default function LabsTab() {
             <button className={"toggle-btn" + (activeView === "markers" ? " active" : "")} onClick={() => setView("markers")}>
               By marker
             </button>
+            <button className={"toggle-btn" + (activeView === "systems" ? " active" : "")} onClick={() => setView("systems")}>
+              By system
+            </button>
             {/* "Studies", not "Reports": the summary tile above already counts
                 blood panels under that word, and two different meanings of it
                 on one screen reads as a bug. */}
@@ -579,6 +598,67 @@ export default function LabsTab() {
                           {p.file_name && <span className="labs-file"><FileText size={11} /> {p.file_name}</span>}
                           <DeleteBtn id={`panel:${p.id}`} onDelete={() => removePanel(p.id)} size={13} />
                         </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ) : activeView === "systems" ? (
+            <div className="labs-panels">
+              {systemCards.map(s => {
+                const open = expanded === `sys:${s.key}`;
+                return (
+                  <div className="panel labs-panel" key={s.key}>
+                    <button className="labs-panel-head" onClick={() => setExpanded(open ? null : `sys:${s.key}`)}>
+                      {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                      <span className="labs-panel-name">
+                        {s.name}
+                        <span className="labs-panel-lab"> · {s.blurb}</span>
+                      </span>
+                      <span className="labs-panel-counts">
+                        {s.rows.length} marker{s.rows.length === 1 ? "" : "s"}
+                        {s.flagged > 0 && <span className="labs-panel-flagged">{s.flagged} flagged</span>}
+                      </span>
+                    </button>
+
+                    {open && (
+                      <div className="labs-panel-body">
+                        <div className="labs-marker-list">
+                          {s.rows.map(row => (
+                            <button key={row.marker} className="labs-marker-row" onClick={() => setTrendKey(row.marker)}>
+                              <span className="lmr-main">
+                                <span className="lmr-name">{row.name}</span>
+                                <span className="lmr-meta">
+                                  {row.count} reading{row.count === 1 ? "" : "s"} · latest {row.latest.value != null ? "" : "(text) "}
+                                  {panels.find(p => p.id === row.latest.panel_id)?.date || ""}
+                                </span>
+                              </span>
+                              <span className={"lmr-value" + flagClass(row.latest.flag, row.marker)}>
+                                {row.latest.value != null ? fmtValue(row.latest.value) : (row.latest.value_text || "–")}
+                                <span className="lmr-unit"> {row.latest.unit || ""}</span>
+                              </span>
+                              <span className={"lmr-delta" + (row.delta == null ? " lmr-delta-none" : "")}>
+                                {row.delta == null ? "–" : `${row.delta > 0 ? "+" : ""}${fmtValue(row.delta)}`}
+                              </span>
+                              <TrendingUp size={13} className="lmr-chev" />
+                            </button>
+                          ))}
+                        </div>
+
+                        {s.studies.length > 0 && (
+                          <div className="labs-sys-studies">
+                            {s.studies.map(st => (
+                              <button
+                                key={st.id}
+                                className="labs-sys-study"
+                                onClick={() => { setView("pathology"); setExpanded(st.id); }}
+                              >
+                                <FileText size={11} /> {st.date} · {st.report_name}
+                              </button>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -1093,6 +1173,10 @@ export const LAB_STYLES = `
   .labs-panel-flagged { background: #f8ddd9; color: #a5342a; padding: 2px 8px; border-radius: 999px; font-weight: 600; }
   .labs-panel-body { padding: 0 16px 14px; }
   .labs-panel-note { font-family: 'Inter', sans-serif; font-size: 12.6px; color: var(--text-faint); line-height: 1.55; padding-bottom: 10px; }
+
+  /* Studies attached to a system card — a quiet strip under the markers. */
+  .labs-sys-studies { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 10px; }
+  .labs-sys-study { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line, #e2e1db); background: transparent; border-radius: 999px; padding: 5px 12px; font-family: 'Inter', sans-serif; font-size: 12.4px; color: var(--text-dim); cursor: pointer; }
 
   /* Pathology is prose, so it gets reading measure and line height rather than
      the tight numeric grid the result table uses. */

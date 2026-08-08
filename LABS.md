@@ -92,6 +92,9 @@ before you save.
   out-of-range values in red. Tap any marker name for its trend.
 - **By marker** — one row per marker with its latest value and the move since
   the previous draw. Search it when you want one number.
+- **By system** — the same markers regrouped by body system (Crohn's / IBD,
+  Inflammation, Hormones, …) with each system's flagged count and its
+  narrative studies. A marker appears in every system it informs.
 - **Studies** — biopsy, histology and imaging reports, newest first. Only
   appears when there is at least one.
 - **Trend sheet** — every reading of one marker over time, with the reference
@@ -140,6 +143,27 @@ One thing to know when reading imaging from a portal: the PDF is sometimes only
 the cover sheet, with no radiologist's report inside it at all. Those are stored
 with whatever the provider's own note says and a comment saying so, rather than
 filed as though the report were there.
+
+## Body systems
+
+Categories answer "what kind of test is this"; systems answer "what part of my
+body is this about" — which is the level the owner actually reasons at when
+asking how a disease, a deficiency, or a therapy is going.
+
+The map lives in `SYSTEMS` in [`src/labMarkers.js`](src/labMarkers.js) and is
+deliberately many-to-many: ferritin is an iron store, an acute-phase reactant,
+and an IBD-monitoring number all at once, and hiding any of those readings
+would mislead. Each system lists exact marker keys, plus regex `patterns` so
+families of slugs land correctly no matter what a lab calls them — any
+`hepatitis_*` serology joins Screening, any `vitamin_*` joins Vitamins, and a
+stool pathogen joins Crohn's / IBD (they're how infection gets excluded when
+calprotectin moves). A system can also claim narrative studies: the colon
+biopsy sits in the IBD card, imaging in Screening.
+
+The IBD monitoring set has canonical markers of its own — `calprotectin`,
+`elastase`, `infliximab_level`, `infliximab_ab` — because two labs already
+print those four names six different ways, and a renamed slug would split the
+single trend that matters most in this app.
 
 ## Two measurements, one name
 

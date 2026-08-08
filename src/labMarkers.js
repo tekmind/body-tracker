@@ -233,6 +233,22 @@ const MARKERS = [
   { key: "crp", name: "C-reactive protein", unit: "mg/L", category: "Inflammation", higher: "bad",
     aliases: ["c reactive protein", "crp"] },
   { key: "homocysteine", name: "Homocysteine", unit: "umol/L", category: "Inflammation", higher: "bad" },
+  // Gut-specific inflammation — the marker that turns before CRP does in IBD.
+  // Canonical rather than a slug because labs decorate the name freely
+  // ("Calprotectin, Stool - QDx") and a renamed slug would split the one
+  // trend that matters most here.
+  { key: "calprotectin", name: "Fecal calprotectin", unit: "mg/kg", category: "Inflammation", higher: "bad",
+    aliases: ["calprotectin stool", "calprotectin stool qdx", "fecal calprotectin", "calprotectin fecal"] },
+  { key: "elastase", name: "Pancreatic elastase (stool)", unit: "mcg/g", category: "Other", higher: "good",
+    aliases: ["pancreaticelastase elisa stool", "pancreatic elastase", "elastase stool", "elastase fecal"] },
+  // Infliximab therapeutic monitoring. Two labs already print these four ways
+  // ("INFLIXIMAB LEVEL, IBD", "Serum infliximab (IFX) concentration") — the
+  // aliases are those names as normalize() sees them ("level" and "serum" are
+  // noise words and vanish).
+  { key: "infliximab_level", name: "Infliximab level", unit: "ug/mL", category: "Other",
+    aliases: ["infliximab ibd", "infliximab ifx concentration", "infliximab concentration"] },
+  { key: "infliximab_ab", name: "Infliximab antibodies (ATI)", unit: "U/mL", category: "Other",
+    aliases: ["infliximab ab ibd", "antibodies to infliximab ati concentration", "infliximab ab", "infliximab antibody"] },
   { key: "esr", name: "ESR", unit: "mm/hr", category: "Inflammation", higher: "bad",
     aliases: ["sed rate", "sedimentation rate"] },
 ];
@@ -270,6 +286,101 @@ const URINE_MARKERS = [
 /** Does this panel's title mean the sample was urine? */
 export function isUrinePanel(panelName) {
   return /urinalysis|urine|\bua\b/i.test(String(panelName || ""));
+}
+
+// ---------------------------------------------------------------------------
+// Body systems — the level the owner actually thinks at.
+//
+// Categories answer "what kind of test is this"; systems answer "what part of
+// my body is this about". A marker belongs to SEVERAL systems on purpose:
+// ferritin is an iron store, an acute-phase reactant, and an IBD-monitoring
+// number all at once, and hiding any of those readings would mislead.
+//
+// `keys` are exact marker keys (canonical or slug). `patterns` catch families
+// of slugs that arrive named differently every time — a hepatitis serology or
+// a GI pathogen panel row keeps landing in the right system no matter what
+// the lab called it. `studies` picks which narrative reports belong here.
+// ---------------------------------------------------------------------------
+export const SYSTEMS = [
+  {
+    key: "ibd", name: "Crohn's / IBD",
+    blurb: "Gut inflammation, biologic monitoring, and the deficiencies Crohn's drives",
+    keys: [
+      "calprotectin", "elastase", "infliximab_level", "infliximab_ab", "prometheus_anser_ifx",
+      "crp", "crp_hs", "esr", "ferritin", "iron", "iron_saturation", "tibc",
+      "vitamin_b12", "vitamin_d", "folate", "albumin", "hemoglobin", "hematocrit", "wbc", "platelets",
+    ],
+    // The flare workup: stool pathogens are how infection gets excluded when
+    // calprotectin moves.
+    patterns: [/campylobacter|salmonella|shigella|giardia|entamoeba|norovirus|rotavirus|adenovirus|vibrio|yersinia|clostridium|_coli_|shiga/],
+    studies: (s) => s.kind === "pathology",
+  },
+  {
+    key: "inflammation", name: "Inflammation",
+    blurb: "Systemic and gut-specific inflammatory markers",
+    keys: ["crp", "crp_hs", "esr", "calprotectin", "ferritin", "albumin", "platelets", "homocysteine"],
+  },
+  {
+    key: "hormones", name: "Hormones",
+    blurb: "Androgens, estrogens, pituitary, thyroid, prostate",
+    keys: [
+      "testosterone_total", "testosterone_free", "testosterone_bioavailable", "shbg",
+      "estradiol", "estrogen_total", "fsh", "lh", "prolactin", "tsh", "t4_free",
+      "psa", "psa_free", "psa_free_pct",
+    ],
+  },
+  {
+    key: "vitamins", name: "Vitamins & nutrition",
+    blurb: "Stores and absorption — where Crohn's quietly taxes you",
+    keys: [
+      "folate", "iron", "ferritin", "tibc", "iron_saturation",
+      "magnesium", "zinc", "albumin", "protein_total",
+    ],
+    patterns: [/^vitamin_/],
+  },
+  {
+    key: "metabolic", name: "Metabolic & lipids",
+    blurb: "Glucose handling and cardiovascular lipids",
+    keys: [
+      "glucose", "hba1c", "insulin", "uric_acid",
+      "cholesterol_total", "ldl", "hdl", "non_hdl", "vldl", "triglycerides", "chol_hdl_ratio", "apob", "lpa",
+    ],
+  },
+  {
+    key: "blood", name: "Blood & marrow",
+    blurb: "Counts, indices, and the differential",
+    keys: [
+      "wbc", "rbc", "hemoglobin", "hematocrit", "platelets", "mcv", "mch", "mchc", "rdw", "mpv",
+      "neutrophils", "neutrophils_abs", "lymphocytes", "lymphocytes_abs",
+      "monocytes", "monocytes_abs", "eosinophils", "eosinophils_abs", "basophils", "basophils_abs",
+    ],
+  },
+  {
+    key: "organs", name: "Liver & kidney",
+    blurb: "Organ function and electrolytes",
+    keys: [
+      "alt", "ast", "alk_phos", "ggt", "bilirubin_total", "albumin", "globulin",
+      "albumin_globulin_ratio", "protein_total",
+      "creatinine", "egfr", "egfr_african_american", "bun", "bun_creatinine_ratio",
+      "sodium", "potassium", "chloride", "co2", "calcium",
+    ],
+  },
+  {
+    key: "screening", name: "Screening & safety",
+    blurb: "Serologies, TB, urinalysis — the biologic-safety and checkup set",
+    keys: [
+      "psa", "psa_free", "psa_free_pct", "culture_urine_routine", "index",
+      "nil", "mitogen_nil", "tb1_nil", "tb2_nil",
+    ],
+    patterns: [/^hepatitis_/, /^hiv_/, /^sars_/, /^urine_/, /^quantiferon/],
+    studies: (s) => s.kind === "imaging",
+  },
+];
+
+/** Every system a marker key belongs to. Unassigned keys return []. */
+export function systemsFor(markerKey) {
+  const k = String(markerKey || "");
+  return SYSTEMS.filter(s => s.keys.includes(k) || (s.patterns || []).some(p => p.test(k)));
 }
 
 /** Words labs sprinkle on test names that carry no identity. */
