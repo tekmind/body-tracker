@@ -184,6 +184,35 @@ stool pathogen panel — shares one note through `NOTE_PATTERNS` rather than
 twelve copies. A marker with no note simply shows none; an absent explanation
 beats a vague one.
 
+## Amber: in range, near the edge
+
+"In range" is a cliff, and a lab's range is a population rather than a target.
+B12 at 269 against 200–1100 is inside the range and in the bottom 8% of it,
+which is not the same news as 600. `borderlineFor` flags the outer fifth of
+the band — but only the end that is actually the bad one. High HDL and high
+eGFR are the good direction, so nearing that edge earns nothing; a marker with
+no declared direction has a window, and both edges count.
+
+That gives four states, and they order the lists: **out of range now** →
+**near the edge** (amber) → **was flagged once** → **fine**. Borderline
+outranks a historic flag deliberately — a number drifting toward the edge
+today is more actionable than one that recovered years ago.
+
+## Ranges the report didn't print
+
+The rule everywhere else is that a range comes from the report that printed
+it, and it still holds: a lab's own range always wins, and nothing here is
+written to `lab_results`. But a handful of markers arrive bare, and the
+alternative is a number the app can never call.
+
+Calprotectin is why `APP_REFERENCES` exists. It is the most important marker
+in this data and the portal prints it with no range at all, so 18.7 and 160
+read as an unremarkable line, reached no flag, and counted toward no system's
+badge. `effectiveRange` supplies a fallback **only** where the report gave
+none, and every use of one is labelled on screen — an "app reference" chip on
+the marker and a note saying plainly that the range isn't from the lab and
+where it came from.
+
 ## Body systems
 
 Categories answer "what kind of test is this"; systems answer "what part of my

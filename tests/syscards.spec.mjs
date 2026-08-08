@@ -27,7 +27,8 @@ const RESULTS = [
   row("r1", "p1", "calprotectin", "Calprotectin, Stool", 160, "mg/kg"),
   row("r2", "p2", "calprotectin", "Calprotectin, Stool", 18.7, "mg/kg"),
   row("r3", "p3", "vitamin_d", "VITAMIN D,25-OH", 26, "ng/mL", "low", { ref_low: 30, ref_high: 100 }),
-  row("r4", "p3", "testosterone_total", "TESTOSTERONE, TOTAL", 364, "ng/dL"),
+  // Bottom 13% of 250–1100: in range, but not the same news as 700.
+  row("r4", "p3", "testosterone_total", "TESTOSTERONE, TOTAL", 364, "ng/dL", null, { ref_low: 250, ref_high: 1100 }),
   row("r5", "p3", "glucose", "GLUCOSE", 129, "mg/dL", "high", { ref_low: 65, ref_high: 99 }),
   row("r6", "p3", "vitamin_b12", "VITAMIN B12", 525, "pg/mL"),
   row("r7", "p2", "vitamin_b12", "VITAMIN B12", 269, "pg/mL"),
@@ -96,14 +97,23 @@ async function main() {
   // half a reading.
   check("the Vitamins card prints vitamin D's range", /range 30 – 100/.test(find("Vitamins")), find("Vitamins").replace(/\n/g, " | "));
 
-  // Trend lines: every card with numeric history draws one, and a marker
-  // with reference bounds shades its in-range band.
+  // The chips carry a position bar, not a trend line — at this size "where in
+  // the range am I" is the thing worth two seconds, and the trend is one tap
+  // away on the system's own screen.
+  check("no trend lines on the chips", await page.locator(".labs-syscard svg.lw-spark").count() === 0);
+  const vitCard = cards.nth(all.findIndex(t => t.includes("Vitamins")));
+  check("the Vitamins chip draws a position bar", await vitCard.locator(".lsc-gauge").count() === 1);
+  check("a below-range vitamin D pins to the floor in red",
+    (await vitCard.locator(".lsc-gauge-dot").getAttribute("style") || "").includes("left: 0%")
+    && await vitCard.locator(".lsc-gauge-off").count() === 1);
+  // A one-sided "< 50" still has an axis, so calprotectin gets a bar too.
   const crohnCard = cards.nth(all.findIndex(t => t.includes("Crohn")));
-  check("the Crohn's card draws a sparkline", await crohnCard.locator("svg.lw-spark polyline").count() === 1);
-  check("the vitamin D sparkline shades its range band",
-    await cards.nth(all.findIndex(t => t.includes("Vitamins"))).locator("svg.lw-spark rect.lw-band").count() === 1);
-  check("the flagged hero's latest dot reads as out of range",
-    await cards.nth(all.findIndex(t => t.includes("Vitamins"))).locator("svg.lw-spark .lw-dot-off").count() === 1);
+  check("a one-sided range still draws a bar", await crohnCard.locator(".lsc-gauge").count() === 1);
+  check("calprotectin's 160 pins to the ceiling",
+    (await crohnCard.locator(".lsc-gauge-dot").getAttribute("style") || "").includes("left: 100%"));
+  // A text-valued marker has nothing to place on a bar.
+  check("a text result gets no bar",
+    await cards.nth(all.findIndex(t => t.includes("Inflammation"))).locator(".lsc-gauge").count() === 0);
 
   // The 80/20 grouping in By marker: what needs eyes sits at the top.
   await page.locator(".labs-view-toggle .toggle-btn", { hasText: "By marker" }).click();
@@ -152,6 +162,38 @@ async function main() {
   check("B12's note is B12's, not boilerplate", /ileum|ileal/i.test(await b12.innerText()), (await b12.innerText()).slice(0, 60));
 
   check("the screen carries the care-team caveat", /belongs with your care team/.test(zoom));
+
+  // Amber: in range, but hugging the end that isn't the good one. Total
+  // testosterone at 364 sits in the bottom 13% of 250–1100.
+  await page.locator(".labs-zoom-head button").click();
+  await page.waitForSelector(".labs-syscard", { timeout: 5000 });
+  await page.locator(".labs-syscard", { hasText: "Hormones" }).click();
+  await page.waitForSelector(".labs-zoom-card", { timeout: 5000 });
+  const tCard = page.locator(".labs-zoom-card", { hasText: "Testosterone, total" });
+  check("a bottom-of-range testosterone is badged near the edge", /low end of range/i.test(await tCard.innerText()), (await tCard.innerText()).slice(0, 70));
+  check("its value reads amber, not red", await tCard.locator(".lzc-value.lab-flag-edge").count() === 1);
+  check("its scale dot is amber", await tCard.locator(".lzc-dot-edge").count() === 1);
+  check("the verdict mentions the near-edge marker", /near the edge/i.test(await page.locator(".labs-zoom-verdict").innerText()));
+
+  // An app-supplied range must never masquerade as the lab's.
+  await page.locator(".labs-zoom-head button").click();
+  await page.waitForSelector(".labs-syscard", { timeout: 5000 });
+  await page.locator(".labs-syscard", { hasText: "Crohn" }).click();
+  await page.waitForSelector(".labs-zoom-card", { timeout: 5000 });
+  const calpro = page.locator(".labs-zoom-card", { hasText: "calprotectin" });
+  check("calprotectin flags against the app range", /out of range/.test(await calpro.innerText()));
+  check("the borrowed range is labelled as such", /app reference/i.test(await calpro.innerText()));
+  check("it says plainly the range isn't the lab's", /isn't from your lab/i.test(await calpro.innerText()));
+  // The app range has to reach the drawing, not just the text — the detail
+  // card read the raw row and so drew neither scale nor band for calprotectin
+  // while the note claimed a shaded range.
+  check("the app range drives the scale", await calpro.locator(".lzc-track").count() === 1);
+  check("its axis runs from zero to the bound",
+    (await calpro.locator(".lzc-ends").innerText()).replace(/\s+/g, " ").trim() === "0 50",
+    (await calpro.locator(".lzc-ends").innerText()).replace(/\s+/g, " "));
+  check("the trend shades the app range", await calpro.locator("svg.lw-spark rect.lw-band").count() === 1);
+  check("the verdict now counts calprotectin",
+    /calprotectin/i.test(await page.locator(".labs-zoom-verdict").innerText()));
 
   await page.locator(".labs-zoom-head button").click();
   await page.waitForSelector(".labs-syscard", { timeout: 5000 });

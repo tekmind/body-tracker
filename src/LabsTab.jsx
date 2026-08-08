@@ -10,7 +10,7 @@ import { parseDate, formatMDY, today as todayDate } from "./dateUtils.js";
 import {
   resolveMarker, markerDisplayName, markerInfo, flagFor, isFavorable,
   sortResults, fmtValue, fmtRange, fmtBounds, MARKER_CATEGORIES,
-  SYSTEMS, systemsFor, markerNote,
+  SYSTEMS, systemsFor, markerNote, effectiveRange, borderlineFor, gaugePosition,
 } from "./labMarkers.js";
 import { prepareLabFile, ACCEPTED_FILE_TYPES } from "./labFile.js";
 import * as labsApi from "./labsApi.js";
@@ -33,6 +33,16 @@ function isoToMDY(iso) {
 function flagClass(flag, markerKey) {
   if (!flag || flag === "normal") return "";
   return isFavorable(markerKey, flag) ? " lab-flag-ok" : " lab-flag-off";
+}
+
+/**
+ * The colour a marker row reads as. Amber sits between: inside the lab's
+ * range, but hugging the end of it that isn't the good one.
+ */
+function attentionClass(row) {
+  if (row.attention === "now") return " lab-flag-off";
+  if (row.attention === "borderline") return " lab-flag-edge";
+  return "";
 }
 
 /** A parsed or hand-entered report, before anything is saved. */
@@ -189,8 +199,27 @@ export default function LabsTab() {
       // unfavourable flag on the latest reading; "past" is a marker that has
       // been flagged before but recovered — worth a glance, not an alarm.
       // A favourable excursion (high HDL, high eGFR) is neither.
-      const unfavourable = (r) => r.flag && r.flag !== "normal" && !isFavorable(marker, r.flag);
-      const attention = unfavourable(latest) ? "now" : list.some(unfavourable) ? "past" : "ok";
+      // Where the report gave no range, fall back to the app's own so a
+      // marker like calprotectin can still be called. flagFor derives from
+      // whichever range applies; the lab's own flag still wins when it set one.
+      const flagOf = (r) => {
+        if (r.flag) return r.flag;
+        const er = effectiveRange(marker, r);
+        return er.fromLab ? null : flagFor(r.value, er.lo, er.hi);
+      };
+      const unfavourable = (r) => {
+        const f = flagOf(r);
+        return f && f !== "normal" && !isFavorable(marker, f);
+      };
+      const ref = effectiveRange(marker, latest);
+      const edge = borderlineFor(marker, latest.value, ref.lo, ref.hi);
+      // Out of range now > inside but hugging the bad edge > was out once >
+      // fine. Borderline outranks a historic flag: a number drifting toward
+      // the edge today is more actionable than one that recovered years ago.
+      const attention = unfavourable(latest) ? "now"
+        : edge ? "borderline"
+        : list.some(unfavourable) ? "past"
+        : "ok";
       rows.push({
         marker,
         name: markerDisplayName(marker, latest.name),
@@ -201,7 +230,12 @@ export default function LabsTab() {
         count: list.length,
         at: latest.at,
         attention,
-        range: fmtRange(latest.ref_low, latest.ref_high, latest.ref_text),
+        edge,
+        // The flag actually shown — derived from the app range when the
+        // report gave none, so the colour matches the verdict.
+        flag: flagOf(latest),
+        ref,
+        range: ref.text,
       });
     }
     const rank = (c) => {
@@ -220,9 +254,12 @@ export default function LabsTab() {
   const systemCards = useMemo(() => {
     return SYSTEMS.map(s => {
       const rows = markerRows.filter(r => systemsFor(r.marker).some(x => x.key === s.key));
-      const flagged = rows.filter(r => r.latest.flag && r.latest.flag !== "normal").length;
+      // Counts what the colours say: the same attention reckoning the rows
+      // use, so a badge never disagrees with the numbers under it.
+      const flagged = rows.filter(r => r.attention === "now").length;
+      const nearEdge = rows.filter(r => r.attention === "borderline").length;
       const studies = s.studies ? (pathology || []).filter(s.studies) : [];
-      return { ...s, rows, flagged, studies };
+      return { ...s, rows, flagged, nearEdge, studies };
     }).filter(s => s.rows.length || s.studies.length);
   }, [markerRows, pathology]);
 
@@ -244,12 +281,13 @@ export default function LabsTab() {
         rows.find(r => r.latest.flag && r.latest.flag !== "normal") ||
         rows[0];
       const extras = headlined.slice(1, 3);
-      const flagged = rows.filter(r => r.latest.flag && r.latest.flag !== "normal").length;
-      // The hero's numeric readings, oldest first — the card's trend line.
-      const pts = seriesFor(row.marker).map(p => ({ v: p.value }));
-      return { key: s.key, name: s.name, short: s.short, row, extras, flagged, pts };
+      // Counts what the colours say: the same attention reckoning the rows
+      // use, so a badge never disagrees with the numbers under it.
+      const flagged = rows.filter(r => r.attention === "now").length;
+      const nearEdge = rows.filter(r => r.attention === "borderline").length;
+      return { key: s.key, name: s.name, short: s.short, row, extras, flagged, nearEdge };
     }).filter(Boolean);
-  }, [markerRows, seriesFor]);
+  }, [markerRows]);
 
   const filteredMarkers = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -479,21 +517,25 @@ export default function LabsTab() {
         </span>
       </span>
       <span className="lmr-right">
-        <span className={"lmr-value" + flagClass(row.latest.flag, row.marker)}>
+        <span className={"lmr-value" + attentionClass(row)}>
           {row.latest.value != null ? fmtValue(row.latest.value) : (row.latest.value_text || "–")}
           <span className="lmr-unit"> {row.latest.unit || ""}</span>
         </span>
         {row.range && <span className="lmr-range">{row.range}</span>}
-        {/* Where inside the range the value sits — the track is the lab's
-            range, the dot is you. Out-of-range clamps to the edge in red. */}
-        {Number.isFinite(row.latest.ref_low) && Number.isFinite(row.latest.ref_high) && row.latest.value != null && (
-          <span className="lmr-gauge">
-            <span
-              className={"lmr-gauge-dot" + (row.attention === "now" ? " lmr-gauge-off" : "")}
-              style={{ left: `${Math.min(1, Math.max(0, (row.latest.value - row.latest.ref_low) / ((row.latest.ref_high - row.latest.ref_low) || 1))) * 100}%` }}
-            />
-          </span>
-        )}
+        {/* Where inside the range the value sits — the track is the range,
+            the dot is you. Out-of-range clamps to the edge in red. */}
+        {(() => {
+          const p = gaugePosition(row.latest.value, row.ref.lo, row.ref.hi);
+          if (p == null) return null;
+          return (
+            <span className="lmr-gauge">
+              <span
+                className={"lmr-gauge-dot" + (row.attention === "now" ? " lmr-gauge-off" : row.attention === "borderline" ? " lmr-gauge-edge" : "")}
+                style={{ left: `${p * 100}%` }}
+              />
+            </span>
+          );
+        })()}
       </span>
       <span className={"lmr-delta" + (row.delta == null ? " lmr-delta-none" : "")}>
         {row.delta == null ? "–" : `${row.delta > 0 ? "+" : ""}${fmtValue(row.delta)}`}
@@ -546,9 +588,10 @@ export default function LabsTab() {
   if (zoomSystem) {
     const s = systemCards.find(x => x.key === zoomSystem);
     if (!s) { setZoomSystem(null); return null; }
-    const rank = { now: 0, past: 1, ok: 2 };
+    const rank = { now: 0, borderline: 1, past: 2, ok: 3 };
     const ordered = [...s.rows].sort((a, b) => rank[a.attention] - rank[b.attention] || a.name.localeCompare(b.name));
     const needs = ordered.filter(r => r.attention === "now");
+    const edges = ordered.filter(r => r.attention === "borderline");
 
     return (
       <div className="labs-view">
@@ -563,21 +606,27 @@ export default function LabsTab() {
         </div>
 
         {/* The one-line answer to "how is this area doing?" before any rows. */}
-        <div className={"labs-zoom-verdict" + (needs.length ? " labs-zoom-verdict-off" : " labs-zoom-verdict-ok")}>
-          {needs.length === 0
-            ? <>Every marker in this area is inside its lab's range on the most recent draw it was measured.</>
-            : <>
-                {needs.length} marker{needs.length === 1 ? " is" : "s are"} outside range right now
-                {" — "}{needs.map(r => r.name).join(", ")}.
-              </>}
+        <div className={"labs-zoom-verdict" + (needs.length ? " labs-zoom-verdict-off" : edges.length ? " labs-zoom-verdict-edge" : " labs-zoom-verdict-ok")}>
+          {needs.length > 0 && (
+            <>{needs.length} marker{needs.length === 1 ? " is" : "s are"} outside range right now — {needs.map(r => r.name).join(", ")}.</>
+          )}
+          {needs.length > 0 && edges.length > 0 && " "}
+          {edges.length > 0 && (
+            <>{needs.length ? "Another " : ""}{edges.length} {edges.length === 1 ? "is" : "are"} inside the range but near the {edges.length === 1 ? "edge" : "edges"} — {edges.map(r => r.name).join(", ")}.</>
+          )}
+          {needs.length === 0 && edges.length === 0 && (
+            <>Every marker in this area is comfortably inside its range on the most recent draw it was measured.</>
+          )}
         </div>
 
         {ordered.map(row => {
           const note = markerNote(row.marker);
-          const lo = row.latest.ref_low, hi = row.latest.ref_high;
-          const pct = Number.isFinite(lo) && Number.isFinite(hi) && row.latest.value != null
-            ? Math.min(1, Math.max(0, (row.latest.value - lo) / ((hi - lo) || 1))) * 100
-            : null;
+          // The effective range, not the raw row — otherwise a marker whose
+          // range the app supplies (calprotectin) draws neither the scale nor
+          // the shaded band, and the note claiming a shaded band is a lie.
+          const lo = row.ref.lo, hi = row.ref.hi;
+          const p = gaugePosition(row.latest.value, lo, hi);
+          const pct = p == null ? null : p * 100;
           const pts = seriesFor(row.marker).map(p => ({ v: p.value }));
           return (
             <div className="panel labs-zoom-card" key={row.marker}>
@@ -585,9 +634,13 @@ export default function LabsTab() {
                 <div className="lzc-name">
                   {row.name}
                   {row.attention === "now" && <span className="labs-panel-flagged">out of range</span>}
+                  {row.attention === "borderline" && (
+                    <span className="lzc-edge">{row.edge === "low" ? "low end of range" : "high end of range"}</span>
+                  )}
                   {row.attention === "past" && <span className="lzc-past">was flagged</span>}
+                  {!row.ref.fromLab && <span className="lzc-appref">app reference</span>}
                 </div>
-                <div className={"lzc-value" + flagClass(row.latest.flag, row.marker)}>
+                <div className={"lzc-value" + attentionClass(row)}>
                   {row.latest.value != null ? fmtValue(row.latest.value) : (row.latest.value_text || "–")}
                   <span className="lmr-unit"> {row.latest.unit || ""}</span>
                 </div>
@@ -595,8 +648,10 @@ export default function LabsTab() {
 
               {pct != null ? (
                 <div className="lzc-scale">
-                  <div className="lzc-track"><span className={"lzc-dot" + (row.attention === "now" ? " lzc-dot-off" : "")} style={{ left: `${pct}%` }} /></div>
-                  <div className="lzc-ends"><span>{fmtValue(lo)}</span><span>{fmtValue(hi)}</span></div>
+                  <div className="lzc-track"><span className={"lzc-dot" + (row.attention === "now" ? " lzc-dot-off" : row.attention === "borderline" ? " lzc-dot-edge" : "")} style={{ left: `${pct}%` }} /></div>
+                  {/* A one-sided "< 50" is drawn from zero, so label the axis
+                      that way rather than showing a bound nobody printed. */}
+                  <div className="lzc-ends"><span>{Number.isFinite(lo) ? fmtValue(lo) : "0"}</span><span>{fmtValue(hi)}</span></div>
                 </div>
               ) : row.range ? (
                 <div className="lzc-rangeonly">Reference: {row.range}</div>
@@ -608,6 +663,12 @@ export default function LabsTab() {
               </div>
 
               {pts.length > 1 && <Spark pts={pts} lo={lo} hi={hi} attention={row.attention} />}
+
+              {!row.ref.fromLab && row.ref.why && (
+                <div className="lzc-appnote">
+                  <strong>This range isn't from your lab.</strong> The report printed none, so the app supplies one. {row.ref.why}
+                </div>
+              )}
 
               {note && (
                 <div className="lzc-note">
@@ -728,15 +789,29 @@ export default function LabsTab() {
               <span className="lsc-head">
                 <span className="lsc-label">{s.short || s.name}</span>
                 {s.flagged > 0 && <span className="labs-panel-flagged">{s.flagged} flagged</span>}
+                {s.flagged === 0 && s.nearEdge > 0 && <span className="labs-panel-edge">{s.nearEdge} near edge</span>}
               </span>
-              <span className={"lsc-value" + flagClass(s.row.latest.flag, s.row.marker)}>
+              <span className={"lsc-value" + attentionClass(s.row)}>
                 {s.row.latest.value != null ? fmtValue(s.row.latest.value) : (s.row.latest.value_text || "–")}
                 <span className="lsc-unit"> {s.row.latest.unit || ""}</span>
                 {s.row.range && <span className="lsc-range">range {s.row.range}</span>}
               </span>
-              {s.pts.length > 0 && (
-                <Spark pts={s.pts} lo={s.row.latest.ref_low} hi={s.row.latest.ref_high} attention={s.row.attention} />
-              )}
+              {/* A position bar, not a trend line: on a card this size the
+                  sparkline was decoration, while "where in the range am I"
+                  is the thing worth two seconds. The full trend is one tap
+                  away on the system's own screen. */}
+              {(() => {
+                const p = gaugePosition(s.row.latest.value, s.row.ref.lo, s.row.ref.hi);
+                if (p == null) return null;
+                return (
+                  <span className="lsc-gauge">
+                    <span
+                      className={"lsc-gauge-dot" + (s.row.attention === "now" ? " lsc-gauge-off" : s.row.attention === "borderline" ? " lsc-gauge-edge" : "")}
+                      style={{ left: `${p * 100}%` }}
+                    />
+                  </span>
+                );
+              })()}
               <span className="lsc-sub">
                 {s.row.name}
                 {s.row.delta != null && (
@@ -851,6 +926,7 @@ export default function LabsTab() {
                       <span className="labs-panel-counts">
                         {s.rows.length} marker{s.rows.length === 1 ? "" : "s"}
                         {s.flagged > 0 && <span className="labs-panel-flagged">{s.flagged} flagged</span>}
+                        {s.nearEdge > 0 && <span className="labs-panel-edge">{s.nearEdge} near edge</span>}
                       </span>
                     </button>
                     {open && (
@@ -867,7 +943,7 @@ export default function LabsTab() {
                             finding out what's wrong in it. */}
                         <div className="labs-marker-list">
                           {[...s.rows]
-                            .sort((a, b) => ({ now: 0, past: 1, ok: 2 }[a.attention] - { now: 0, past: 1, ok: 2 }[b.attention]))
+                            .sort((a, b) => ({ now: 0, borderline: 1, past: 2, ok: 3 }[a.attention] - { now: 0, borderline: 1, past: 2, ok: 3 }[b.attention]))
                             .map(markerRowBtn)}
                         </div>
 
@@ -954,7 +1030,7 @@ export default function LabsTab() {
                   {/* The 80/20 read: what's wrong now, what has been wrong
                       before, then everything that's fine — so the glance
                       stops at the top. */}
-                  {[["now", "Needs attention"], ["past", "Previously flagged"], ["ok", "In range"]].map(([k, label]) => {
+                  {[["now", "Needs attention"], ["borderline", "Near the edge of range"], ["past", "Previously flagged"], ["ok", "In range"]].map(([k, label]) => {
                     const rows = filteredMarkers.filter(r => r.attention === k);
                     if (!rows.length) return null;
                     return (
@@ -1486,6 +1562,9 @@ export const LAB_STYLES = `
   .lmr-gauge { position: relative; display: block; width: 68px; height: 4px; border-radius: 999px; background: rgba(103, 161, 90, 0.22); margin-top: 3px; }
   .lmr-gauge-dot { position: absolute; top: 50%; width: 7px; height: 7px; margin-left: -3.5px; border-radius: 999px; background: #2b6e1e; transform: translateY(-50%); }
   .lmr-gauge-dot.lmr-gauge-off { background: #a5342a; }
+  .lmr-gauge-dot.lmr-gauge-edge { background: #c07a1f; }
+  .lab-flag-edge { color: #96601a; }
+  .labs-prio-head.labs-prio-borderline { color: #96601a; }
   .lmr-value { flex-shrink: 0; min-width: 88px; text-align: right; font-family: 'Inter', sans-serif; letter-spacing: -0.02em; font-size: 17px; font-weight: 700; }
   .lmr-right .lmr-value { min-width: 0; }
 
@@ -1505,10 +1584,17 @@ export const LAB_STYLES = `
   .labs-zoom-verdict { font-family: 'Inter', sans-serif; font-size: 13.4px; line-height: 1.5; border-radius: 14px; padding: 11px 14px; margin-bottom: 14px; }
   .labs-zoom-verdict-ok { background: #ddefd4; border: 1px solid #cfe6c4; color: #2b6e1e; }
   .labs-zoom-verdict-off { background: #f8ddd9; border: 1px solid #eec4be; color: #a5342a; }
+  .labs-zoom-verdict-edge { background: #fbeddc; border: 1px solid #f0d7bb; color: #96601a; }
   .labs-zoom-card { padding: 14px 16px; margin-bottom: 12px; }
   .lzc-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
   .lzc-name { font-family: 'Inter', sans-serif; font-size: 14.6px; font-weight: 600; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .lzc-past { font-family: 'Inter', sans-serif; font-size: 10.8px; font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase; color: #8a6d1a; background: #f6efd8; border: 1px solid #e8dcb4; border-radius: 999px; padding: 1px 8px; }
+  .labs-panel-edge { font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 600; color: #96601a; background: #fbeddc; border: 1px solid #f0d7bb; border-radius: 999px; padding: 1px 8px; margin-left: 8px; }
+  .lzc-edge { font-family: 'Inter', sans-serif; font-size: 10.8px; font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase; color: #96601a; background: #fbeddc; border: 1px solid #f0d7bb; border-radius: 999px; padding: 1px 8px; }
+  .lzc-appref { font-family: 'Inter', sans-serif; font-size: 10.8px; font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase; color: var(--text-faint); background: var(--panel-2); border: 1px solid var(--border); border-radius: 999px; padding: 1px 8px; }
+  .lzc-appnote { font-family: 'Inter', sans-serif; font-size: 12.4px; line-height: 1.55; color: var(--text-dim); background: var(--panel-2); border: 1px dashed var(--border); border-radius: 12px; padding: 9px 11px; margin-top: 9px; }
+  .lzc-appnote strong { color: var(--text); font-weight: 600; }
+  .lzc-dot.lzc-dot-edge { background: #c07a1f; }
   .lzc-value { font-family: 'Inter', sans-serif; font-size: 22px; font-weight: 700; letter-spacing: -0.02em; white-space: nowrap; }
   .lzc-value.lab-flag-off { color: #a5342a; }
   .lzc-value.lab-flag-ok { color: #2b6e1e; }
@@ -1527,7 +1613,14 @@ export const LAB_STYLES = `
   .labs-zoom-foot { font-family: 'Inter', sans-serif; font-size: 12.2px; line-height: 1.6; color: var(--text-faint); padding: 4px 4px 20px; }
   .labs-sys-openrow { padding: 0 16px 12px; }
 
-  /* The hero card's trend line: range band shaded, latest reading dotted. */
+  /* The hero card's position bar: the track is the range, the dot is you. */
+  .lsc-gauge { position: relative; display: block; width: 100%; height: 5px; border-radius: 999px; background: rgba(103, 161, 90, 0.22); margin: 7px 0 3px; }
+  .lsc-gauge-dot { position: absolute; top: 50%; width: 9px; height: 9px; margin-left: -4.5px; border-radius: 999px; background: #2b6e1e; border: 2px solid var(--panel); transform: translateY(-50%); }
+  .lsc-gauge-dot.lsc-gauge-off { background: #a5342a; }
+  .lsc-gauge-dot.lsc-gauge-edge { background: #c07a1f; }
+
+  /* The trend line, now only on a system's own screen: range band shaded,
+     latest reading dotted. */
   .lw-spark { width: 100%; height: 28px; margin: 3px 0 1px; }
   .lw-band { fill: rgba(103, 161, 90, 0.16); }
   .lw-line { fill: none; stroke: #70747c; stroke-width: 1.6; vector-effect: non-scaling-stroke; }
