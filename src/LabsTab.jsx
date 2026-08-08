@@ -340,10 +340,21 @@ export default function LabsTab() {
   }, [markerRows, query]);
 
   const latestPanel = orderedPanels[0] || null;
+  /**
+   * What the most recent draw flagged.
+   *
+   * By date, not by panel: this lab splits one morning's blood work into a
+   * separate lab_panels row per test ordered, so "the latest panel" is an
+   * arbitrary third of a single draw. Read that way, a low vitamin D sitting
+   * on a sibling panel of the same date simply didn't appear.
+   */
   const latestFlagged = useMemo(() => {
     if (!latestPanel) return [];
-    return (resultsByPanel.get(latestPanel.id) || []).filter(r => r.flag && r.flag !== "normal");
-  }, [latestPanel, resultsByPanel]);
+    return panels
+      .filter(p => p.date === latestPanel.date)
+      .flatMap(p => resultsByPanel.get(p.id) || [])
+      .filter(r => r.flag && r.flag !== "normal");
+  }, [latestPanel, panels, resultsByPanel]);
 
   // --- import --------------------------------------------------------------
 
@@ -831,6 +842,11 @@ export default function LabsTab() {
           <button className="btn-ghost sm" onClick={() => setZoomSystem(null)}><ChevronLeft size={14} /> All labs</button>
         </div>
 
+        {/* Without this a failed report was invisible: setErr fired, and the
+            only banner-error in the tab lives on the list view behind this
+            screen. The spinner stopped and nothing else happened. */}
+        {err && <div className="banner-error"><AlertCircle size={13} /> {err}</div>}
+
         <div className="labs-zoom-title">
           <h2 className="panel-title">{s.name}</h2>
           <div className="labs-zoom-blurb">{s.blurb}</div>
@@ -887,7 +903,12 @@ export default function LabsTab() {
 
               {writing && (
                 <div className="labs-reports-wait">
-                  Reading {s.rows.length} marker{s.rows.length === 1 ? "" : "s"} across your whole history. Don't leave the tab.
+                  <Loader2 size={13} className="spin" />
+                  <span>
+                    Reading {s.rows.length} marker{s.rows.length === 1 ? "" : "s"} across your whole history,
+                    against {(history || []).length} history {(history || []).length === 1 ? "entry" : "entries"}.
+                    {" "}<strong><Elapsed /></strong> so far — a full system takes a minute or so. Don't leave the tab.
+                  </span>
                 </div>
               )}
 
@@ -1083,13 +1104,6 @@ export default function LabsTab() {
             <div className="labs-summary-label">Reports</div>
             <div className="labs-summary-value">{panels.length}</div>
             <div className="labs-summary-sub">{results.length} results</div>
-          </div>
-          {/* Tinted like the Food tab's macro tiles and the Home hero cards —
-              out of range is the one status here worth colouring. */}
-          <div className={"labs-summary-tile" + (latestFlagged.length ? " labs-tile-off" : " labs-tile-ok")}>
-            <div className="labs-summary-label">Out of range</div>
-            <div className="labs-summary-value">{latestFlagged.length}</div>
-            <div className="labs-summary-sub">on the latest draw</div>
           </div>
         </div>
       )}
@@ -1757,6 +1771,23 @@ function Markdown({ text }) {
 
 // ---------------------------------------------------------------------------
 
+/**
+ * Seconds since this mounted.
+ *
+ * The only honest progress signal available: the model streams nothing back
+ * until it has finished thinking, so there is no percentage to show. A number
+ * that moves is the difference between "working" and "hung", and this is the
+ * longest wait anywhere in the app.
+ */
+function Elapsed() {
+  const [n, setN] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setN(x => x + 1), 1000);
+    return () => clearInterval(t);
+  }, []);
+  return <>{n < 60 ? `${n}s` : `${Math.floor(n / 60)}m ${String(n % 60).padStart(2, "0")}s`}</>;
+}
+
 const blankHistory = () => ({ kind: "condition", label: "", detail: "", started: "", ended: "", active: true });
 
 /**
@@ -1931,7 +1962,7 @@ export const LAB_STYLES = `
   .labs-empty p { margin: 0 0 8px; }
   .labs-empty-sub { font-family: 'Inter', sans-serif; font-size: 12.6px; color: var(--text-faint); }
 
-  .labs-summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 14px; }
+  .labs-summary { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; margin-bottom: 14px; }
   /* min-width: 0 — a grid item defaults to auto, and the nowrap sub-line
      under it then pushes the third card past the grid's edge. */
   .labs-summary-tile { min-width: 0; background: var(--panel); border: 1px solid var(--border); border-radius: 18px; padding: 14px 15px; box-shadow: 0 1px 2px rgba(20, 22, 27, 0.05), 0 4px 16px rgba(20, 22, 27, 0.05); }
@@ -2090,7 +2121,8 @@ export const LAB_STYLES = `
   .labs-reports-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
   .labs-reports-head .lzc-name { display: flex; align-items: center; gap: 6px; }
   .labs-reports-sub { font-family: 'Inter', sans-serif; font-size: 12.8px; line-height: 1.6; color: var(--text-dim); margin-top: 7px; }
-  .labs-reports-wait { font-family: 'Inter', sans-serif; font-size: 12.6px; line-height: 1.55; color: #8a5b13; background: #fdf1dd; border: 1px solid #ecd3a4; border-radius: 10px; padding: 9px 11px; margin-top: 10px; }
+  .labs-reports-wait { display: flex; align-items: flex-start; gap: 8px; font-family: 'Inter', sans-serif; font-size: 12.6px; line-height: 1.55; color: #8a5b13; background: #fdf1dd; border: 1px solid #ecd3a4; border-radius: 10px; padding: 9px 11px; margin-top: 10px; }
+  .labs-reports-wait svg { flex-shrink: 0; margin-top: 2px; }
   .labs-reports-hist { margin-top: 12px; }
 
   .labs-report-row { display: block; width: 100%; text-align: left; background: var(--panel-2); border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; margin-top: 10px; cursor: pointer; }
@@ -2206,8 +2238,7 @@ export const LAB_STYLES = `
     /* Two columns rather than smaller type — the same trade the Home tab's
        stat grid makes at this width. The out-of-range card takes the whole
        second row, which is the one you want to read first anyway. */
-    .labs-summary { grid-template-columns: repeat(2, 1fr); gap: 10px; }
-    .labs-summary-tile:last-child { grid-column: 1 / -1; }
+    .labs-summary { gap: 10px; }
     .labs-meta-grid { grid-template-columns: repeat(2, 1fr); }
   }
 

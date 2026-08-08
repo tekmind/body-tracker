@@ -239,6 +239,43 @@ async function main() {
 
   await page4.close();
 
+  // ---- a report that fails ------------------------------------------------
+  // The bug this pins: setErr fired and the only banner-error in the tab was
+  // on the list view *behind* this screen, so a failed report showed nothing
+  // at all — the spinner stopped and that was the entire feedback.
+  const page5 = await browser.newPage({ viewport: { width: 390, height: 780 } });
+  await blockWebfonts(page5);
+  page5.on("pageerror", e => problems.push(`pageerror: ${e.message}`));
+  await page5.route("**/rest/v1/**", async (route) => {
+    const req = route.request();
+    const table = new URL(req.url()).pathname.split("/rest/v1/")[1];
+    if (req.method() !== "GET") return json(route, {});
+    if (table === "lab_panels") return json(route, PANELS);
+    if (table === "lab_results") return json(route, RESULTS);
+    if (table === "medical_history") return json(route, HISTORY);
+    return json(route, []);
+  });
+  await page5.route("**/api/lab-report", (route) =>
+    json(route, { error: "Couldn't write that report: upstream exploded" }, 502));
+  await page5.goto(BASE, { waitUntil: "domcontentloaded" });
+  const tab5 = page5.locator(".tab-btn", { hasText: "Labs" });
+  await tab5.scrollIntoViewIfNeeded();
+  await tab5.click();
+  await page5.waitForSelector(".labs-syscards", { timeout: 8000 });
+  await page5.locator(".labs-syscard", { hasText: "Crohn" }).click();
+  await page5.waitForSelector(".labs-reports", { timeout: 8000 });
+  await page5.locator(".labs-reports button", { hasText: "Write a report" }).click();
+  await page5.waitForTimeout(600);
+
+  check("a failed report says so on the screen you're standing on",
+    await page5.locator(".labs-view .banner-error").count() === 1);
+  check("and says what went wrong",
+    /upstream exploded/.test(await page5.locator(".labs-view .banner-error").innerText().catch(() => "")));
+  check("the button comes back rather than staying stuck on Writing",
+    await page5.locator(".labs-reports button", { hasText: "Write a report" }).count() === 1);
+  check("nothing was filed", await page5.locator(".labs-report-row").count() === 0);
+  await page5.close();
+
   check("nothing threw while rendering any of it", problems.length === 0, problems.join(" | "));
 
   await browser.close();
