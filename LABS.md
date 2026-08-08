@@ -101,7 +101,8 @@ before you save.
   glance stops at the top. A favourable excursion (high HDL, high eGFR) is
   not "attention"; `isFavorable` decides. Search it when you want one number.
 - **Pinned system cards** — under the summary tiles, one stat card per pinned
-  system (Crohn's / IBD, Inflammation, Hormones, Vitamins, Metabolic). The
+  system (Crohn's / IBD, Hormones, Vitamins, Metabolic — see *Which systems
+  are pinned* below for why Inflammation isn't one). The
   first `headline` marker with data is the hero number — calprotectin, CRP,
   total testosterone, vitamin D, glucose — and the next couple ride beneath it
   as compact rows (B12 under vitamin D, free T under total). Tapping a card
@@ -112,8 +113,7 @@ before you save.
   not layout code.
 - **By system** — the same markers regrouped by body system (Crohn's / IBD,
   Inflammation, Hormones, …) with each system's flagged count and its
-  narrative studies. A marker appears in every system it informs. Inside a
-  system, flagged markers sort to the top.
+  narrative studies. A marker appears in every system it informs.
 - **Studies** — biopsy, histology and imaging reports, newest first. Only
   appears when there is at least one.
 - **Reports** — on each system's own screen: a written interpretation of that
@@ -256,6 +256,33 @@ where it came from.
 Categories answer "what kind of test is this"; systems answer "what part of my
 body is this about" — which is the level the owner actually reasons at when
 asking how a disease, a deficiency, or a therapy is going.
+
+### Groups inside a system
+
+Crohn's / IBD claims 35 markers, and 35 rows in one undifferentiated run is a
+list rather than an answer. So a system can declare `groups` — named subgroups
+with their own keys and patterns — and its screen renders under those headings
+in the order declared, with anything unmatched falling into "Other". A system
+that declares none renders as one run exactly as before.
+
+A group answers a third question, different from both of the others: a
+category says *what kind of test this is*, a system says *what part of me it's
+about*, and a group says *what this marker is doing in here*. Ferritin is a
+Vitamins & minerals test, an absorption marker inside Crohn's, and an
+acute-phase reactant inside Inflammation — all three at once, and all three
+true.
+
+Crohn's groups into disease activity, drug monitoring, infection (the stool
+pathogens, which is how infection gets excluded when calprotectin moves),
+absorption, and blood counts.
+
+### Which systems are pinned
+
+**Inflammation is deliberately not pinned.** Every one of its markers is
+already in Crohn's / IBD — a strict subset, not an overlap — so its chip
+repeated a card you already had, on the row where space is scarcest. It stays
+a system, because "how is inflammation doing" is still a question worth asking
+on its own in the By system view; it just doesn't take a chip.
 
 The map lives in `SYSTEMS` in [`src/labMarkers.js`](src/labMarkers.js) and is
 deliberately many-to-many: ferritin is an iron store, an acute-phase reactant,
