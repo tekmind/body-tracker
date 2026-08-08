@@ -239,8 +239,38 @@ const MARKERS = [
 
 export const MARKER_CATEGORIES = [
   "Lipids", "Metabolic", "Thyroid", "Hormones", "Vitamins & minerals",
-  "Blood count", "Liver", "Kidney & electrolytes", "Inflammation", "Other",
+  "Blood count", "Liver", "Kidney & electrolytes", "Inflammation",
+  "Urinalysis", "Other",
 ];
+
+/**
+ * A urine dipstick prints analytes whose names are identical to serum tests —
+ * Glucose, Protein, Bilirubin, Leukocytes — but they are different
+ * measurements entirely: a "Neg" on a dipstick against 129 mg/dL in blood.
+ * The name alone cannot tell them apart, so the panel has to say.
+ *
+ * Keyed by the normalized analyte name; only consulted when the panel looks
+ * like a urinalysis.
+ */
+const URINE_MARKERS = [
+  { key: "urine_protein", name: "Protein (urine)", category: "Urinalysis", from: ["protein", "protein urine"] },
+  { key: "urine_glucose", name: "Glucose (urine)", category: "Urinalysis", from: ["glucose", "glucose urine"] },
+  { key: "urine_ketones", name: "Ketones (urine)", category: "Urinalysis", from: ["ketone", "ketones"] },
+  { key: "urine_blood", name: "Blood (urine)", category: "Urinalysis", from: ["blood", "occult blood", "hemoglobin"] },
+  { key: "urine_bilirubin", name: "Bilirubin (urine)", category: "Urinalysis", from: ["bilirubin"] },
+  { key: "urine_urobilinogen", name: "Urobilinogen (urine)", category: "Urinalysis", from: ["urobilinogen"] },
+  { key: "urine_nitrite", name: "Nitrite (urine)", category: "Urinalysis", from: ["nitrite", "nitrites"] },
+  { key: "urine_leukocytes", name: "Leukocyte esterase (urine)", category: "Urinalysis", from: ["leukocytes", "leukocyte esterase", "leukocyte"] },
+  { key: "urine_ph", name: "pH (urine)", category: "Urinalysis", from: ["ph"] },
+  { key: "urine_specific_gravity", name: "Specific gravity (urine)", category: "Urinalysis", from: ["specific gravity"] },
+  { key: "urine_appearance", name: "Appearance (urine)", category: "Urinalysis", from: ["appearance", "clarity"] },
+  { key: "urine_color", name: "Color (urine)", category: "Urinalysis", from: ["color", "colour"] },
+];
+
+/** Does this panel's title mean the sample was urine? */
+export function isUrinePanel(panelName) {
+  return /urinalysis|urine|\bua\b/i.test(String(panelName || ""));
+}
 
 /** Words labs sprinkle on test names that carry no identity. */
 const NOISE = new Set([
@@ -304,14 +334,38 @@ for (const m of MARKERS) {
 const BY_KEY = new Map(MARKERS.map(m => [m.key, m]));
 
 /**
+ * Urine analytes are matched on the plain name, deliberately NOT through
+ * normalize(): half of them are words normalize() treats as noise and strips
+ * to nothing — "Blood" and "Protein" among them. The panel has already told us
+ * which sample this is, so there is nothing here to disambiguate.
+ */
+function urineKey(s) {
+  return String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+const URINE_BY_NAME = new Map();
+for (const m of URINE_MARKERS) {
+  for (const spelling of m.from) URINE_BY_NAME.set(urineKey(spelling), m);
+  BY_KEY.set(m.key, m);
+}
+
+/**
  * Resolve a lab's wording to a canonical marker.
  *
  * Falls back to a slug of the name rather than dropping the result: an
  * unrecognized test still charts against its future selves, and lands in
  * "Other" instead of vanishing.
  */
-export function resolveMarker(rawName) {
+export function resolveMarker(rawName, panelName) {
   const n = normalize(rawName);
+
+  // Urine first: on a dipstick, "Glucose" is not the serum glucose marker and
+  // must not join its trend line. Checked before the `n` guard because several
+  // of these names normalize to nothing.
+  if (isUrinePanel(panelName)) {
+    const hit = URINE_BY_NAME.get(urineKey(rawName));
+    if (hit) return { key: hit.key, name: hit.name, category: hit.category, known: true };
+  }
   // Not "unknown": slugify keeps the raw name when a test is named entirely of
   // noise words, so two such tests don't end up sharing one trend line.
   if (!n) return { key: slugify(rawName), name: String(rawName || "Unnamed").trim() || "Unnamed", category: "Other", known: false };

@@ -148,5 +148,40 @@ check("Vitamin K is not potassium", () => {
   return k.key === "potassium" ? "matched potassium" : (k.known ? null : `fell through as "${k.key}"`);
 });
 
+// A urine dipstick prints analytes named identically to serum tests. "Glucose"
+// on a dipstick is a Neg/Pos strip result; "GLUCOSE" on a CMP is 129 mg/dL.
+// The panel name is what tells them apart — same name, different sample,
+// different marker.
+const UA = "Urinalysis Dipstick (Waived)";
+for (const [name, urineKey, serumName, serumPanel, serumKey] of [
+  ["Glucose", "urine_glucose", "GLUCOSE", "COMPREHENSIVE METABOLIC PANEL", "glucose"],
+  ["Bilirubin", "urine_bilirubin", "BILIRUBIN, TOTAL", "COMPREHENSIVE METABOLIC PANEL", "bilirubin_total"],
+  ["Leukocytes", "urine_leukocytes", "WHITE BLOOD CELL COUNT", "CBC (INCLUDES DIFF/PLT)", "wbc"],
+  ["Protein", "urine_protein", "PROTEIN, TOTAL", "COMPREHENSIVE METABOLIC PANEL", "protein_total"],
+]) {
+  check(`"${name}" is a urine marker on a dipstick, not ${serumKey}`, () => {
+    const u = resolveMarker(name, UA);
+    if (u.key !== urineKey) return `got "${u.key}"`;
+    if (u.category !== "Urinalysis") return `category "${u.category}"`;
+    const s = resolveMarker(serumName, serumPanel);
+    return s.key === serumKey ? null : `serum resolved to "${s.key}"`;
+  });
+}
+
+// Names that normalize to nothing ("Blood" is a noise word) still match on a
+// urine panel, and panel context must not leak into blood panels.
+check("\"Blood\" on a dipstick is urine_blood", () => {
+  const m = resolveMarker("Blood", UA);
+  return m.key === "urine_blood" ? null : `got "${m.key}"`;
+});
+check("panel context changes nothing on a blood panel", () => {
+  const m = resolveMarker("HEMOGLOBIN", "CBC (INCLUDES DIFF/PLT)");
+  return m.key === "hemoglobin" ? null : `got "${m.key}"`;
+});
+check("no panel context keeps the old behavior", () => {
+  const m = resolveMarker("Glucose");
+  return m.key === "glucose" ? null : `got "${m.key}"`;
+});
+
 console.log(failed ? `\n${failed} problem(s)` : "\nall good");
 process.exit(failed ? 1 : 0);

@@ -338,7 +338,7 @@ export default function LabsTab() {
           note: draft.note.trim() || null,
         },
         results: rows.map(r => {
-          const m = resolveMarker(r.name);
+          const m = resolveMarker(r.name, draft.panel_name);
           const value = num(r.value);
           const refLow = num(r.ref_low);
           const refHigh = num(r.ref_high);
@@ -778,7 +778,7 @@ function ImportSheet({ queue, item, busy, error, onClose, onGo, patchDraft, patc
   const draft = item.draft;
   const savable = draft ? draft.rows.filter(isSavable) : [];
   const included = savable.length;
-  const unknown = savable.filter(r => !resolveMarker(r.name).known).length;
+  const unknown = savable.filter(r => !resolveMarker(r.name, draft.panel_name).known).length;
 
   return (
     <div className="labs-sheet-backdrop" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
@@ -866,7 +866,7 @@ function ImportSheet({ queue, item, busy, error, onClose, onGo, patchDraft, patc
 
               <div className="labs-draft-rows">
                 {draft.rows.map((r, i) => {
-                  const m = r.name.trim() ? resolveMarker(r.name) : null;
+                  const m = r.name.trim() ? resolveMarker(r.name, draft.panel_name) : null;
                   return (
                     <div className={"labs-draft-row" + (r.include ? "" : " labs-row-off")} key={i}>
                       <label className="labs-draft-tick">
