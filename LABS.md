@@ -16,6 +16,8 @@ It creates two tables and is safe to re-run:
 | `lab_panels` | One row per report / blood draw — date, lab, which file it came from |
 | `lab_results` | One row per marker on a panel, with the value, unit, and the reference range **that report printed** |
 | `lab_pathology` | One row per narrative report — biopsy, histology, or imaging. Prose, not markers |
+| `medical_history` | Diagnoses, treatments, surgeries — the context a lab value can't carry |
+| `lab_reports` | Written interpretations, one thread per body system |
 
 Until this runs, the Labs tab shows a banner telling you to run it.
 
@@ -102,17 +104,19 @@ before you save.
   first `headline` marker with data is the hero number — calprotectin, CRP,
   total testosterone, vitamin D, glucose — and the next couple ride beneath it
   as compact rows (B12 under vitamin D, free T under total). Tapping a card
-  opens that system expanded. Each card draws a sparkline of its hero's
-  readings with the lab's in-range band shaded behind them, so a number
-  sitting outside its range reads at a glance without parsing digits. Which
-  systems are pinned and what they lead with is data on the `SYSTEMS` entries
-  (`pinned`, `headline`), not layout code.
+  opens that system expanded. Each card draws a position bar rather than a
+  trend line — at this size "where in the range am I" is the thing worth two
+  seconds, and the full trend is one tap away. Which systems are pinned and
+  what they lead with is data on the `SYSTEMS` entries (`pinned`, `headline`),
+  not layout code.
 - **By system** — the same markers regrouped by body system (Crohn's / IBD,
   Inflammation, Hormones, …) with each system's flagged count and its
   narrative studies. A marker appears in every system it informs. Inside a
   system, flagged markers sort to the top.
 - **Studies** — biopsy, histology and imaging reports, newest first. Only
   appears when there is at least one.
+- **Reports** — on each system's own screen: a written interpretation of that
+  area, kept as a thread. See *Written reports* below.
 - **Trend sheet** — every reading of one marker over time, with the reference
   range shaded behind the line. Out-of-range readings get a filled dot.
 
@@ -165,8 +169,13 @@ filed as though the report were there.
 Tapping a pinned card — or "Open …" on a system row — leaves the lists behind
 for a screen about one area of the body. It leads with a plain verdict ("2
 markers are outside range right now — …"), then a card per marker: the value,
-a scale showing where inside the lab's range it sits, the trend with the
-in-range band shaded, and the note.
+a scale showing where inside the lab's range it sits, and the note.
+
+No inline trend line on these cards. One was tried and pulled: squeezed into a
+card's width a sparkline stretches its own slopes and puts the newest reading
+half off the edge, so it draws a shape the readings never had. The scale
+answers "where in the range am I", and **Full trend** on each card opens the
+real chart with a real axis.
 
 The notes are the point. `MARKER_NOTES` in
 [`src/labMarkers.js`](src/labMarkers.js) gives each marker a **what it is** and
@@ -259,6 +268,104 @@ Two details in the matcher exist only because of this:
   urinalysis prints a row called just `Blood`, which normalizes to nothing;
   falling through to a single `unknown` would put `Blood`, `Protein` and `pH`
   on one line.
+
+## Written reports
+
+Every system's screen carries a **Reports** card above the markers, because
+the written read is what you came for and the numbers are what it was written
+from. The button writes a full interpretation of that system: every reading of
+every marker in it, the narrative studies it claims, and your medical history.
+
+Reports are a **thread**, not a pile of snapshots. Each one is stored whole, so
+any of them can be read on its own years later — but a report written after new
+blood work is handed the previous one and asked to say what changed. The card
+knows which draws the last report saw (`covered_panel_ids`), so it can tell you
+there are two new result sets to account for, or that there is nothing new and
+writing another would give you a second opinion rather than an update. In that
+case the button goes quiet — a green button pushing the action the line under
+it argues against reads as a recommendation, and it isn't one.
+
+### It interprets
+
+This is the one endpoint in the app that is asked to reason rather than
+transcribe, and that is deliberate: the owner asked for the reading, not a
+restatement of numbers already on the screen. So a report says what it thinks
+is going on, how confident it is, and what would change its mind.
+
+Two things the prompt is strict about, because they're what would make a report
+worse rather than merely more cautious:
+
+- **Every claim is grounded in the brief.** A marker never drawn, a missing
+  date, a blank treatment history — the report says what's missing and what it
+  costs, instead of assuming a plausible value.
+- **What the data shows and what's inferred from it stay apart.** Both belong
+  in the report; confusing them does not.
+
+Each report is stored with the model that wrote it and the date, and the screen
+prints both underneath. That's provenance, not a hedge: this is generated prose
+about someone's health that will be re-read months later, and which model wrote
+it and when is part of reading it.
+
+### The brief
+
+Assembled on the client in [`src/labReport.js`](src/labReport.js) — the
+endpoint is stateless, and the whole lab history is already in memory there.
+Being a pure function is the point: `tests/labreport.spec.mjs` can check what a
+report was actually shown, which matters more here than usual, because a wrong
+brief produces a wrong report in confident sentences nobody re-derives.
+
+The two rules from [`CLAUDE.md`](CLAUDE.md) both bite:
+
+- **Blank is not zero.** A marker with no reading is left out rather than sent
+  as 0. Text results are *not* blank, though — "Negative" on a stool pathogen
+  panel is how infection got ruled out, and a brief built only from numbers
+  would leave that out of the reasoning entirely.
+- **A row keeps its own range.** Each reading carries the range its own report
+  printed. A lab that widened its band in 2023 must not silently un-flag a 2019
+  draw in the narrative, and a range the *app* supplies is labelled as such so
+  it can't be cited as the lab's.
+
+### Which model, and what it costs
+
+Runs on **Claude Fable 5** (`LAB_REPORT_MODEL`) — the reasoning tier, several
+times the price of the readers. This is the one place in the app where a wrong
+answer is both durable and consequential: a report is stored, re-read, and the
+next one is written on top of it. It runs a handful of times a year per system.
+
+`LAB_REPORT_EFFORT` defaults to `medium`. Vercel stops the function at 60
+seconds whatever the model is still doing, and Fable 5's turns get long at
+higher effort — `medium` lands inside that window on a system of ~20 markers.
+Set `LAB_REPORT_EFFORT=high` if your plan allows a longer `maxDuration` and
+you'd rather have the ceiling; `low` if reports are timing out.
+
+Two things to know about this model specifically: it requires 30-day data
+retention (an org set to zero retention gets a 400 on every request), and its
+safety classifiers can decline a request outright. A report about your own
+bowel disease is not what those are for, but the request opts into the
+server-side fallback anyway, so a false positive produces a report rather than
+a feature that looks broken.
+
+## Medical history
+
+Reached from **History** in the tab header, or from the Reports card on any
+system screen. Calprotectin at 160 means one thing on anti-TNF therapy and
+another off it; a low B12 reads differently after an ileal resection. None of
+that is in `lab_results`, so a report written from the numbers alone is written
+blind — this is the difference between a report that reasons about your results
+and one that only describes them.
+
+Structured enough for a report to reason with (a condition is not a medication
+is not a surgery) and loose enough to actually get written: dates are free text
+because "2019", "childhood" and "3/2021" are all real answers, and everything
+but the label is optional.
+
+An entry that has ended keeps its dates and is marked past rather than deleted.
+A drug you stopped two years ago is part of why this year looks the way it
+does, and a report that doesn't know you were ever on it can't say so.
+
+It isn't a fifth view toggle. History gets written rarely and is read by the
+reports rather than by you, so it sits behind a button instead of taking a
+permanent slot on a phone-width row.
 
 ## Backups
 

@@ -2628,7 +2628,7 @@ export default function Dashboard() {
             <div className="banner-alert slipping">
               <AlertTriangle size={22} />
               <div className="banner-alert-text">
-                <strong>{watched.label} — you're slipping.</strong> <span className="notif-weeks">{alertStreak}w</span> {watched.label} {watched.label === "Calories" ? "have" : "has"} been {watched.word} for {alertStreak} weeks straight. <strong style={{ textDecoration: "underline" }}>Tighten up now, before it turns into a full derail.</strong>
+                <strong>{watched.label} — you're slipping.</strong> <span className="notif-weeks">{alertStreak}w</span> {watched.label} {watched.label === "Calories" ? "have" : "has"} been {watched.word} for {alertStreak} week{alertStreak === 1 ? "" : "s"} straight. <strong style={{ textDecoration: "underline" }}>Tighten up now, before it turns into a full derail.</strong>
                 {watched.key === "cal" && recovery && <RecoveryFooter r={recovery} />}
               </div>
               <button className="alert-close-btn" onClick={() => dismissAlert("alert-slipping", `${latestDataVersion}::${watched.key}::${alertStreak}`)} aria-label="Dismiss"><X size={16} /></button>
@@ -2638,7 +2638,7 @@ export default function Dashboard() {
             <div className="banner-alert derailed">
               <AlertCircle size={30} />
               <div className="banner-alert-text">
-                <strong>You've derailed.</strong> <span className="notif-weeks">{alertStreak}w</span> {watched.label} {watched.label === "Calories" ? "have" : "has"} been {watched.word} for {alertStreak} weeks in a row — this isn't a rough week, it's a pattern.
+                <strong>You've derailed.</strong> <span className="notif-weeks">{alertStreak}w</span> {watched.label} {watched.label === "Calories" ? "have" : "has"} been {watched.word} for {alertStreak} week{alertStreak === 1 ? "" : "s"} in a row — this isn't a rough week, it's a pattern.
                 {watched.key === "cal" && recovery && <RecoveryFooter r={recovery} />}
               </div>
               <button className="alert-close-btn" onClick={() => dismissAlert("alert-derailed", `${latestDataVersion}::${watched.key}::${alertStreak}`)} aria-label="Dismiss"><X size={16} /></button>
@@ -4141,6 +4141,25 @@ const BASE_STYLES = `
   .dash .banner-alert.slipping { background: #fbeddc; border-color: #e7c79b; color: #7a4d12; }
   .dash .banner-alert.slipping strong { color: #5f3a0b; }
   .dash .banner-alert.slipping svg { color: #c07a1f; }
+  /* Everything inside the amber banner has to be amber too. The week pill
+     and the "drifting further" line carry their own red, so an amber banner
+     with a red badge in it reads as two different severities at once. */
+  .dash .banner-alert.slipping .notif-weeks { background: #c07a1f; }
+  .dash .banner-alert.slipping .rec-trend.rec-bad { color: #7a4d12; }
+  .dash .banner-alert.slipping .rec-trend.rec-bad svg { color: #c07a1f; }
+  .dash .banner-alert.slipping .recovery { border-top-color: rgba(122, 77, 18, 0.22); }
+  /* A darker amber, not the generic translucent black — over an amber panel
+     that reads as grey. */
+  .dash .banner-alert.slipping .rec-chip { background: #f0d9b6; border: 1px solid #e2c295; color: #5f3a0b; }
+  .dash .banner-alert.slipping .rec-plan-label { color: #7a4d12; }
+  /* Sized like the warning it is. It inherited the derailed banner's type and
+     height, so a single off week filled the screen and read as an emergency —
+     the escalation has to be visible in size as well as colour. */
+  .dash .banner-alert.slipping { font-size: 15px; line-height: 1.45; padding: 15px 46px 15px 16px; min-height: 0; gap: 10px; }
+  .dash .banner-alert.slipping strong { font-size: 15.8px; }
+  .dash .banner-alert.slipping .recovery { margin-top: 9px; padding-top: 9px; gap: 7px; }
+  .dash .banner-alert.slipping .rec-trend { font-size: 12.6px; }
+  .dash .banner-alert.slipping .rec-chip, .dash .banner-alert.slipping .rec-plan-label { font-size: 11.6px; }
   .dash .banner-alert.derailed { background: #fcebe9; border-color: #eec4be; color: #a03d33; }
   .dash .banner-alert.derailed svg { color: #c73a2f; }
   .dash .recovery { border-top-color: rgba(0,0,0,0.12); }

@@ -100,17 +100,81 @@ alter table lab_pathology add column if not exists kind text not null default 'p
 
 create index if not exists lab_pathology_date_idx on lab_pathology (date);
 
+-- ---------------------------------------------------------------------------
+-- medical_history: the context a number can't carry.
+--
+-- Calprotectin at 160 means one thing on anti-TNF therapy and another off it;
+-- a low B12 reads differently after an ileal resection. None of that is in
+-- lab_results, so a report written from the numbers alone is written blind.
+--
+-- Deliberately loose: `label` is the thing, `detail` is whatever else matters,
+-- and dates are free text because "2019", "childhood" and "3/2021" are all
+-- real answers. A row that's ended keeps its dates rather than being deleted —
+-- a drug you stopped two years ago is part of why this year looks like it does.
+-- ---------------------------------------------------------------------------
+create table if not exists medical_history (
+  id uuid primary key default gen_random_uuid(),
+  kind text not null,                      -- condition | medication | surgery | allergy | family | note
+  label text not null,
+  detail text,
+  started text,                            -- free text: "2019", "3/2021", "childhood"
+  ended text,                              -- free text; null while ongoing
+  active boolean not null default true,
+  sort_order integer not null default 0,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists medical_history_kind_idx on medical_history (kind, sort_order);
+
+-- ---------------------------------------------------------------------------
+-- lab_reports: a written interpretation of one body system, kept as a thread.
+--
+-- Each row is a whole report, not a diff, so any one of them can be read on
+-- its own years later. `prev_report_id` is what makes it a thread: a report
+-- written after new blood work is given the last one and asked to say what
+-- changed, so the thread reads as a story rather than a pile of snapshots.
+--
+-- `covered_panel_ids` records what the report actually saw — every draw its
+-- markers appear on, and any narrative study the system claims. That is how
+-- the tab knows there is something new to say (a source in this system whose
+-- id isn't in this list) instead of offering to rewrite the same report from
+-- the same numbers, which would produce a second opinion rather than an update.
+--
+-- `model` and `created_at` are stored because this is generated prose about
+-- someone's health: which model wrote it and when is part of reading it.
+-- ---------------------------------------------------------------------------
+create table if not exists lab_reports (
+  id uuid primary key default gen_random_uuid(),
+  system_key text not null,                -- SYSTEMS key in src/labMarkers.js
+  system_name text not null,               -- denormalised: the name at write time
+  title text not null,
+  summary text,
+  body text not null,                      -- markdown
+  model text,
+  effort text,
+  covered_panel_ids jsonb not null default '[]'::jsonb,
+  latest_panel_date text,                  -- newest draw the report covers, "M/D/YY"
+  marker_count integer,
+  prev_report_id uuid references lab_reports(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists lab_reports_system_idx on lab_reports (system_key, created_at desc);
+
 -- No-login setup, matching the rest of this project's tables: anyone with the
 -- anon key can read/write. Fine for personal use; revisit with auth-scoped
 -- policies before any public deployment.
 alter table lab_panels enable row level security;
 alter table lab_results enable row level security;
 alter table lab_pathology enable row level security;
+alter table medical_history enable row level security;
+alter table lab_reports enable row level security;
 
 do $$
 declare t text;
 begin
-  foreach t in array array['lab_panels', 'lab_results', 'lab_pathology'] loop
+  foreach t in array array['lab_panels', 'lab_results', 'lab_pathology', 'medical_history', 'lab_reports'] loop
     execute format('drop policy if exists "public read" on %I', t);
     execute format('drop policy if exists "public write" on %I', t);
     execute format('drop policy if exists "public update" on %I', t);

@@ -5,6 +5,7 @@ import {
 import {
   Plus, X, Check, Loader2, AlertCircle, Trash2, Pencil, Search, Save, Upload,
   FileText, TrendingUp, ChevronDown, ChevronRight, ChevronLeft, ArrowUp, ArrowDown, FlaskConical,
+  BookOpen, Heart,
 } from "lucide-react";
 import { parseDate, formatMDY, today as todayDate } from "./dateUtils.js";
 import {
@@ -13,6 +14,7 @@ import {
   SYSTEMS, systemsFor, markerNote, effectiveRange, borderlineFor, gaugePosition,
 } from "./labMarkers.js";
 import { prepareLabFile, ACCEPTED_FILE_TYPES } from "./labFile.js";
+import { HISTORY_KINDS, buildReportBrief, newPanelsSince, parseMarkdown } from "./labReport.js";
 import * as labsApi from "./labsApi.js";
 
 const CHART_THEME = { grid: "#e7e6e0", tick: "#70747c", font: "Inter" };
@@ -84,6 +86,14 @@ export default function LabsTab() {
   const [zoomSystem, setZoomSystem] = useState(null);
   const [expanded, setExpanded] = useState(null);
   const [trendKey, setTrendKey] = useState(null);
+  // Written reports and the history they read. null on either means
+  // supabase_labs.sql hasn't been re-run since these tables were added — the
+  // rest of the tab works, and the feature stays hidden rather than erroring.
+  const [reports, setReports] = useState(null);
+  const [history, setHistory] = useState(null);
+  const [openReport, setOpenReport] = useState(null);   // report id being read
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [writing, setWriting] = useState(false);
   const [query, setQuery] = useState("");
   const [confirmDel, setConfirmDel] = useState(null);
   const [editing, setEditing] = useState(null);   // { id, value, unit, ref_low, ref_high }
@@ -103,9 +113,11 @@ export default function LabsTab() {
     const rs = await labsApi.fetchResults(ps.map(p => p.id));
     setPanels(ps);
     setResults(rs);
-    // Supplementary, and on a table that may not exist yet — so it must not
-    // hold up the first render or fail the whole tab if it's slow or absent.
+    // Supplementary, and on tables that may not exist yet — so they must not
+    // hold up the first render or fail the whole tab if slow or absent.
     labsApi.fetchPathology().then(setPathology).catch(() => setPathology(null));
+    labsApi.fetchReports().then(setReports).catch(() => setReports(null));
+    labsApi.fetchHistory().then(setHistory).catch(() => setHistory(null));
     return ps;
   }, []);
 
@@ -500,6 +512,117 @@ export default function LabsTab() {
     setPathology(rs => (rs || []).filter(r => r.id !== id));
   }, "Couldn't delete that report"), [runWrite]);
 
+  // --- written reports -----------------------------------------------------
+
+  /** Each system's thread, newest first (the fetch already orders them). */
+  const reportsBySystem = useMemo(() => {
+    const m = new Map();
+    for (const r of reports || []) {
+      if (!m.has(r.system_key)) m.set(r.system_key, []);
+      m.get(r.system_key).push(r);
+    }
+    return m;
+  }, [reports]);
+
+  /**
+   * Everything a report is written from, assembled from what's already in
+   * memory. Text results come along with the numeric ones: "Negative" on a
+   * stool pathogen panel is how infection got ruled out, and a brief built
+   * only from numbers would leave that out of the reasoning entirely.
+   */
+  const briefFor = useCallback((card) => {
+    const dateOf = new Map(panels.map(p => [p.id, p.date]));
+    const readings = {};
+    for (const row of card.rows) {
+      readings[row.marker] = results
+        .filter(r => r.marker === row.marker)
+        .map(r => ({ ...r, at: panelDate(r.panel_id) }))
+        .filter(r => r.at)
+        .sort((a, b) => a.at - b.at)
+        .map(r => ({
+          date: dateOf.get(r.panel_id) || "",
+          value: r.value,
+          valueText: r.value_text,
+          unit: r.unit,
+          flag: r.flag,
+          refText: r.ref_text,
+        }));
+    }
+    return buildReportBrief({
+      system: card,
+      rows: card.rows.map(r => ({ ...r, unit: r.latest.unit || "" })),
+      readings,
+      studies: card.studies,
+      history: history || [],
+      previous: reportsBySystem.get(card.key)?.[0] || null,
+      today: formatMDY(todayDate()),
+    });
+  }, [panels, results, panelDate, history, reportsBySystem]);
+
+  /**
+   * Everything in this system a report would read, by id.
+   *
+   * Every panel any of its markers appear on — not just the latest, because a
+   * marker measured once in 2019 is still a draw the report saw — plus the
+   * narrative studies the system claims. A colon biopsy landing between
+   * reports is exactly the sort of thing an update should be prompted by.
+   */
+  const sourceIdsFor = useCallback((card) => {
+    const keys = new Set(card.rows.map(r => r.marker));
+    const ids = new Set(card.studies.map(s => s.id));
+    for (const r of results) if (keys.has(r.marker) && r.panel_id) ids.add(r.panel_id);
+    return [...ids];
+  }, [results]);
+
+  const generateReport = useCallback(async (card) => {
+    const previous = reportsBySystem.get(card.key)?.[0] || null;
+    const covered = sourceIdsFor(card);
+
+    const latestDate = card.rows
+      .map(r => panels.find(p => p.id === r.latest.panel_id)?.date)
+      .filter(Boolean)
+      .sort((a, b) => (parseDate(b) || 0) - (parseDate(a) || 0))[0] || null;
+
+    setWriting(true);
+    setErr("");
+    try {
+      const out = await labsApi.writeLabReport({
+        system: card.name,
+        mode: previous ? "update" : "first",
+        brief: briefFor(card),
+      });
+      const saved = await labsApi.createReport({
+        system_key: card.key,
+        system_name: card.name,
+        title: out.title,
+        summary: out.summary || null,
+        body: out.body,
+        model: out.model || null,
+        effort: out.effort || null,
+        covered_panel_ids: covered,
+        latest_panel_date: latestDate,
+        marker_count: card.rows.length,
+        prev_report_id: previous?.id || null,
+      });
+      setReports(rs => [saved, ...(rs || [])]);
+      setOpenReport(saved.id);
+    } catch (e) {
+      setErr(
+        /relation .* does not exist|schema cache|could not find the table/i.test(e.message || "")
+          ? "Reports need a table that isn't there yet — re-run supabase_labs.sql in the Supabase SQL editor, then reload."
+          : `Couldn't write that report: ${e.message}`
+      );
+    } finally {
+      setWriting(false);
+    }
+  }, [reportsBySystem, briefFor, sourceIdsFor, panels]);
+
+  const removeReport = useCallback((id) => runWrite(async () => {
+    await labsApi.deleteReport(id);
+    setReports(rs => (rs || []).filter(r => r.id !== id));
+    setOpenReport(cur => (cur === id ? null : cur));
+  }, "Couldn't delete that report"), [runWrite]);
+
   // --- render --------------------------------------------------------------
 
   /**
@@ -581,6 +704,83 @@ export default function LabsTab() {
     </button>
   );
 
+  // ---------------- Reading one report ----------------
+  // A whole screen rather than a sheet: this is the longest piece of prose in
+  // the app, and it is meant to be read rather than glanced at.
+  if (openReport) {
+    const rep = (reports || []).find(r => r.id === openReport);
+    if (!rep) { setOpenReport(null); return null; }
+    const thread = reportsBySystem.get(rep.system_key) || [];
+    const idx = thread.findIndex(r => r.id === rep.id);
+
+    return (
+      <div className="labs-view">
+        <style>{LAB_STYLES}</style>
+        <div className="labs-zoom-head">
+          <button className="btn-ghost sm" onClick={() => setOpenReport(null)}>
+            <ChevronLeft size={14} /> {rep.system_name}
+          </button>
+          <DeleteBtn id={rep.id} onDelete={() => removeReport(rep.id)} size={13} />
+        </div>
+
+        <article className="panel labs-report">
+          <div className="labs-report-meta">
+            {formatMDY(new Date(rep.created_at))} · {rep.system_name}
+            {rep.latest_panel_date && <> · covers draws to {rep.latest_panel_date}</>}
+            {thread.length > 1 && <> · #{thread.length - idx} of {thread.length}</>}
+          </div>
+          <Markdown text={rep.body} />
+        </article>
+
+        {/* Provenance, not a hedge. This is generated prose about someone's
+            health that will be re-read months from now, so which model wrote
+            it and when is part of reading it. */}
+        <p className="labs-zoom-foot">
+          Written by {rep.model || "an AI model"} on {formatMDY(new Date(rep.created_at))} from the results
+          and history recorded in this app. It has no examination and no symptom history, so treatment decisions
+          belong with your care team.
+        </p>
+
+        {idx >= 0 && idx < thread.length - 1 && (
+          <button className="btn-ghost sm labs-report-prev" onClick={() => setOpenReport(thread[idx + 1].id)}>
+            <ChevronLeft size={12} /> The report before this one
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  // ---------------- Medical history ----------------
+  // What the numbers can't carry. Calprotectin at 160 reads one way on
+  // anti-TNF therapy and another off it, so this is the difference between a
+  // report that reasons and one that describes.
+  if (historyOpen) {
+    return (
+      <HistoryScreen
+        entries={history}
+        busy={busy}
+        // Back goes wherever you came from — the system screen stays open
+        // underneath — so the label has to say which that is.
+        backLabel={zoomSystem ? (systemCards.find(x => x.key === zoomSystem)?.name || "Back") : "All labs"}
+        onBack={() => setHistoryOpen(false)}
+        onAdd={(entry) => runWrite(async () => {
+          const saved = await labsApi.addHistory(entry);
+          setHistory(hs => [...(hs || []), saved]);
+        }, "Couldn't save that")}
+        onPatch={(id, patch) => runWrite(async () => {
+          const saved = await labsApi.updateHistory(id, patch);
+          setHistory(hs => (hs || []).map(h => (h.id === saved.id ? saved : h)));
+        }, "Couldn't update that")}
+        onDelete={(id) => runWrite(async () => {
+          await labsApi.deleteHistory(id);
+          setHistory(hs => (hs || []).filter(h => h.id !== id));
+        }, "Couldn't delete that")}
+        DeleteBtn={DeleteBtn}
+        error={err}
+      />
+    );
+  }
+
   // ---------------- One system's own screen ----------------
   // A drill-down rather than another list: everything about one area of the
   // body, with the plain-language notes that the compact rows have no room
@@ -619,6 +819,67 @@ export default function LabsTab() {
           )}
         </div>
 
+        {/* The thread of written reports for this system. Reports are the one
+            thing here that reads the medical history as well as the numbers,
+            so the entry point to that history sits in the same card. */}
+        {reports !== null && (() => {
+          const thread = reportsBySystem.get(s.key) || [];
+          const latest = thread[0] || null;
+          const fresh = newPanelsSince(latest, sourceIdsFor(s));
+          const histCount = (history || []).length;
+          return (
+            <div className="panel labs-reports">
+              <div className="labs-reports-head">
+                <div className="lzc-name"><BookOpen size={13} /> Reports</div>
+                {/* Ghost when there's nothing new: a green button inviting
+                    the action the line below it argues against reads as a
+                    recommendation, and it isn't one. */}
+                <button
+                  className={(latest && !fresh.length ? "btn-ghost" : "btn-primary") + " sm"}
+                  disabled={writing || busy || !s.rows.length}
+                  onClick={() => generateReport(s)}>
+                  {writing
+                    ? <><Loader2 size={13} className="spin" /> Writing…</>
+                    : !latest ? <>Write a report</>
+                    : fresh.length ? <>Update report</>
+                    : <>Write another</>}
+                </button>
+              </div>
+
+              <div className="labs-reports-sub">
+                {!latest
+                  ? <>A full read of every {s.name} marker here, written against your medical history. Takes about a minute.</>
+                  : fresh.length
+                    ? <>{fresh.length} new {fresh.length === 1 ? "result set" : "result sets"} since the last report — an update will say what changed.</>
+                    : <>Nothing new since the last report. Writing another would give you a second opinion on the same numbers rather than an update.</>}
+              </div>
+
+              {writing && (
+                <div className="labs-reports-wait">
+                  Reading {s.rows.length} marker{s.rows.length === 1 ? "" : "s"} across your whole history. Don't leave the tab.
+                </div>
+              )}
+
+              {thread.map(r => (
+                <button key={r.id} className="labs-report-row" onClick={() => setOpenReport(r.id)}>
+                  <span className="lrr-title">{r.title}</span>
+                  <span className="lrr-meta">
+                    {formatMDY(new Date(r.created_at))}
+                    {r.latest_panel_date && <> · to {r.latest_panel_date}</>}
+                  </span>
+                  {r.summary && <span className="lrr-summary">{r.summary}</span>}
+                </button>
+              ))}
+
+              {history !== null && (
+                <button className="btn-ghost sm labs-reports-hist" onClick={() => setHistoryOpen(true)}>
+                  <Heart size={12} /> Medical history — {histCount || "nothing"} {histCount === 1 ? "entry" : histCount ? "entries" : "recorded yet"}
+                </button>
+              )}
+            </div>
+          );
+        })()}
+
         {ordered.map(row => {
           const note = markerNote(row.marker);
           // The effective range, not the raw row — otherwise a marker whose
@@ -627,7 +888,6 @@ export default function LabsTab() {
           const lo = row.ref.lo, hi = row.ref.hi;
           const p = gaugePosition(row.latest.value, lo, hi);
           const pct = p == null ? null : p * 100;
-          const pts = seriesFor(row.marker).map(p => ({ v: p.value }));
           return (
             <div className="panel labs-zoom-card" key={row.marker}>
               <div className="lzc-head">
@@ -661,8 +921,6 @@ export default function LabsTab() {
                 {row.count} reading{row.count === 1 ? "" : "s"} · latest {panels.find(p => p.id === row.latest.panel_id)?.date || "–"}
                 {row.delta != null && <> · {row.delta > 0 ? "+" : ""}{fmtValue(row.delta)} since previous</>}
               </div>
-
-              {pts.length > 1 && <Spark pts={pts} lo={lo} hi={hi} attention={row.attention} />}
 
               {!row.ref.fromLab && row.ref.why && (
                 <div className="lzc-appnote">
@@ -734,6 +992,14 @@ export default function LabsTab() {
             <button className="btn-ghost sm" onClick={openManual} disabled={busy}>
               <Plus size={13} /> Add by hand
             </button>
+            {/* Not a fifth view toggle: history is written rarely and read by
+                the reports rather than by you, so it lives behind a button
+                instead of taking a permanent slot on a phone-width row. */}
+            {history !== null && (
+              <button className="btn-ghost sm" onClick={() => setHistoryOpen(true)} disabled={busy}>
+                <Heart size={13} /> History
+              </button>
+            )}
           </div>
         </div>
         <input
@@ -1404,30 +1670,175 @@ function TrendDot(props) {
 // ---------------------------------------------------------------------------
 
 /**
- * Tiny inline trend for the hero cards: the lab's in-range band shaded, the
- * readings as a line, the latest reading as a dot — red when it sits outside
- * the range. Raw SVG rather than Recharts: five of these render at once, and
- * there is nothing here worth an animation.
+ * A report, rendered. The parser is in labReport.js; this only turns its
+ * blocks into elements, so nothing generated ever becomes markup — a report
+ * is model output going straight onto the screen.
  */
-function Spark({ pts, lo, hi, attention }) {
-  const W = 120, H = 34, P = 3;
-  const vals = pts.map(p => p.v);
-  const bounds = [lo, hi].filter(v => Number.isFinite(v));
-  const min = Math.min(...vals, ...bounds);
-  const max = Math.max(...vals, ...bounds);
-  const span = max - min || 1;
-  const x = (i) => (pts.length === 1 ? W - P : P + (i * (W - 2 * P)) / (pts.length - 1));
-  const y = (v) => H - P - ((v - min) / span) * (H - 2 * P);
-  const bandTop = Number.isFinite(hi) ? y(hi) : P;
-  const bandBot = Number.isFinite(lo) ? y(lo) : H - P;
+function Markdown({ text }) {
+  const runs = (spans) => spans.map((s, i) => (
+    s.bold ? <strong key={i}>{s.text}</strong>
+      : s.code ? <code key={i}>{s.text}</code>
+      : s.em ? <em key={i}>{s.text}</em>
+      : <React.Fragment key={i}>{s.text}</React.Fragment>
+  ));
+
   return (
-    <svg className="lw-spark" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" aria-hidden="true">
-      {bounds.length > 0 && (
-        <rect className="lw-band" x={P} y={Math.min(bandTop, bandBot)} width={W - 2 * P} height={Math.max(Math.abs(bandBot - bandTop), 2)} />
+    <div className="labs-md">
+      {parseMarkdown(text).map((b, i) => {
+        if (b.type === "heading") {
+          // h1 is the report's own title and already sits at the top of the
+          // card; deeper levels flatten rather than shrinking to nothing.
+          const Tag = b.level <= 1 ? "h2" : b.level === 2 ? "h3" : "h4";
+          return <Tag key={i}>{runs(b.spans)}</Tag>;
+        }
+        if (b.type === "list") {
+          const Tag = b.ordered ? "ol" : "ul";
+          return <Tag key={i}>{b.items.map((it, j) => <li key={j}>{runs(it)}</li>)}</Tag>;
+        }
+        return <p key={i}>{runs(b.spans)}</p>;
+      })}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+
+const blankHistory = () => ({ kind: "condition", label: "", detail: "", started: "", ended: "", active: true });
+
+/**
+ * The medical history editor.
+ *
+ * Structured enough that a report can reason with it — a condition is not a
+ * medication is not a surgery — and loose enough to actually get written:
+ * dates are free text because "2019", "childhood" and "3/2021" are all real
+ * answers, and everything but the label is optional.
+ */
+function HistoryScreen({ entries, busy, backLabel, onBack, onAdd, onPatch, onDelete, DeleteBtn, error }) {
+  const [draft, setDraft] = useState(null);
+  const rows = entries || [];
+
+  const save = async () => {
+    if (!draft?.label.trim()) return;
+    const entry = {
+      kind: draft.kind,
+      label: draft.label.trim(),
+      detail: draft.detail.trim() || null,
+      started: draft.started.trim() || null,
+      ended: draft.ended.trim() || null,
+      // An entry with an end date is over whether or not the box was ticked.
+      active: draft.ended.trim() ? false : draft.active,
+      sort_order: rows.length,
+    };
+    const ok = draft.id ? await onPatch(draft.id, entry) : await onAdd(entry);
+    if (ok !== false) setDraft(null);
+  };
+
+  return (
+    <div className="labs-view">
+      <style>{LAB_STYLES}</style>
+      <div className="labs-zoom-head">
+        <button className="btn-ghost sm" onClick={onBack}><ChevronLeft size={14} /> {backLabel || "All labs"}</button>
+      </div>
+
+      {error && <div className="banner-error"><AlertCircle size={13} /> {error}</div>}
+
+      <div className="labs-zoom-title">
+        <h2 className="panel-title"><Heart size={14} /> Medical history</h2>
+        <div className="labs-zoom-blurb">
+          What the numbers can't carry. Calprotectin at 160 means one thing on anti-TNF therapy and another off it,
+          and none of that is in a lab result — so this is the difference between a report that reasons about your
+          results and one that only describes them. Nothing here is sent anywhere except when you ask for a report.
+        </div>
+      </div>
+
+      {HISTORY_KINDS.map(kind => {
+        const mine = rows.filter(h => h.kind === kind.key);
+        if (!mine.length) return null;
+        return (
+          <div className="panel labs-hist-group" key={kind.key}>
+            <div className="lzc-name">{kind.label}</div>
+            {mine.map(h => (
+              <div className={"labs-hist-row" + (h.active === false ? " labs-hist-past" : "")} key={h.id}>
+                <div className="lhr-main">
+                  <div className="lhr-label">{h.label}{h.active === false && <span className="lhr-past">past</span>}</div>
+                  {h.detail && <div className="lhr-detail">{h.detail}</div>}
+                  {(h.started || h.ended) && (
+                    <div className="lhr-when">
+                      {h.started && h.ended ? `${h.started} to ${h.ended}` : h.started ? `since ${h.started}` : `until ${h.ended}`}
+                    </div>
+                  )}
+                </div>
+                <div className="lhr-actions">
+                  <button className="icon-btn" title="Edit" onClick={() => setDraft({
+                    id: h.id, kind: h.kind, label: h.label, detail: h.detail || "",
+                    started: h.started || "", ended: h.ended || "", active: h.active !== false,
+                  })}>
+                    <Pencil size={12} />
+                  </button>
+                  <DeleteBtn id={h.id} onDelete={() => onDelete(h.id)} />
+                </div>
+              </div>
+            ))}
+          </div>
+        );
+      })}
+
+      {rows.length === 0 && !draft && (
+        <div className="panel labs-empty-panel">
+          <div className="labs-empty">
+            <p>Nothing recorded yet. Your diagnoses, the treatments you're on, and anything that's been operated on are what turn a list of numbers into a reading of them.</p>
+          </div>
+        </div>
       )}
-      {pts.length > 1 && <polyline className="lw-line" points={pts.map((p, i) => `${x(i)},${y(p.v)}`).join(" ")} />}
-      <circle className={"lw-dot" + (attention === "now" ? " lw-dot-off" : "")} cx={x(pts.length - 1)} cy={y(vals[vals.length - 1])} r="2.6" />
-    </svg>
+
+      {draft ? (
+        <div className="panel labs-hist-edit">
+          <div className="lzc-name">{draft.id ? "Edit entry" : "New entry"}</div>
+          <div className="labs-hist-fields">
+            <label className="labs-field">
+              <span>Kind</span>
+              <select value={draft.kind} onChange={(e) => setDraft(d => ({ ...d, kind: e.target.value }))}>
+                {HISTORY_KINDS.map(k => <option key={k.key} value={k.key}>{k.label}</option>)}
+              </select>
+            </label>
+            <label className="labs-field labs-field-wide">
+              <span>What</span>
+              <input
+                value={draft.label}
+                placeholder={HISTORY_KINDS.find(k => k.key === draft.kind)?.hint || ""}
+                onChange={(e) => setDraft(d => ({ ...d, label: e.target.value }))}
+              />
+            </label>
+            <label className="labs-field labs-field-wide">
+              <span>Detail <em>optional</em></span>
+              <input
+                value={draft.detail}
+                placeholder="Dose, site, how it's going — anything a report should weigh"
+                onChange={(e) => setDraft(d => ({ ...d, detail: e.target.value }))}
+              />
+            </label>
+            <label className="labs-field">
+              <span>Started <em>optional</em></span>
+              <input value={draft.started} placeholder="2019" onChange={(e) => setDraft(d => ({ ...d, started: e.target.value }))} />
+            </label>
+            <label className="labs-field">
+              <span>Ended <em>optional</em></span>
+              <input value={draft.ended} placeholder="blank if ongoing" onChange={(e) => setDraft(d => ({ ...d, ended: e.target.value }))} />
+            </label>
+          </div>
+          <div className="labs-hist-actions">
+            <button className="btn-primary sm" onClick={save} disabled={busy || !draft.label.trim()}>
+              <Save size={13} /> Save
+            </button>
+            <button className="btn-ghost sm" onClick={() => setDraft(null)} disabled={busy}>Cancel</button>
+          </div>
+        </div>
+      ) : (
+        <button className="btn-primary sm labs-hist-add" onClick={() => setDraft(blankHistory())} disabled={busy}>
+          <Plus size={13} /> Add an entry
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -1613,19 +2024,70 @@ export const LAB_STYLES = `
   .labs-zoom-foot { font-family: 'Inter', sans-serif; font-size: 12.2px; line-height: 1.6; color: var(--text-faint); padding: 4px 4px 20px; }
   .labs-sys-openrow { padding: 0 16px 12px; }
 
+  /* ---- Reports ----
+     The card sits above the markers on a system's screen: the written read is
+     the thing you came for, the numbers are what it was written from. */
+  .labs-reports { padding: 14px 16px; margin-bottom: 12px; }
+  .labs-reports-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+  .labs-reports-head .lzc-name { display: flex; align-items: center; gap: 6px; }
+  .labs-reports-sub { font-family: 'Inter', sans-serif; font-size: 12.8px; line-height: 1.6; color: var(--text-dim); margin-top: 7px; }
+  .labs-reports-wait { font-family: 'Inter', sans-serif; font-size: 12.6px; line-height: 1.55; color: #8a5b13; background: #fdf1dd; border: 1px solid #ecd3a4; border-radius: 10px; padding: 9px 11px; margin-top: 10px; }
+  .labs-reports-hist { margin-top: 12px; }
+
+  .labs-report-row { display: block; width: 100%; text-align: left; background: var(--panel-2); border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; margin-top: 10px; cursor: pointer; }
+  .labs-report-row:hover { border-color: var(--text-faint); }
+  .lrr-title { display: block; font-family: 'Inter', sans-serif; font-size: 14px; font-weight: 650; color: var(--text); line-height: 1.4; }
+  .lrr-meta { display: block; font-family: 'Inter', sans-serif; font-size: 11.6px; color: var(--text-faint); margin-top: 2px; }
+  .lrr-summary { display: block; font-family: 'Inter', sans-serif; font-size: 12.8px; line-height: 1.55; color: var(--text-dim); margin-top: 6px; }
+
+  .labs-report { padding: 18px 18px 22px; }
+  .labs-report-meta { font-family: 'Inter', sans-serif; font-size: 11.6px; letter-spacing: 0.02em; text-transform: uppercase; color: var(--text-faint); padding-bottom: 12px; border-bottom: 1px solid var(--border); margin-bottom: 14px; }
+  .labs-report-prev { margin: 2px 4px 20px; }
+
+  /* Long-form prose, the only place in the app with any: wider line height
+     and a real measure, because this gets read rather than scanned. */
+  .labs-md { font-family: 'Inter', sans-serif; color: var(--text-dim); }
+  .labs-md h2 { font-family: 'Inter', sans-serif; font-size: 17.5px; font-weight: 700; color: var(--text); line-height: 1.35; margin: 0 0 10px; }
+  .labs-md h3 { font-family: 'Inter', sans-serif; font-size: 15px; font-weight: 680; color: var(--text); line-height: 1.4; margin: 22px 0 8px; }
+  /* Deeper than h3 has to look clearly subordinate to it, or a report's
+     structure flattens into one long run of same-sized bold lines. */
+  .labs-md h4 { font-family: 'Inter', sans-serif; font-size: 12.4px; font-weight: 650; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-faint); margin: 18px 0 6px; }
+  .labs-md p { font-size: 14.2px; line-height: 1.72; margin: 0 0 13px; }
+  .labs-md ul, .labs-md ol { margin: 0 0 13px; padding-left: 20px; }
+  .labs-md li { font-size: 14.2px; line-height: 1.68; margin-bottom: 6px; }
+  .labs-md strong { color: var(--text); font-weight: 650; }
+  .labs-md code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.8px; background: var(--panel-2); border-radius: 5px; padding: 1px 5px; }
+  .labs-md > *:last-child { margin-bottom: 0; }
+
+  /* ---- Medical history ---- */
+  .labs-hist-group { padding: 13px 16px; margin-bottom: 10px; }
+  .labs-hist-row { display: flex; align-items: flex-start; gap: 10px; padding: 9px 0; border-top: 1px solid var(--border); }
+  .labs-hist-row:first-of-type { border-top: none; }
+  .lhr-main { flex: 1; min-width: 0; }
+  .lhr-label { font-family: 'Inter', sans-serif; font-size: 14px; font-weight: 600; color: var(--text); display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+  .lhr-past { font-family: 'Inter', sans-serif; font-size: 10.2px; letter-spacing: 0.05em; text-transform: uppercase; background: var(--panel-2); color: var(--text-faint); border-radius: 999px; padding: 2px 7px; font-weight: 600; }
+  .lhr-detail { font-family: 'Inter', sans-serif; font-size: 13px; line-height: 1.55; color: var(--text-dim); margin-top: 2px; }
+  .lhr-when { font-family: 'Inter', sans-serif; font-size: 11.8px; color: var(--text-faint); margin-top: 2px; }
+  .labs-hist-past .lhr-label { color: var(--text-dim); }
+  .lhr-actions { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
+
+  .labs-hist-edit { padding: 14px 16px; }
+  .labs-hist-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 11px; }
+  .labs-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .labs-field-wide { grid-column: 1 / -1; }
+  .labs-field > span { font-family: 'Inter', sans-serif; font-size: 11.4px; letter-spacing: 0.03em; text-transform: uppercase; color: var(--text-faint); font-weight: 600; }
+  .labs-field > span em { font-style: normal; text-transform: none; letter-spacing: 0; font-weight: 400; opacity: 0.75; }
+  .labs-field input, .labs-field select { background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; padding: 9px 11px; font-family: 'Inter', sans-serif; font-size: 14px; color: var(--text); outline: none; min-width: 0; }
+  .labs-field input:focus, .labs-field select:focus { border-color: var(--text-faint); }
+  .labs-hist-actions { display: flex; gap: 8px; margin-top: 12px; }
+  .labs-hist-add { margin: 2px 0 20px; }
+
   /* The hero card's position bar: the track is the range, the dot is you. */
   .lsc-gauge { position: relative; display: block; width: 100%; height: 5px; border-radius: 999px; background: rgba(103, 161, 90, 0.22); margin: 7px 0 3px; }
   .lsc-gauge-dot { position: absolute; top: 50%; width: 9px; height: 9px; margin-left: -4.5px; border-radius: 999px; background: #2b6e1e; border: 2px solid var(--panel); transform: translateY(-50%); }
   .lsc-gauge-dot.lsc-gauge-off { background: #a5342a; }
   .lsc-gauge-dot.lsc-gauge-edge { background: #c07a1f; }
 
-  /* The trend line, now only on a system's own screen: range band shaded,
-     latest reading dotted. */
-  .lw-spark { width: 100%; height: 28px; margin: 3px 0 1px; }
-  .lw-band { fill: rgba(103, 161, 90, 0.16); }
-  .lw-line { fill: none; stroke: #70747c; stroke-width: 1.6; vector-effect: non-scaling-stroke; }
-  .lw-dot { fill: #2b6e1e; }
-  .lw-dot.lw-dot-off { fill: #a5342a; }
   .lmr-value.lab-flag-off { color: #a5342a; }
   .lmr-value.lab-flag-ok { color: #2b6e1e; }
   .lmr-unit { font-family: 'Inter', sans-serif; font-size: 12px; font-weight: 500; color: var(--text-faint); letter-spacing: 0; }
