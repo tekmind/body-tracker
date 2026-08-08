@@ -117,13 +117,45 @@ async function main() {
   check("marker rows print their range under the value",
     await firstSection.locator(".lmr-range", { hasText: "30 – 100" }).count() === 1);
 
-  // Tap-through: the card is a shortcut to its expanded system.
+  // Tap-through: the card opens that area's own screen.
   await cards.nth(all.findIndex(t => t.includes("Crohn"))).click();
-  await page.waitForSelector(".labs-panel-head", { timeout: 5000 });
-  const openHead = page.locator(".labs-panel-head", { hasText: "Crohn's / IBD" });
-  check("tapping opens the systems view on that system", await openHead.count() === 1);
-  const body = await page.locator(".labs-panel-body").innerText();
-  check("the tapped system is expanded", body.includes("Calprotectin") || body.includes("calprotectin"), body.slice(0, 80));
+  await page.waitForSelector(".labs-zoom-card", { timeout: 5000 });
+  check("tapping a card opens that system's screen",
+    (await page.locator(".labs-zoom-title").innerText()).includes("Crohn's / IBD"));
+  check("the screen lists that system's markers",
+    /calprotectin/i.test(await page.locator(".labs-view").innerText()));
+  await page.locator(".labs-zoom-head button").click();
+  await page.waitForSelector(".labs-syscard", { timeout: 5000 });
+
+  // --- the system's own screen -------------------------------------------
+  await page.locator(".labs-syscard", { hasText: "Vitamins" }).click();
+  await page.waitForSelector(".labs-zoom-card", { timeout: 5000 });
+
+  const zoom = await page.locator(".labs-view").innerText();
+  check("the zoom screen names the system", /Vitamins & nutrition/.test(zoom), zoom.slice(0, 60));
+  check("the verdict names what is out of range", /Vitamin D/.test(await page.locator(".labs-zoom-verdict").innerText()));
+  check("the verdict reads as a problem", await page.locator(".labs-zoom-verdict-off").count() === 1);
+
+  const zCard = page.locator(".labs-zoom-card", { hasText: "Vitamin D" });
+  check("the flagged marker is first", (await page.locator(".labs-zoom-card").first().innerText()).includes("Vitamin D"));
+  check("it is badged out of range", (await zCard.innerText()).includes("out of range"));
+  check("the scale prints both ends of the range", (await zCard.innerText()).includes("30") && (await zCard.innerText()).includes("100"));
+  check("the dot sits on the scale", await zCard.locator(".lzc-dot-off").count() === 1);
+
+  // The point of this screen: explanation the compact rows have no room for.
+  check("the marker explains what it is", /What it is\./.test(await zCard.innerText()));
+  check("the marker explains what moves it", /What moves it\./.test(await zCard.innerText()));
+  check("vitamin D's note mentions absorption", /malabsorption|absorption/i.test(await zCard.innerText()));
+
+  // B12's note should be the ileum one — the notes are per-marker, not generic.
+  const b12 = page.locator(".labs-zoom-card", { hasText: "Vitamin B12" });
+  check("B12's note is B12's, not boilerplate", /ileum|ileal/i.test(await b12.innerText()), (await b12.innerText()).slice(0, 60));
+
+  check("the screen carries the care-team caveat", /belongs with your care team/.test(zoom));
+
+  await page.locator(".labs-zoom-head button").click();
+  await page.waitForSelector(".labs-syscard", { timeout: 5000 });
+  check("back returns to the labs overview", await page.locator(".labs-syscard").count() === 5);
 
   // Phone-width discipline, same rule as the rest of the tab.
   const over = await page.evaluate(() => document.body.scrollWidth - document.documentElement.clientWidth);

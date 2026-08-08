@@ -10,7 +10,7 @@ import { parseDate, formatMDY, today as todayDate } from "./dateUtils.js";
 import {
   resolveMarker, markerDisplayName, markerInfo, flagFor, isFavorable,
   sortResults, fmtValue, fmtRange, fmtBounds, MARKER_CATEGORIES,
-  SYSTEMS, systemsFor,
+  SYSTEMS, systemsFor, markerNote,
 } from "./labMarkers.js";
 import { prepareLabFile, ACCEPTED_FILE_TYPES } from "./labFile.js";
 import * as labsApi from "./labsApi.js";
@@ -69,6 +69,9 @@ export default function LabsTab() {
   const [pathology, setPathology] = useState(null);
 
   const [view, setView] = useState(() => localStorage.getItem("bt_labs_view") || "panels");
+  // Which system's own screen is open, if any. Not persisted — a drill-down
+  // is somewhere you go, not somewhere you leave the app sitting.
+  const [zoomSystem, setZoomSystem] = useState(null);
   const [expanded, setExpanded] = useState(null);
   const [trendKey, setTrendKey] = useState(null);
   const [query, setQuery] = useState("");
@@ -536,6 +539,120 @@ export default function LabsTab() {
     </button>
   );
 
+  // ---------------- One system's own screen ----------------
+  // A drill-down rather than another list: everything about one area of the
+  // body, with the plain-language notes that the compact rows have no room
+  // for. Reached from a hero card or a system row; leaves by the back button.
+  if (zoomSystem) {
+    const s = systemCards.find(x => x.key === zoomSystem);
+    if (!s) { setZoomSystem(null); return null; }
+    const rank = { now: 0, past: 1, ok: 2 };
+    const ordered = [...s.rows].sort((a, b) => rank[a.attention] - rank[b.attention] || a.name.localeCompare(b.name));
+    const needs = ordered.filter(r => r.attention === "now");
+
+    return (
+      <div className="labs-view">
+        <style>{LAB_STYLES}</style>
+        <div className="labs-zoom-head">
+          <button className="btn-ghost sm" onClick={() => setZoomSystem(null)}><ChevronLeft size={14} /> All labs</button>
+        </div>
+
+        <div className="labs-zoom-title">
+          <h2 className="panel-title">{s.name}</h2>
+          <div className="labs-zoom-blurb">{s.blurb}</div>
+        </div>
+
+        {/* The one-line answer to "how is this area doing?" before any rows. */}
+        <div className={"labs-zoom-verdict" + (needs.length ? " labs-zoom-verdict-off" : " labs-zoom-verdict-ok")}>
+          {needs.length === 0
+            ? <>Every marker in this area is inside its lab's range on the most recent draw it was measured.</>
+            : <>
+                {needs.length} marker{needs.length === 1 ? " is" : "s are"} outside range right now
+                {" — "}{needs.map(r => r.name).join(", ")}.
+              </>}
+        </div>
+
+        {ordered.map(row => {
+          const note = markerNote(row.marker);
+          const lo = row.latest.ref_low, hi = row.latest.ref_high;
+          const pct = Number.isFinite(lo) && Number.isFinite(hi) && row.latest.value != null
+            ? Math.min(1, Math.max(0, (row.latest.value - lo) / ((hi - lo) || 1))) * 100
+            : null;
+          const pts = seriesFor(row.marker).map(p => ({ v: p.value }));
+          return (
+            <div className="panel labs-zoom-card" key={row.marker}>
+              <div className="lzc-head">
+                <div className="lzc-name">
+                  {row.name}
+                  {row.attention === "now" && <span className="labs-panel-flagged">out of range</span>}
+                  {row.attention === "past" && <span className="lzc-past">was flagged</span>}
+                </div>
+                <div className={"lzc-value" + flagClass(row.latest.flag, row.marker)}>
+                  {row.latest.value != null ? fmtValue(row.latest.value) : (row.latest.value_text || "–")}
+                  <span className="lmr-unit"> {row.latest.unit || ""}</span>
+                </div>
+              </div>
+
+              {pct != null ? (
+                <div className="lzc-scale">
+                  <div className="lzc-track"><span className={"lzc-dot" + (row.attention === "now" ? " lzc-dot-off" : "")} style={{ left: `${pct}%` }} /></div>
+                  <div className="lzc-ends"><span>{fmtValue(lo)}</span><span>{fmtValue(hi)}</span></div>
+                </div>
+              ) : row.range ? (
+                <div className="lzc-rangeonly">Reference: {row.range}</div>
+              ) : null}
+
+              <div className="lzc-meta">
+                {row.count} reading{row.count === 1 ? "" : "s"} · latest {panels.find(p => p.id === row.latest.panel_id)?.date || "–"}
+                {row.delta != null && <> · {row.delta > 0 ? "+" : ""}{fmtValue(row.delta)} since previous</>}
+              </div>
+
+              {pts.length > 1 && <Spark pts={pts} lo={lo} hi={hi} attention={row.attention} />}
+
+              {note && (
+                <div className="lzc-note">
+                  <p><strong>What it is.</strong> {note.what}</p>
+                  <p><strong>What moves it.</strong> {note.moves}</p>
+                </div>
+              )}
+
+              <button className="btn-ghost sm lzc-trend" onClick={() => setTrendKey(row.marker)}>
+                <TrendingUp size={12} /> Full trend
+              </button>
+            </div>
+          );
+        })}
+
+        {s.studies.length > 0 && (
+          <div className="panel labs-zoom-card">
+            <div className="lzc-name">Related studies</div>
+            <div className="labs-sys-studies">
+              {s.studies.map(st => (
+                <button key={st.id} className="labs-sys-study" onClick={() => { setZoomSystem(null); setView("pathology"); setExpanded(st.id); }}>
+                  <FileText size={11} /> {st.date} · {st.report_name}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <p className="labs-zoom-foot">
+          These notes describe what each test measures and what generally moves it. What your own numbers mean —
+          and what to do about them — depends on your symptoms, treatment and history, and belongs with your care team.
+        </p>
+
+        {trendKey && (
+          <TrendSheet
+            markerKey={trendKey}
+            series={seriesFor(trendKey)}
+            fallbackName={results.find(r => r.marker === trendKey)?.name}
+            onClose={() => setTrendKey(null)}
+          />
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="labs-view">
       <style>{LAB_STYLES}</style>
@@ -606,7 +723,7 @@ export default function LabsTab() {
             <button
               key={s.key}
               className="labs-syscard"
-              onClick={() => { setView("systems"); setExpanded(`sys:${s.key}`); }}
+              onClick={() => setZoomSystem(s.key)}
             >
               <span className="lsc-head">
                 <span className="lsc-label">{s.short || s.name}</span>
@@ -736,6 +853,13 @@ export default function LabsTab() {
                         {s.flagged > 0 && <span className="labs-panel-flagged">{s.flagged} flagged</span>}
                       </span>
                     </button>
+                    {open && (
+                      <div className="labs-sys-openrow">
+                        <button className="btn-ghost sm" onClick={() => setZoomSystem(s.key)}>
+                          Open {s.short || s.name} <ChevronRight size={13} />
+                        </button>
+                      </div>
+                    )}
 
                     {open && (
                       <div className="labs-panel-body">
@@ -1372,6 +1496,36 @@ export const LAB_STYLES = `
   .labs-prio-count { font-weight: 600; background: var(--panel-2); border-radius: 999px; padding: 1px 8px; color: var(--text-dim); }
 
   .lsc-range { display: block; font-family: 'Inter', sans-serif; font-size: 10.8px; font-weight: 500; letter-spacing: 0; color: var(--text-faint); margin-top: 1px; }
+
+  /* One system's own screen. Wider measure than the compact rows, because
+     this is the one place with room to explain rather than just report. */
+  .labs-zoom-head { margin-bottom: 6px; }
+  .labs-zoom-title { margin-bottom: 12px; }
+  .labs-zoom-blurb { font-family: 'Inter', sans-serif; font-size: 13px; color: var(--text-dim); margin-top: 3px; }
+  .labs-zoom-verdict { font-family: 'Inter', sans-serif; font-size: 13.4px; line-height: 1.5; border-radius: 14px; padding: 11px 14px; margin-bottom: 14px; }
+  .labs-zoom-verdict-ok { background: #ddefd4; border: 1px solid #cfe6c4; color: #2b6e1e; }
+  .labs-zoom-verdict-off { background: #f8ddd9; border: 1px solid #eec4be; color: #a5342a; }
+  .labs-zoom-card { padding: 14px 16px; margin-bottom: 12px; }
+  .lzc-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+  .lzc-name { font-family: 'Inter', sans-serif; font-size: 14.6px; font-weight: 600; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .lzc-past { font-family: 'Inter', sans-serif; font-size: 10.8px; font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase; color: #8a6d1a; background: #f6efd8; border: 1px solid #e8dcb4; border-radius: 999px; padding: 1px 8px; }
+  .lzc-value { font-family: 'Inter', sans-serif; font-size: 22px; font-weight: 700; letter-spacing: -0.02em; white-space: nowrap; }
+  .lzc-value.lab-flag-off { color: #a5342a; }
+  .lzc-value.lab-flag-ok { color: #2b6e1e; }
+  .lzc-scale { margin: 10px 0 6px; }
+  .lzc-track { position: relative; height: 6px; border-radius: 999px; background: rgba(103, 161, 90, 0.22); }
+  .lzc-dot { position: absolute; top: 50%; width: 11px; height: 11px; margin-left: -5.5px; border-radius: 999px; background: #2b6e1e; border: 2px solid var(--panel); transform: translateY(-50%); }
+  .lzc-dot.lzc-dot-off { background: #a5342a; }
+  .lzc-ends { display: flex; justify-content: space-between; font-family: 'Inter', sans-serif; font-size: 11px; color: var(--text-faint); margin-top: 3px; }
+  .lzc-rangeonly { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--text-faint); margin: 8px 0 4px; }
+  .lzc-meta { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--text-faint); }
+  .lzc-note { margin-top: 9px; padding-top: 9px; border-top: 1px solid var(--border); }
+  .lzc-note p { font-family: 'Inter', sans-serif; font-size: 13.2px; line-height: 1.6; color: var(--text-dim); margin: 0 0 6px; }
+  .lzc-note p:last-child { margin-bottom: 0; }
+  .lzc-note strong { color: var(--text); font-weight: 600; }
+  .lzc-trend { margin-top: 10px; }
+  .labs-zoom-foot { font-family: 'Inter', sans-serif; font-size: 12.2px; line-height: 1.6; color: var(--text-faint); padding: 4px 4px 20px; }
+  .labs-sys-openrow { padding: 0 16px 12px; }
 
   /* The hero card's trend line: range band shaded, latest reading dotted. */
   .lw-spark { width: 100%; height: 28px; margin: 3px 0 1px; }

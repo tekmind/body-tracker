@@ -160,6 +160,30 @@ the cover sheet, with no radiologist's report inside it at all. Those are stored
 with whatever the provider's own note says and a comment saying so, rather than
 filed as though the report were there.
 
+## One system's own screen
+
+Tapping a pinned card — or "Open …" on a system row — leaves the lists behind
+for a screen about one area of the body. It leads with a plain verdict ("2
+markers are outside range right now — …"), then a card per marker: the value,
+a scale showing where inside the lab's range it sits, the trend with the
+in-range band shaded, and the note.
+
+The notes are the point. `MARKER_NOTES` in
+[`src/labMarkers.js`](src/labMarkers.js) gives each marker a **what it is** and
+a **what moves it**, in the language you'd want as the patient rather than as
+the clinician — why B12 is the one that fails with ileal Crohn's, why ferritin
+reads falsely reassuring during a flare, why an afternoon testosterone draw
+isn't comparable to a morning one.
+
+They are deliberately **general**. Nothing in them reads this person's values,
+and nothing says what to do about a particular number: that depends on
+symptoms, treatment and history, so it belongs in a conversation, not baked
+into the app where it would look permanent and authoritative. The screen says
+so at the bottom. A family of near-identical tests — the twelve organisms on a
+stool pathogen panel — shares one note through `NOTE_PATTERNS` rather than
+twelve copies. A marker with no note simply shows none; an absent explanation
+beats a vague one.
+
 ## Body systems
 
 Categories answer "what kind of test is this"; systems answer "what part of my
