@@ -523,6 +523,57 @@ const NOTE_PATTERNS = [
   },
 ];
 
+// ---------------------------------------------------------------------------
+// App-level reference ranges — used ONLY where the report printed none.
+//
+// The rule everywhere else in this app is that a range comes from the report
+// that printed it, and that rule still holds: a lab's own range always wins,
+// and nothing here is ever written to lab_results. This is a display-and-
+// derivation fallback for the handful of markers whose reports carry no range
+// at all, where the alternative is a number the app can never call.
+//
+// Calprotectin is the reason this exists. It is the most important marker in
+// this person's data and the portal prints it bare, so 18.7 and 160 read as
+// an unremarkable line and never reach a flag or a system's badge.
+//
+// Every use of these is labelled on screen as not coming from the lab.
+// ---------------------------------------------------------------------------
+const APP_REFERENCES = {
+  calprotectin: {
+    hi: 50,
+    text: "< 50",
+    why: "Commonly used cutoff: under 50 mg/kg is taken as normal, and over roughly 120 as suggestive of active intestinal inflammation. Labs vary.",
+  },
+  folate: {
+    lo: 5.4,
+    text: "> 5.4",
+    why: "The tiered scale this lab prints in its own footnote — under 3.4 low, 3.4–5.4 borderline, above 5.4 normal — expressed as a single bound.",
+  },
+};
+
+/**
+ * The range to use for a result: the lab's if it gave one, otherwise the
+ * app's fallback. `fromLab` is what the UI keys its labelling off — a
+ * borrowed range has to look borrowed.
+ */
+export function effectiveRange(markerKey, result) {
+  const lo = result?.ref_low, hi = result?.ref_high;
+  if (Number.isFinite(lo) || Number.isFinite(hi)) {
+    return { lo: Number.isFinite(lo) ? lo : null, hi: Number.isFinite(hi) ? hi : null, text: fmtRange(lo, hi, result?.ref_text), fromLab: true, why: null };
+  }
+  const app = APP_REFERENCES[String(markerKey || "")];
+  if (!app) {
+    return { lo: null, hi: null, text: String(result?.ref_text || "").trim(), fromLab: true, why: null };
+  }
+  return {
+    lo: Number.isFinite(app.lo) ? app.lo : null,
+    hi: Number.isFinite(app.hi) ? app.hi : null,
+    text: app.text,
+    fromLab: false,
+    why: app.why,
+  };
+}
+
 /** The plain-language note for a marker, or null if none is written. */
 export function markerNote(markerKey) {
   const k = String(markerKey || "");
@@ -677,6 +728,33 @@ export function flagFor(value, refLow, refHigh) {
   if (lo != null && value < lo) return "low";
   if (hi != null && value > hi) return "high";
   return "normal";
+}
+
+/**
+ * Inside the range, but close enough to an edge to be worth an amber note.
+ *
+ * "In range" is a cliff, and a lab's range is a population, not a target: B12
+ * at 269 against 200–1100 is inside the range and in the bottom 8% of it,
+ * which is not the same news as 600. This flags the outer fifth of the band —
+ * but only the end that is actually the bad one. High HDL and high eGFR are
+ * the good direction, so nearing that edge earns nothing; for a marker with
+ * no declared direction the range is a window and both edges count.
+ *
+ * Returns "low" | "high" | null. Needs both bounds: proximity to an edge is
+ * meaningless when the range is one-sided.
+ */
+const EDGE_FRACTION = 0.2;
+
+export function borderlineFor(markerKey, value, refLow, refHigh) {
+  if (!Number.isFinite(value) || !Number.isFinite(refLow) || !Number.isFinite(refHigh)) return null;
+  const span = refHigh - refLow;
+  if (!(span > 0)) return null;
+  if (value < refLow || value > refHigh) return null;      // out of range is not borderline
+  const p = (value - refLow) / span;
+  const dir = BY_KEY.get(markerKey)?.higher;
+  if (p <= EDGE_FRACTION && dir !== "bad") return "low";
+  if (p >= 1 - EDGE_FRACTION && dir !== "good") return "high";
+  return null;
 }
 
 /** Is an out-of-range direction the good one? Used only for colour. */

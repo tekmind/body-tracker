@@ -3581,7 +3581,7 @@ const BASE_STYLES = `
     --bg: #f7f7f4; --panel: #ffffff; --panel-2: #f1f0eb; --border: #e7e6e0;
     --text: #16181d; --text-dim: #5d6167; --text-faint: #8f939b;
     --cut: #5b8dee; --derailed: #c4534a; --maintain: #4caf7d; --gain: #dba236;
-    --good: #368727; --bad: #c73a2f;
+    --good: #368727; --bad: #c73a2f; --warn: #c07a1f;
     --bar-good: #4caf7d; --bar-bad: #c4534a;
     font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text);
     padding: 28px 24px 40px; border-radius: 16px; width: 100%; max-width: 1900px; margin: 0 auto; box-sizing: border-box;
@@ -3598,8 +3598,12 @@ const BASE_STYLES = `
 
   .banner-alert { display: flex; align-items: center; gap: 12px; padding: 24px 50px 24px 20px; min-height: 88px; border-radius: 10px; margin-bottom: 14px; font-family: 'Inter', sans-serif; font-size: 17.8px; line-height: 1.5; position: relative; }
   .banner-alert strong { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 19.5px; }
-  .banner-alert.slipping { background: #341616; border: 1px solid #7a2e2e; color: #f0b0ac; }
-  .banner-alert.slipping svg { color: var(--bad); flex-shrink: 0; }
+  /* Slipping is a warning, derailed is a verdict — they were the same dark
+     red, so one off week shouted as loudly as a month of them and the
+     escalation carried no information. Amber here, red below. */
+  .banner-alert.slipping { background: #fbeddc; border: 1px solid #e7c79b; color: #7a4d12; }
+  .banner-alert.slipping strong { color: #5f3a0b; }
+  .banner-alert.slipping svg { color: var(--warn); flex-shrink: 0; }
   .banner-alert.derailed { background: #341616; border: 1px solid #7a2e2e; color: #f0b0ac; }
   .banner-alert.derailed svg { color: var(--bad); flex-shrink: 0; }
   .banner-alert-text { flex: 1; }
@@ -4131,8 +4135,12 @@ const BASE_STYLES = `
   /* Alerts & misc, tuned for white */
   .dash .banner-error { background: #fdf1dd; border-color: #ecd3a4; color: #8a5b13; font-family: 'Inter', sans-serif; }
   .dash .banner-alert { border-radius: 16px; }
-  .dash .banner-alert.slipping { background: #fcebe9; border-color: #eec4be; color: #a03d33; }
-  .dash .banner-alert.slipping svg { color: #c73a2f; }
+  /* Amber, not red: slipping is a warning and derailed is a verdict, and they
+     read identically before this. Set here rather than only in the earlier
+     block because these later ".dash "-prefixed rules outrank it. */
+  .dash .banner-alert.slipping { background: #fbeddc; border-color: #e7c79b; color: #7a4d12; }
+  .dash .banner-alert.slipping strong { color: #5f3a0b; }
+  .dash .banner-alert.slipping svg { color: #c07a1f; }
   .dash .banner-alert.derailed { background: #fcebe9; border-color: #eec4be; color: #a03d33; }
   .dash .banner-alert.derailed svg { color: #c73a2f; }
   .dash .recovery { border-top-color: rgba(0,0,0,0.12); }

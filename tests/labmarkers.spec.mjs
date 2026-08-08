@@ -15,7 +15,7 @@
 // No browser here — this is a pure module, and the whole point is that it can
 // be checked without one.
 
-import { resolveMarker, systemsFor } from "../src/labMarkers.js";
+import { resolveMarker, systemsFor, borderlineFor, effectiveRange } from "../src/labMarkers.js";
 
 let failed = 0;
 function check(name, fn) {
@@ -216,6 +216,43 @@ check("both labs' infliximab levels share a key", () => {
 check("calprotectin is canonical, not a slug", () => {
   const m = resolveMarker("Calprotectin, Stool - QDx");
   return m.key === "calprotectin" && m.known ? null : m.key;
+});
+
+// --- borderline: in range, but hugging the end that isn't the good one -----
+// B12 at 269 against 200–1100 is "in range" and in the bottom 8% of it, which
+// is not the same news as 600.
+check("a value near the bottom of its range is borderline low", () =>
+  borderlineFor("vitamin_b12", 269, 200, 1100) === "low" ? null : String(borderlineFor("vitamin_b12", 269, 200, 1100)));
+check("a value mid-range is not borderline", () =>
+  borderlineFor("vitamin_b12", 650, 200, 1100) === null ? null : "flagged mid-range");
+check("out of range is not borderline — it's already flagged", () =>
+  borderlineFor("vitamin_b12", 150, 200, 1100) === null ? null : "borderline swallowed an out-of-range value");
+// Direction matters: nearing the good end earns nothing.
+check("high HDL is not a warning", () =>
+  borderlineFor("hdl", 95, 40, 100) === null ? null : "warned on the good end");
+check("low HDL still is", () =>
+  borderlineFor("hdl", 45, 40, 100) === "low" ? null : String(borderlineFor("hdl", 45, 40, 100)));
+check("high LDL is a warning", () =>
+  borderlineFor("ldl", 95, 0, 100) === "high" ? null : String(borderlineFor("ldl", 95, 0, 100)));
+check("low LDL is not", () =>
+  borderlineFor("ldl", 5, 0, 100) === null ? null : "warned on the good end");
+// A one-sided range has no interior, so proximity is meaningless.
+check("a one-sided range yields no borderline", () =>
+  borderlineFor("crp", 7, null, 8) === null ? null : "invented a position");
+
+// --- app reference ranges, used only where the report gave none ------------
+check("the lab's own range always wins", () => {
+  const r = effectiveRange("calprotectin", { ref_low: 10, ref_high: 90, ref_text: "10-90" });
+  return r.fromLab && r.lo === 10 && r.hi === 90 ? null : JSON.stringify(r);
+});
+check("calprotectin gets an app range when the report gave none", () => {
+  const r = effectiveRange("calprotectin", { ref_low: null, ref_high: null, ref_text: "" });
+  if (r.fromLab) return "claimed to be from the lab";
+  return r.hi === 50 && r.why ? null : JSON.stringify(r);
+});
+check("a marker with no app range stays rangeless", () => {
+  const r = effectiveRange("some_unknown_test", { ref_low: null, ref_high: null, ref_text: "" });
+  return r.lo === null && r.hi === null && r.fromLab ? null : JSON.stringify(r);
 });
 
 console.log(failed ? `\n${failed} problem(s)` : "\nall good");
