@@ -62,16 +62,55 @@ create table if not exists lab_results (
 create index if not exists lab_results_panel_idx on lab_results (panel_id);
 create index if not exists lab_results_marker_idx on lab_results (marker);
 
+-- ---------------------------------------------------------------------------
+-- lab_pathology: one row per pathology / histology report.
+--
+-- Separate from lab_panels because a biopsy report has no markers. It is a
+-- narrative — a diagnosis, what the specimen looked like, what the pathologist
+-- saw down the microscope — and there is no value, unit, or reference range to
+-- put on a trend line. Forcing one into lab_results would mean inventing a
+-- marker for prose, and it would show up in the marker list as a test that
+-- never has a number.
+--
+-- The named sections are the ones every report the app has seen prints, and
+-- they are what the tab shows. raw_text keeps the report verbatim regardless,
+-- because pathology labs vary their headings and a section this app doesn't
+-- recognise must not be silently lost.
+-- ---------------------------------------------------------------------------
+create table if not exists lab_pathology (
+  id uuid primary key default gen_random_uuid(),
+  date text not null,                      -- collection date, "M/D/YY"
+  report_name text,                        -- "Gastrointestinal"
+  specimen text,                           -- "A :Colon, Colon, Sigmoid:Biopsy"
+  accession text,
+  lab_name text,
+  diagnosis text,                          -- the part you actually read
+  clinical_history text,
+  gross_description text,
+  microscopic_description text,
+  comments text,
+  raw_text text not null,
+  kind text not null default 'pathology',  -- pathology | imaging
+  source text not null default 'portal',   -- portal | pdf | image | manual
+  created_at timestamptz not null default now()
+);
+
+-- Added after the table shipped; safe to re-run.
+alter table lab_pathology add column if not exists kind text not null default 'pathology';
+
+create index if not exists lab_pathology_date_idx on lab_pathology (date);
+
 -- No-login setup, matching the rest of this project's tables: anyone with the
 -- anon key can read/write. Fine for personal use; revisit with auth-scoped
 -- policies before any public deployment.
 alter table lab_panels enable row level security;
 alter table lab_results enable row level security;
+alter table lab_pathology enable row level security;
 
 do $$
 declare t text;
 begin
-  foreach t in array array['lab_panels', 'lab_results'] loop
+  foreach t in array array['lab_panels', 'lab_results', 'lab_pathology'] loop
     execute format('drop policy if exists "public read" on %I', t);
     execute format('drop policy if exists "public write" on %I', t);
     execute format('drop policy if exists "public update" on %I', t);
