@@ -6,7 +6,8 @@
 
 import { supabase } from "./supabaseClient.js";
 
-const PANEL_COLUMNS = "id,date,lab_name,panel_name,source,file_name,note,created_at";
+const PANEL_COLUMNS =
+  "id,date,lab_name,panel_name,source,file_name,note,drawn_at,fasted,infusion_relation,created_at";
 const RESULT_COLUMNS =
   "id,panel_id,marker,name,category,value,value_text,unit,ref_low,ref_high,ref_text,flag,sort_order";
 const PATHOLOGY_COLUMNS =

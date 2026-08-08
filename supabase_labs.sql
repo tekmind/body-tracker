@@ -25,6 +25,19 @@ create table if not exists lab_panels (
 
 create index if not exists lab_panels_date_idx on lab_panels (date);
 
+-- When the blood was actually taken, which decides what the numbers mean.
+-- An infliximab level is only interpretable as a trough; a morning and an
+-- afternoon testosterone aren't comparable; a lipid panel drawn fed isn't the
+-- same test as one drawn fasted.
+--
+-- All three are nullable and stay null unless someone actually knows. Most
+-- imported reports say none of it, and a guessed value here is worse than a
+-- blank — it would be read as fact by everything downstream. Added after the
+-- table shipped; safe to re-run.
+alter table lab_panels add column if not exists drawn_at text;          -- free text: "~noon", "8:15am", "morning"
+alter table lab_panels add column if not exists fasted text;            -- yes | no | null (unknown)
+alter table lab_panels add column if not exists infusion_relation text; -- trough | after | unrelated | null
+
 -- ---------------------------------------------------------------------------
 -- lab_results: one row per marker on a panel.
 --
