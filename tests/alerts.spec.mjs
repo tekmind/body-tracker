@@ -182,7 +182,8 @@ await p.waitForTimeout(250);
 check("the metric is saved", savedAlerts?.metric === "muscle", JSON.stringify(savedAlerts));
 
 // A backup that didn't carry these would quietly reset them on restore.
-await p.locator(".panel", { hasText: "Backup & Restore" }).first().locator(".btn-ghost", { hasText: "Export" }).click();
+// Exact: "Download export" sits beside it and a substring match takes both.
+await p.locator(".panel", { hasText: "Backup & Restore" }).first().locator(".btn-ghost", { hasText: /^Export$/ }).click();
 await p.waitForSelector(".backup-ta");
 const blob = JSON.parse(await p.locator(".backup-ta").inputValue());
 check("the backup carries the alert settings", blob.alerts?.metric === "muscle", JSON.stringify(blob.alerts));

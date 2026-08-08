@@ -97,10 +97,11 @@ async function main() {
   // half a reading.
   check("the Vitamins card prints vitamin D's range", /range 30 – 100/.test(find("Vitamins")), find("Vitamins").replace(/\n/g, " | "));
 
-  // The chips carry a position bar, not a trend line — at this size "where in
-  // the range am I" is the thing worth two seconds, and the trend is one tap
-  // away on the system's own screen.
-  check("no trend lines on the chips", await page.locator(".labs-syscard svg.lw-spark").count() === 0);
+  // Position bars, not trend lines — anywhere. Squeezed into a card's width
+  // a sparkline stretches its own slopes and puts the newest reading half off
+  // the edge, so it reads as a shape the data never had. "Where in the range
+  // am I" is what's worth two seconds here; the trend is one tap away.
+  check("no inline trend lines anywhere on the tab", await page.locator("svg.lw-spark").count() === 0);
   const vitCard = cards.nth(all.findIndex(t => t.includes("Vitamins")));
   check("the Vitamins chip draws a position bar", await vitCard.locator(".lsc-gauge").count() === 1);
   check("a below-range vitamin D pins to the floor in red",
@@ -191,7 +192,7 @@ async function main() {
   check("its axis runs from zero to the bound",
     (await calpro.locator(".lzc-ends").innerText()).replace(/\s+/g, " ").trim() === "0 50",
     (await calpro.locator(".lzc-ends").innerText()).replace(/\s+/g, " "));
-  check("the trend shades the app range", await calpro.locator("svg.lw-spark rect.lw-band").count() === 1);
+  check("and no stretched sparkline under it", await calpro.locator("svg.lw-spark").count() === 0);
   check("the verdict now counts calprotectin",
     /calprotectin/i.test(await page.locator(".labs-zoom-verdict").innerText()));
 

@@ -36,6 +36,7 @@ The app already encodes the split, and new work should follow it:
 | `FOOD_LABEL_MODEL` | Sonnet 5 | Reading a Nutrition Facts panel. A misread digit is silent and repeats every time that food is logged |
 | `FOOD_LOOKUP_MODEL` | Sonnet 5 | Judging whether a web page is a real nutrition label needs more than extraction |
 | `LAB_PARSE_MODEL` | Sonnet 5 | A dense grid of numbers that might be acted on medically |
+| `LAB_REPORT_MODEL` | Fable 5 | Interpreting a body system across its whole history. Nothing checks the output before it counts: the report is stored, re-read months later, and the next one is written on top of it. Runs a handful of times a year per system |
 
 The pattern: **cheap where the output is checked before it counts, strong
 where a mistake is silent and durable.** Cost matters — this is one person's
