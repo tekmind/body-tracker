@@ -15,7 +15,7 @@
 // No browser here — this is a pure module, and the whole point is that it can
 // be checked without one.
 
-import { resolveMarker, systemsFor, borderlineFor, effectiveRange } from "../src/labMarkers.js";
+import { resolveMarker, systemsFor, borderlineFor, effectiveRange, gaugePosition } from "../src/labMarkers.js";
 
 let failed = 0;
 function check(name, fn) {
@@ -254,6 +254,17 @@ check("a marker with no app range stays rangeless", () => {
   const r = effectiveRange("some_unknown_test", { ref_low: null, ref_high: null, ref_text: "" });
   return r.lo === null && r.hi === null && r.fromLab ? null : JSON.stringify(r);
 });
+
+// --- the position bars ----------------------------------------------------
+check("mid-range sits in the middle", () => gaugePosition(50, 0, 100) === 0.5 ? null : String(gaugePosition(50, 0, 100)));
+check("below range clamps to the floor", () => gaugePosition(10, 30, 100) === 0 ? null : String(gaugePosition(10, 30, 100)));
+check("above range clamps to the ceiling", () => gaugePosition(999, 30, 100) === 1 ? null : String(gaugePosition(999, 30, 100)));
+// "< 50" still has an axis: a concentration can't go below zero.
+check("a one-sided upper range draws from zero", () => gaugePosition(25, null, 50) === 0.5 ? null : String(gaugePosition(25, null, 50)));
+check("calprotectin's 160 pins to the top of a < 50 bar", () => gaugePosition(160, null, 50) === 1 ? null : String(gaugePosition(160, null, 50)));
+// A one-sided LOWER range has no ceiling to scale against — no invented bar.
+check("a one-sided lower range gets no bar", () => gaugePosition(80, 40, null) === null ? null : String(gaugePosition(80, 40, null)));
+check("a text result gets no bar", () => gaugePosition(null, 0, 100) === null ? null : "drew a bar for a non-number");
 
 console.log(failed ? `\n${failed} problem(s)` : "\nall good");
 process.exit(failed ? 1 : 0);

@@ -10,7 +10,7 @@ import { parseDate, formatMDY, today as todayDate } from "./dateUtils.js";
 import {
   resolveMarker, markerDisplayName, markerInfo, flagFor, isFavorable,
   sortResults, fmtValue, fmtRange, fmtBounds, MARKER_CATEGORIES,
-  SYSTEMS, systemsFor, markerNote, effectiveRange, borderlineFor,
+  SYSTEMS, systemsFor, markerNote, effectiveRange, borderlineFor, gaugePosition,
 } from "./labMarkers.js";
 import { prepareLabFile, ACCEPTED_FILE_TYPES } from "./labFile.js";
 import * as labsApi from "./labsApi.js";
@@ -285,11 +285,9 @@ export default function LabsTab() {
       // use, so a badge never disagrees with the numbers under it.
       const flagged = rows.filter(r => r.attention === "now").length;
       const nearEdge = rows.filter(r => r.attention === "borderline").length;
-      // The hero's numeric readings, oldest first — the card's trend line.
-      const pts = seriesFor(row.marker).map(p => ({ v: p.value }));
-      return { key: s.key, name: s.name, short: s.short, row, extras, flagged, nearEdge, pts };
+      return { key: s.key, name: s.name, short: s.short, row, extras, flagged, nearEdge };
     }).filter(Boolean);
-  }, [markerRows, seriesFor]);
+  }, [markerRows]);
 
   const filteredMarkers = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -524,16 +522,20 @@ export default function LabsTab() {
           <span className="lmr-unit"> {row.latest.unit || ""}</span>
         </span>
         {row.range && <span className="lmr-range">{row.range}</span>}
-        {/* Where inside the range the value sits — the track is the lab's
-            range, the dot is you. Out-of-range clamps to the edge in red. */}
-        {Number.isFinite(row.latest.ref_low) && Number.isFinite(row.latest.ref_high) && row.latest.value != null && (
-          <span className="lmr-gauge">
-            <span
-              className={"lmr-gauge-dot" + (row.attention === "now" ? " lmr-gauge-off" : row.attention === "borderline" ? " lmr-gauge-edge" : "")}
-              style={{ left: `${Math.min(1, Math.max(0, (row.latest.value - row.latest.ref_low) / ((row.latest.ref_high - row.latest.ref_low) || 1))) * 100}%` }}
-            />
-          </span>
-        )}
+        {/* Where inside the range the value sits — the track is the range,
+            the dot is you. Out-of-range clamps to the edge in red. */}
+        {(() => {
+          const p = gaugePosition(row.latest.value, row.ref.lo, row.ref.hi);
+          if (p == null) return null;
+          return (
+            <span className="lmr-gauge">
+              <span
+                className={"lmr-gauge-dot" + (row.attention === "now" ? " lmr-gauge-off" : row.attention === "borderline" ? " lmr-gauge-edge" : "")}
+                style={{ left: `${p * 100}%` }}
+              />
+            </span>
+          );
+        })()}
       </span>
       <span className={"lmr-delta" + (row.delta == null ? " lmr-delta-none" : "")}>
         {row.delta == null ? "–" : `${row.delta > 0 ? "+" : ""}${fmtValue(row.delta)}`}
@@ -619,10 +621,12 @@ export default function LabsTab() {
 
         {ordered.map(row => {
           const note = markerNote(row.marker);
-          const lo = row.latest.ref_low, hi = row.latest.ref_high;
-          const pct = Number.isFinite(lo) && Number.isFinite(hi) && row.latest.value != null
-            ? Math.min(1, Math.max(0, (row.latest.value - lo) / ((hi - lo) || 1))) * 100
-            : null;
+          // The effective range, not the raw row — otherwise a marker whose
+          // range the app supplies (calprotectin) draws neither the scale nor
+          // the shaded band, and the note claiming a shaded band is a lie.
+          const lo = row.ref.lo, hi = row.ref.hi;
+          const p = gaugePosition(row.latest.value, lo, hi);
+          const pct = p == null ? null : p * 100;
           const pts = seriesFor(row.marker).map(p => ({ v: p.value }));
           return (
             <div className="panel labs-zoom-card" key={row.marker}>
@@ -645,7 +649,9 @@ export default function LabsTab() {
               {pct != null ? (
                 <div className="lzc-scale">
                   <div className="lzc-track"><span className={"lzc-dot" + (row.attention === "now" ? " lzc-dot-off" : row.attention === "borderline" ? " lzc-dot-edge" : "")} style={{ left: `${pct}%` }} /></div>
-                  <div className="lzc-ends"><span>{fmtValue(lo)}</span><span>{fmtValue(hi)}</span></div>
+                  {/* A one-sided "< 50" is drawn from zero, so label the axis
+                      that way rather than showing a bound nobody printed. */}
+                  <div className="lzc-ends"><span>{Number.isFinite(lo) ? fmtValue(lo) : "0"}</span><span>{fmtValue(hi)}</span></div>
                 </div>
               ) : row.range ? (
                 <div className="lzc-rangeonly">Reference: {row.range}</div>
@@ -790,9 +796,22 @@ export default function LabsTab() {
                 <span className="lsc-unit"> {s.row.latest.unit || ""}</span>
                 {s.row.range && <span className="lsc-range">range {s.row.range}</span>}
               </span>
-              {s.pts.length > 0 && (
-                <Spark pts={s.pts} lo={s.row.latest.ref_low} hi={s.row.latest.ref_high} attention={s.row.attention} />
-              )}
+              {/* A position bar, not a trend line: on a card this size the
+                  sparkline was decoration, while "where in the range am I"
+                  is the thing worth two seconds. The full trend is one tap
+                  away on the system's own screen. */}
+              {(() => {
+                const p = gaugePosition(s.row.latest.value, s.row.ref.lo, s.row.ref.hi);
+                if (p == null) return null;
+                return (
+                  <span className="lsc-gauge">
+                    <span
+                      className={"lsc-gauge-dot" + (s.row.attention === "now" ? " lsc-gauge-off" : s.row.attention === "borderline" ? " lsc-gauge-edge" : "")}
+                      style={{ left: `${p * 100}%` }}
+                    />
+                  </span>
+                );
+              })()}
               <span className="lsc-sub">
                 {s.row.name}
                 {s.row.delta != null && (
@@ -1594,7 +1613,14 @@ export const LAB_STYLES = `
   .labs-zoom-foot { font-family: 'Inter', sans-serif; font-size: 12.2px; line-height: 1.6; color: var(--text-faint); padding: 4px 4px 20px; }
   .labs-sys-openrow { padding: 0 16px 12px; }
 
-  /* The hero card's trend line: range band shaded, latest reading dotted. */
+  /* The hero card's position bar: the track is the range, the dot is you. */
+  .lsc-gauge { position: relative; display: block; width: 100%; height: 5px; border-radius: 999px; background: rgba(103, 161, 90, 0.22); margin: 7px 0 3px; }
+  .lsc-gauge-dot { position: absolute; top: 50%; width: 9px; height: 9px; margin-left: -4.5px; border-radius: 999px; background: #2b6e1e; border: 2px solid var(--panel); transform: translateY(-50%); }
+  .lsc-gauge-dot.lsc-gauge-off { background: #a5342a; }
+  .lsc-gauge-dot.lsc-gauge-edge { background: #c07a1f; }
+
+  /* The trend line, now only on a system's own screen: range band shaded,
+     latest reading dotted. */
   .lw-spark { width: 100%; height: 28px; margin: 3px 0 1px; }
   .lw-band { fill: rgba(103, 161, 90, 0.16); }
   .lw-line { fill: none; stroke: #70747c; stroke-width: 1.6; vector-effect: non-scaling-stroke; }

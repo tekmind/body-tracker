@@ -757,6 +757,24 @@ export function borderlineFor(markerKey, value, refLow, refHigh) {
   return null;
 }
 
+/**
+ * Where a value sits inside its range, 0–1, for the position bars. Null when
+ * there is no sensible axis to draw.
+ *
+ * A one-sided upper range ("< 50") still has one: a concentration cannot go
+ * below zero, so the bar runs 0 to the bound. That is an axis, not a clinical
+ * threshold — no judgement is being invented. A one-sided LOWER range has no
+ * top to scale against, so it gets no bar rather than a made-up ceiling.
+ */
+export function gaugePosition(value, refLow, refHigh) {
+  if (!Number.isFinite(value)) return null;
+  const lo = Number.isFinite(refLow) ? refLow : null;
+  const hi = Number.isFinite(refHigh) ? refHigh : null;
+  if (lo != null && hi != null && hi > lo) return Math.min(1, Math.max(0, (value - lo) / (hi - lo)));
+  if (lo == null && hi != null && hi > 0 && value >= 0) return Math.min(1, Math.max(0, value / hi));
+  return null;
+}
+
 /** Is an out-of-range direction the good one? Used only for colour. */
 export function isFavorable(markerKey, flag) {
   const dir = BY_KEY.get(markerKey)?.higher;
