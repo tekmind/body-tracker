@@ -269,8 +269,12 @@ async function main() {
 
   check("a failed report says so on the screen you're standing on",
     await page5.locator(".labs-view .banner-error").count() === 1);
-  check("and says what went wrong",
-    /upstream exploded/.test(await page5.locator(".labs-view .banner-error").innerText().catch(() => "")));
+  const banner = await page5.locator(".labs-view .banner-error").innerText().catch(() => "");
+  check("and says what went wrong", /upstream exploded/.test(banner), banner);
+  // The endpoint already writes a full sentence; prefixing it again produced
+  // "Couldn't write that report: Couldn't write that report: ...".
+  check("without saying it twice",
+    (banner.match(/Couldn't write that report/g) || []).length === 1, banner);
   check("the button comes back rather than staying stuck on Writing",
     await page5.locator(".labs-reports button", { hasText: "Write a report" }).count() === 1);
   check("nothing was filed", await page5.locator(".labs-report-row").count() === 0);
