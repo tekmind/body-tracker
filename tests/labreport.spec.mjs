@@ -13,7 +13,7 @@
 //
 // No browser — these are pure modules, which is the point.
 
-import { buildReportBrief, historyBlock, newPanelsSince, parseMarkdown, parseInline } from "../src/labReport.js";
+import { buildReportBrief, historyBlock, newPanelsSince, parseMarkdown, parseInline, drawContext } from "../src/labReport.js";
 import { splitReport } from "../api/lab-report.js";
 
 let failed = 0;
@@ -169,6 +169,59 @@ check("an empty history says it's empty rather than going quiet", () => {
 check("the history reaches the brief when there is one", () => {
   const t = brief({ history: HISTORY });
   return t.includes("Ileocecal resection") ? null : "the surgery never reached the report";
+});
+
+// --- how the blood was taken -----------------------------------------------
+//
+// The same number means different things depending on when it was drawn, and
+// most historical draws will never carry this. Silence is the case that
+// matters: the first Crohn's report described every draw as a trough because
+// a blanket sentence in the medical history said so, and it read as a
+// conclusion from the data rather than an assumption handed to it.
+
+check("a draw nobody recorded says nothing rather than something", () => {
+  if (drawContext(null) !== "") return "invented context from no panel";
+  if (drawContext({}) !== "") return `invented "${drawContext({})}"`;
+  return drawContext({ drawn_at: "", fasted: "", infusion_relation: "" }) === "" ? null : "blank fields produced words";
+});
+
+check("a trough says it is one, and why that is", () => {
+  const t = drawContext({ infusion_relation: "trough" });
+  return /trough/.test(t) && /before an infliximab infusion/.test(t) ? null : t;
+});
+
+check("a draw after an infusion is explicitly not a trough", () => {
+  const t = drawContext({ infusion_relation: "after" });
+  return /not a trough/.test(t) ? null : t;
+});
+
+check("a draw not timed to the cycle says so", () => {
+  return /not timed to the infusion/.test(drawContext({ infusion_relation: "unrelated" })) ? null : drawContext({ infusion_relation: "unrelated" });
+});
+
+check("fasted and not-fasted are different statements, and neither is the default", () => {
+  if (!/\bfasted\b/.test(drawContext({ fasted: "yes" }))) return "fasted was lost";
+  if (!/not fasted/.test(drawContext({ fasted: "no" }))) return "not-fasted was lost";
+  return drawContext({ fasted: "" }) === "" ? null : "unknown fasting produced a claim";
+});
+
+check("everything known about one draw reads as one clause", () => {
+  const t = drawContext({ infusion_relation: "trough", fasted: "no", drawn_at: "~noon" });
+  return /trough/.test(t) && /not fasted/.test(t) && /drawn ~noon/.test(t) ? null : t;
+});
+
+check("the context reaches the reading it belongs to", () => {
+  const t = brief({ readings: { calprotectin: [
+    { date: "3/9/23", value: 18.7 },
+    { date: "8/3/26", value: 160, context: "trough — drawn immediately before an infliximab infusion" },
+  ] } });
+  const lines = t.split("\n");
+  const older = lines.find(l => l.includes("3/9/23"));
+  const newer = lines.find(l => l.includes("8/3/26"));
+  if (!/trough/.test(newer)) return "the trough draw wasn't labelled";
+  // The one that must not happen: context bleeding onto a draw that has none.
+  if (/trough/.test(older)) return "an unlabelled draw inherited the next one's context";
+  return null;
 });
 
 // --- studies ---------------------------------------------------------------

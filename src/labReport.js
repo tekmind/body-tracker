@@ -65,6 +65,29 @@ export function historyBlock(history) {
   return out.join("\n").trim();
 }
 
+/**
+ * How a draw was taken, in words, or "" when nobody recorded it.
+ *
+ * Silence is the important case. Most historical draws will never carry this,
+ * and a reading with no context must read as unknown rather than inheriting
+ * an assumption — describing every draw as a trough because most of the
+ * recent ones were is precisely the error this field exists to stop.
+ */
+export function drawContext(panel) {
+  if (!panel) return "";
+  const bits = [];
+  const rel = {
+    trough: "trough — drawn immediately before an infliximab infusion",
+    after: "drawn after an infliximab infusion, not a trough",
+    unrelated: "not timed to the infusion cycle",
+  }[panel.infusion_relation];
+  if (rel) bits.push(rel);
+  if (panel.fasted === "yes") bits.push("fasted");
+  else if (panel.fasted === "no") bits.push("not fasted");
+  if (String(panel.drawn_at || "").trim()) bits.push(`drawn ${String(panel.drawn_at).trim()}`);
+  return bits.join("; ");
+}
+
 /** "out of range now" / "near the low end" / … in words the report can quote. */
 function attentionWords(row) {
   if (row.attention === "now") return "outside range on the latest draw";
@@ -94,6 +117,11 @@ function markerBlock(row, readings) {
     const value = p.value != null ? String(p.value) : String(p.valueText || "").trim();
     const bits = [`${p.date || "?"}: ${value}`];
     if (p.unit && p.unit !== row.unit) bits.push(p.unit);
+    // How the blood was taken, where it's known. An infliximab level is only
+    // interpretable as a trough, and a draw that says nothing must not be
+    // assumed to be one — which is exactly the mistake a blanket claim in the
+    // medical history invites.
+    if (p.context) bits.push(p.context);
     // The range printed alongside *this* reading, which is not always the
     // one above it — labs move their bands, and the story of a marker can
     // hinge on that rather than on the number changing.

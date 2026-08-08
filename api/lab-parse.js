@@ -104,6 +104,11 @@ const PARSE_SCHEMA = {
     lab_name: { type: "string", description: "Lab or clinic that ran it — Quest, LabCorp, a hospital. Empty string if not shown." },
     panel_name: { type: "string", description: "Panel title if the report gives one, e.g. 'Comprehensive Metabolic Panel'. Empty string otherwise." },
     results: { type: "array", items: RESULT_SCHEMA, description: "Every test result on the report." },
+    fasting: {
+      type: "string",
+      enum: ["yes", "no", "unknown"],
+      description: "Only if the report explicitly states fasting status (many print 'FASTING: Y'). 'unknown' otherwise — never infer it from the tests ordered.",
+    },
     confidence: {
       type: "string",
       enum: ["high", "medium", "low"],
@@ -114,7 +119,7 @@ const PARSE_SCHEMA = {
       description: "One or two short sentences on anything you couldn't read or had to judge. Empty string if all clean.",
     },
   },
-  required: ["found", "collected_date", "lab_name", "panel_name", "results", "confidence", "note"],
+  required: ["found", "collected_date", "lab_name", "panel_name", "results", "fasting", "confidence", "note"],
   additionalProperties: false,
 };
 
@@ -129,6 +134,7 @@ Rules:
 - Non-numeric results belong in value_text with value null. Don't invent a number for "Negative" or "TNP".
 - Include every panel in the document — a single PDF often carries a CBC, a metabolic panel, and a lipid panel together. Multi-page reports: read all pages.
 - Skip page headers, patient demographics, physician notes, and methodology footnotes. Results only.
+- Some reports print whether the draw was fasting. Report it if it is printed; otherwise "unknown". Ordering a lipid panel is not evidence of fasting.
 - If the document isn't a lab report, or the numbers can't be read reliably, set found=false. A person retaking the photo costs seconds; a wrong lab value is one you might act on.`;
 
 export default async function handler(req, res) {
@@ -205,6 +211,7 @@ export default async function handler(req, res) {
         file_name: String(body.file_name || ""),
         confidence: parsed.confidence,
         note: parsed.note || "",
+        fasting: parsed.fasting === "yes" || parsed.fasting === "no" ? parsed.fasting : "",
       },
       results: parsed.results
         .filter(r => r && String(r.name || "").trim())

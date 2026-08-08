@@ -30,6 +30,12 @@ work through the queue.
 
 ## Done
 
+- **Draw context on a panel** — 8/8/26. `drawn_at`, `fasted` and
+  `infusion_relation` on `lab_panels`, set in the import review sheet and fed
+  into the report brief per reading; the reader also picks up fasting status
+  when a report prints it. Unknown is the default and stays it — historical
+  draws mostly won't have this, and a guess reads as fact downstream.
+
 - **Body-systems view** — 8/7/26. SYSTEMS map in labMarkers.js (many-to-many,
   exact keys + slug patterns), a fourth "By system" toggle on the Labs tab,
   studies attached to their systems, and canonical markers for the IBD

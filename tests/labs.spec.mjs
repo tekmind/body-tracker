@@ -143,10 +143,30 @@ async function main() {
 
   check("nothing saved before pressing Save", panels.length === 0);
 
+  // How the blood was taken. Every field defaults to unknown and must stay
+  // there unless set: most reports print none of it, and a guessed value gets
+  // read as fact by every written report afterwards.
+  const ctx = page.locator(".labs-draw-ctx");
+  check("the review sheet asks how it was drawn", await ctx.count() === 1);
+  check("and says it's fine not to know", /leave blank if you don't know/i.test(await ctx.innerText()));
+  const fastedDefault = await ctx.locator("select").first().inputValue();
+  const infusionDefault = await ctx.locator("select").nth(1).inputValue();
+  check("fasted defaults to unknown, not to a guess", fastedDefault === "", `"${fastedDefault}"`);
+  check("the infusion relation defaults to unknown too", infusionDefault === "", `"${infusionDefault}"`);
+
+  await ctx.locator("input").fill("~noon");
+  await ctx.locator("select").nth(1).selectOption("trough");
+
   // Untick one row, then save.
   await page.locator(".labs-draft-row").nth(2).locator('input[type=checkbox]').uncheck();
   await page.locator(".labs-draft-actions .btn-primary").click();
   await page.waitForSelector(".labs-panels", { timeout: 5000 });
+
+  check("the draw context is saved with the panel",
+    panels[0]?.drawn_at === "~noon" && panels[0]?.infusion_relation === "trough",
+    JSON.stringify({ drawn_at: panels[0]?.drawn_at, fasted: panels[0]?.fasted, infusion_relation: panels[0]?.infusion_relation }));
+  check("what wasn't set is stored as null rather than an empty guess",
+    panels[0]?.fasted === null, String(panels[0]?.fasted));
 
   check("panel saved", panels.length === 1);
   check("unticked row was skipped", results.length === 4, `${results.length} results`);

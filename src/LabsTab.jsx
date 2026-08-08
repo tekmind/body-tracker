@@ -14,7 +14,7 @@ import {
   SYSTEMS, systemsFor, markerNote, effectiveRange, borderlineFor, gaugeScale,
 } from "./labMarkers.js";
 import { prepareLabFile, ACCEPTED_FILE_TYPES } from "./labFile.js";
-import { HISTORY_KINDS, buildReportBrief, newPanelsSince, parseMarkdown } from "./labReport.js";
+import { HISTORY_KINDS, buildReportBrief, newPanelsSince, parseMarkdown, drawContext } from "./labReport.js";
 import * as labsApi from "./labsApi.js";
 
 const CHART_THEME = { grid: "#e7e6e0", tick: "#70747c", font: "Inter" };
@@ -87,6 +87,11 @@ function blankDraft(overrides = {}) {
     file_name: "",
     note: "",
     confidence: "",
+    // Null until someone actually knows — see supabase_labs.sql. A guess here
+    // would be read as fact by every report written afterwards.
+    drawn_at: "",
+    fasted: "",
+    infusion_relation: "",
     rows: [],
     ...overrides,
   };
@@ -378,6 +383,9 @@ export default function LabsTab() {
       file_name: parsed.panel.file_name || fileName,
       note: parsed.panel.note || "",
       confidence: parsed.panel.confidence || "",
+      // Only when the report actually printed it — the reader is told not to
+      // infer fasting from which tests were ordered.
+      fasted: parsed.panel.fasting || "",
       rows,
     });
   }, []);
@@ -479,6 +487,9 @@ export default function LabsTab() {
           source: draft.source,
           file_name: draft.file_name || null,
           note: draft.note.trim() || null,
+          drawn_at: draft.drawn_at.trim() || null,
+          fasted: draft.fasted || null,
+          infusion_relation: draft.infusion_relation || null,
         },
         results: rows.map(r => {
           const m = resolveMarker(r.name, draft.panel_name);
@@ -573,6 +584,7 @@ export default function LabsTab() {
    */
   const briefFor = useCallback((card) => {
     const dateOf = new Map(panels.map(p => [p.id, p.date]));
+    const ctxOf = new Map(panels.map(p => [p.id, drawContext(p)]));
     const readings = {};
     for (const row of card.rows) {
       readings[row.marker] = results
@@ -587,6 +599,7 @@ export default function LabsTab() {
           unit: r.unit,
           flag: r.flag,
           refText: r.ref_text,
+          context: ctxOf.get(r.panel_id) || "",
         }));
     }
     return buildReportBrief({
@@ -1566,6 +1579,33 @@ function ImportSheet({ queue, item, busy, error, onClose, onGo, patchDraft, patc
                   onChange={(e) => patchDraft({ panel_name: e.target.value })} /></label>
               </div>
 
+              {/* How the blood was taken. Every one defaults to unknown and
+                  stays there unless you say otherwise: a report rarely prints
+                  any of it, and a guess would be read as fact by every written
+                  report from here on. */}
+              <div className="labs-draw-ctx">
+                <div className="labs-draw-ctx-head">How it was drawn <em>optional — leave blank if you don't know</em></div>
+                <div className="form-grid labs-meta-grid">
+                  <label>Time of day<input value={draft.drawn_at} placeholder="e.g. ~noon"
+                    onChange={(e) => patchDraft({ drawn_at: e.target.value })} /></label>
+                  <label>Fasted
+                    <select value={draft.fasted} onChange={(e) => patchDraft({ fasted: e.target.value })}>
+                      <option value="">Unknown</option>
+                      <option value="yes">Yes</option>
+                      <option value="no">No</option>
+                    </select>
+                  </label>
+                  <label>Against the infusion
+                    <select value={draft.infusion_relation} onChange={(e) => patchDraft({ infusion_relation: e.target.value })}>
+                      <option value="">Unknown</option>
+                      <option value="trough">Just before one (trough)</option>
+                      <option value="after">After one</option>
+                      <option value="unrelated">Not timed to it</option>
+                    </select>
+                  </label>
+                </div>
+              </div>
+
               <div className="labs-draft-head">
                 <strong>{included} result{included === 1 ? "" : "s"}</strong> to save
                 {unknown > 0 && (
@@ -2201,6 +2241,10 @@ export const LAB_STYLES = `
   .labs-parsing-sub { font-family: 'Inter', sans-serif; font-size: 12.6px; color: var(--text-faint); margin-top: 3px; line-height: 1.5; }
 
   .labs-meta-grid { grid-template-columns: repeat(3, 1fr); margin-bottom: 4px; }
+  .labs-draw-ctx { margin: 12px 0 4px; padding-top: 12px; border-top: 1px solid var(--border); }
+  .labs-draw-ctx-head { font-family: 'Inter', sans-serif; font-size: 11.4px; letter-spacing: 0.03em; text-transform: uppercase; color: var(--text-faint); font-weight: 600; margin-bottom: 8px; }
+  .labs-draw-ctx-head em { font-style: normal; text-transform: none; letter-spacing: 0; font-weight: 400; opacity: 0.8; }
+  .labs-draw-ctx select { width: 100%; background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; padding: 9px 11px; font-family: 'Inter', sans-serif; font-size: 14px; color: var(--text); outline: none; }
   .labs-draft-head { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 14px 2px 8px; font-size: 13.2px; border-bottom: 1px solid var(--border); }
   .labs-draft-unknown { flex: 1; min-width: 180px; font-family: 'Inter', sans-serif; font-size: 12.2px; color: var(--text-faint); line-height: 1.5; }
   .labs-add-row { margin-left: auto; }
@@ -2240,6 +2284,7 @@ export const LAB_STYLES = `
        second row, which is the one you want to read first anyway. */
     .labs-summary { gap: 10px; }
     .labs-meta-grid { grid-template-columns: repeat(2, 1fr); }
+    .labs-draw-ctx .labs-meta-grid { grid-template-columns: repeat(2, 1fr); }
   }
 
   @media (max-width: 640px) {
