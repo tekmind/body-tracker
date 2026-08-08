@@ -314,11 +314,28 @@ export const SYSTEMS = [
     // The flare workup: stool pathogens are how infection gets excluded when
     // calprotectin moves.
     patterns: [/campylobacter|salmonella|shigella|giardia|entamoeba|norovirus|rotavirus|adenovirus|vibrio|yersinia|clostridium|_coli_|shiga/],
+    groups: [
+      { name: "Disease activity", keys: ["calprotectin", "crp", "crp_hs", "esr", "platelets", "albumin"],
+        blurb: "Is the bowel inflamed right now" },
+      { name: "Drug monitoring", keys: ["infliximab_level", "infliximab_ab", "prometheus_anser_ifx"],
+        blurb: "Is the infliximab still doing its job" },
+      { name: "Infection — ruling it out", keys: ["elastase"],
+        patterns: [/campylobacter|salmonella|shigella|giardia|entamoeba|norovirus|rotavirus|adenovirus|vibrio|yersinia|clostridium|_coli_|shiga/],
+        blurb: "What else can raise calprotectin, excluded" },
+      { name: "Absorption", keys: ["vitamin_b12", "vitamin_d", "folate", "iron", "ferritin", "tibc", "iron_saturation"],
+        blurb: "What a resected ileum and bound bile cost you" },
+      { name: "Blood counts", keys: ["hemoglobin", "hematocrit", "wbc"],
+        blurb: "Anaemia and the marrow's response" },
+    ],
     studies: (s) => s.kind === "pathology",
   },
   {
+    // Not pinned: every marker here is already in Crohn's / IBD — a strict
+    // subset, not an overlap — so a chip for it repeated a card you already
+    // had, on a row where space is the scarce thing. It stays a system so
+    // "By system" can still answer "how is inflammation doing" on its own.
     key: "inflammation", name: "Inflammation", short: "Inflammation",
-    pinned: true, headline: ["crp", "esr", "calprotectin"],
+    headline: ["crp", "esr", "calprotectin"],
     blurb: "Systemic and gut-specific inflammatory markers",
     keys: ["crp", "crp_hs", "esr", "calprotectin", "ferritin", "albumin", "platelets", "homocysteine"],
   },
@@ -383,6 +400,26 @@ export const SYSTEMS = [
 ];
 
 /** Every system a marker key belongs to. Unassigned keys return []. */
+/**
+ * Which subgroup a marker belongs to inside one system, or null when that
+ * system declares none.
+ *
+ * A system answers "what part of my body is this about"; a group answers
+ * "what is this marker doing in here" — which is a different question again
+ * from `category` ("what kind of test is this"). Ferritin is a Vitamins &
+ * minerals test, an absorption marker in Crohn's, and an acute-phase reactant
+ * in Inflammation, all at once.
+ */
+export function groupFor(systemKey, markerKey) {
+  const sys = SYSTEMS.find(s => s.key === systemKey);
+  if (!sys?.groups) return null;
+  for (const g of sys.groups) {
+    if (g.keys?.includes(markerKey)) return g;
+    if (g.patterns?.some(rx => rx.test(markerKey))) return g;
+  }
+  return { name: "Other", blurb: "" };
+}
+
 export function systemsFor(markerKey) {
   const k = String(markerKey || "");
   return SYSTEMS.filter(s => s.keys.includes(k) || (s.patterns || []).some(p => p.test(k)));

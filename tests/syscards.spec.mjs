@@ -65,10 +65,15 @@ async function main() {
   await page.waitForSelector(".labs-syscards", { timeout: 8000 });
 
   const cards = page.locator(".labs-syscard");
-  check("all five pinned systems get a card", await cards.count() === 5, `${await cards.count()}`);
+  // Inflammation was unpinned: every one of its markers is already in
+  // Crohn's / IBD — a strict subset, not an overlap — so its chip repeated a
+  // card you already had, on the row where space is scarcest.
+  check("four pinned systems get a card", await cards.count() === 4, `${await cards.count()}`);
+  check("Inflammation no longer takes a chip of its own",
+    !(await cards.allInnerTexts()).some(t => /Inflammation/.test(t)));
 
   const text = (i) => cards.nth(i).innerText();
-  const all = await Promise.all([0, 1, 2, 3, 4].map(i => text(i)));
+  const all = await Promise.all([0, 1, 2, 3].map(i => text(i)));
   const find = (label) => all.find(t => t.includes(label)) || "";
 
   // Headlines: the number the owner checks first, not whatever sorts first.
@@ -83,7 +88,7 @@ async function main() {
   check("B12 shows its move since the last shot", /\+256/.test(find("Vitamins")), find("Vitamins").replace(/\n/g, " | "));
 
   // Inflammation is its own card, led by CRP even though the value is text.
-  check("Inflammation card exists and leads with CRP", /<3\.0/.test(find("Inflammation")), find("Inflammation").replace(/\n/g, " | "));
+  check("CRP still reaches the Crohn's card, where it now lives", /<3\.0|160/.test(find("Crohn")), find("Crohn").replace(/\n/g, " | "));
 
   // Flag counts come from the same reckoning as the system view.
   check("Vitamins card counts its flagged marker", /1 flagged/.test(find("Vitamins")), find("Vitamins").replace(/\n/g, " | "));
@@ -112,9 +117,6 @@ async function main() {
   check("a one-sided range still draws a bar", await crohnCard.locator(".lsc-gauge").count() === 1);
   check("calprotectin's 160 pins to the ceiling",
     (await crohnCard.locator(".lsc-gauge-dot").getAttribute("style") || "").includes("left: 100%"));
-  // A text-valued marker has nothing to place on a bar.
-  check("a text result gets no bar",
-    await cards.nth(all.findIndex(t => t.includes("Inflammation"))).locator(".lsc-gauge").count() === 0);
 
   // The 80/20 grouping in By marker: what needs eyes sits at the top.
   await page.locator(".labs-view-toggle .toggle-btn", { hasText: "By marker" }).click();
@@ -203,12 +205,37 @@ async function main() {
   check("the bar turns red at the bound rather than at the end",
     /31\.25%/.test(paint || "") && /165\s*,\s*52\s*,\s*42/.test(paint || ""), String(paint).slice(0, 160));
   check("and no stretched sparkline under it", await calpro.locator("svg.lw-spark").count() === 0);
+
+  // A text-valued result has nothing to place on a scale — "<3.0" is not a
+  // point. It still gets a card, it just doesn't get a bar.
+  const crpCard = page.locator(".labs-zoom-card", { hasText: "C-reactive" });
+  check("a text result still gets its card", await crpCard.count() === 1);
+  check("but no scale, because there is no point to place",
+    await crpCard.locator(".lzc-track").count() === 0);
+
+  // Markers are grouped by what they are doing in this system — 35 of them in
+  // one undifferentiated run is a list, not an answer.
+  const groupNames = (await page.locator(".labs-group-name").allInnerTexts()).map(t => t.toLowerCase());
+  check("the system's markers are grouped", groupNames.length >= 2, groupNames.join(" | "));
+  check("disease activity comes first", /disease activity/.test(groupNames[0] || ""), groupNames[0]);
+  check("absorption is its own group", groupNames.some(n => /absorption/.test(n)), groupNames.join(" | "));
+  check("calprotectin sits under disease activity", await page.evaluate(() => {
+    const heads = [...document.querySelectorAll(".labs-group-head")];
+    const h = heads.find(x => /DISEASE ACTIVITY/i.test(x.innerText));
+    if (!h) return false;
+    let el = h.nextElementSibling, seen = false;
+    while (el && !el.classList.contains("labs-group-head")) {
+      if (/calprotectin/i.test(el.innerText || "")) seen = true;
+      el = el.nextElementSibling;
+    }
+    return seen;
+  }));
   check("the verdict now counts calprotectin",
     /calprotectin/i.test(await page.locator(".labs-zoom-verdict").innerText()));
 
   await page.locator(".labs-zoom-head button").click();
   await page.waitForSelector(".labs-syscard", { timeout: 5000 });
-  check("back returns to the labs overview", await page.locator(".labs-syscard").count() === 5);
+  check("back returns to the labs overview", await page.locator(".labs-syscard").count() === 4);
 
   // Phone-width discipline, same rule as the rest of the tab.
   const over = await page.evaluate(() => document.body.scrollWidth - document.documentElement.clientWidth);

@@ -11,7 +11,7 @@ import { parseDate, formatMDY, today as todayDate } from "./dateUtils.js";
 import {
   resolveMarker, markerDisplayName, markerInfo, flagFor, isFavorable,
   sortResults, fmtValue, fmtRange, fmtBounds, MARKER_CATEGORIES,
-  SYSTEMS, systemsFor, markerNote, effectiveRange, borderlineFor, gaugeScale,
+  SYSTEMS, systemsFor, groupFor, markerNote, effectiveRange, borderlineFor, gaugeScale,
 } from "./labMarkers.js";
 import { prepareLabFile, ACCEPTED_FILE_TYPES } from "./labFile.js";
 import { HISTORY_KINDS, buildReportBrief, newPanelsSince, parseMarkdown, drawContext } from "./labReport.js";
@@ -845,6 +845,22 @@ export default function LabsTab() {
     if (!s) { setZoomSystem(null); return null; }
     const rank = { now: 0, borderline: 1, past: 2, ok: 3 };
     const ordered = [...s.rows].sort((a, b) => rank[a.attention] - rank[b.attention] || a.name.localeCompare(b.name));
+    // Grouped where the system says how, in the order it declares — 35 markers
+    // in one run is a list, not an answer. The verdict above already names
+    // what's wrong, so attention ordering can happen inside a group instead of
+    // scattering related markers across the screen. A system with no groups
+    // renders as one unnamed run, exactly as before.
+    const groups = (() => {
+      if (!SYSTEMS.find(x => x.key === s.key)?.groups) return [{ name: null, rows: ordered }];
+      const byName = new Map();
+      for (const row of ordered) {
+        const g = groupFor(s.key, row.marker) || { name: "Other" };
+        if (!byName.has(g.name)) byName.set(g.name, { name: g.name, blurb: g.blurb, rows: [] });
+        byName.get(g.name).rows.push(row);
+      }
+      const order = (SYSTEMS.find(x => x.key === s.key).groups || []).map(g => g.name).concat("Other");
+      return [...byName.values()].sort((a, b) => order.indexOf(a.name) - order.indexOf(b.name));
+    })();
     const needs = ordered.filter(r => r.attention === "now");
     const edges = ordered.filter(r => r.attention === "borderline");
 
@@ -945,7 +961,19 @@ export default function LabsTab() {
           );
         })()}
 
-        {ordered.map(row => {
+        {groups.map(group => (
+        <React.Fragment key={group.name || "all"}>
+        {group.name && (
+          <div className="labs-group-head">
+            <span className="labs-group-name">{group.name}</span>
+            <span className="labs-group-count">
+              {group.rows.length}
+              {group.rows.some(r => r.attention === "now") && <span className="labs-panel-flagged">{group.rows.filter(r => r.attention === "now").length} flagged</span>}
+            </span>
+            {group.blurb && <span className="labs-group-blurb">{group.blurb}</span>}
+          </div>
+        )}
+        {group.rows.map(row => {
           const note = markerNote(row.marker);
           // The effective range, not the raw row — otherwise a marker whose
           // range the app supplies (calprotectin) draws neither the scale nor
@@ -1028,6 +1056,8 @@ export default function LabsTab() {
             </div>
           );
         })}
+        </React.Fragment>
+        ))}
 
         {s.studies.length > 0 && (
           <div className="panel labs-zoom-card">
@@ -2157,6 +2187,17 @@ export const LAB_STYLES = `
   /* ---- Reports ----
      The card sits above the markers on a system's screen: the written read is
      the thing you came for, the numbers are what it was written from. */
+  /* A group heading sits on the page background between cards, the way the
+     Food tab's meal headings do — not another card, or the grouping competes
+     with the markers it is grouping. */
+  /* Name and count on one line, the blurb under it. Side by side, a blurb
+     long enough to be useful wraps to three lines on a phone and shoves the
+     count away from the name it belongs to. */
+  .labs-group-head { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; padding: 16px 4px 7px; }
+  .labs-group-name { font-family: 'Inter', sans-serif; font-size: 13px; font-weight: 700; letter-spacing: 0.03em; text-transform: uppercase; color: var(--text); }
+  .labs-group-count { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--text-faint); display: flex; align-items: center; gap: 6px; justify-self: end; }
+  .labs-group-blurb { grid-column: 1 / -1; font-family: 'Inter', sans-serif; font-size: 12.4px; line-height: 1.45; color: var(--text-faint); }
+
   .labs-reports { padding: 14px 16px; margin-bottom: 12px; }
   .labs-reports-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
   .labs-reports-head .lzc-name { display: flex; align-items: center; gap: 6px; }
