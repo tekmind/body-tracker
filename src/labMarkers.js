@@ -303,7 +303,8 @@ export function isUrinePanel(panelName) {
 // ---------------------------------------------------------------------------
 export const SYSTEMS = [
   {
-    key: "ibd", name: "Crohn's / IBD",
+    key: "ibd", name: "Crohn's / IBD", short: "Crohn's / IBD",
+    pinned: true, headline: ["calprotectin", "crp"],
     blurb: "Gut inflammation, biologic monitoring, and the deficiencies Crohn's drives",
     keys: [
       "calprotectin", "elastase", "infliximab_level", "infliximab_ab", "prometheus_anser_ifx",
@@ -321,7 +322,8 @@ export const SYSTEMS = [
     keys: ["crp", "crp_hs", "esr", "calprotectin", "ferritin", "albumin", "platelets", "homocysteine"],
   },
   {
-    key: "hormones", name: "Hormones",
+    key: "hormones", name: "Hormones", short: "Hormones",
+    pinned: true, headline: ["testosterone_total", "testosterone_free"],
     blurb: "Androgens, estrogens, pituitary, thyroid, prostate",
     keys: [
       "testosterone_total", "testosterone_free", "testosterone_bioavailable", "shbg",
@@ -330,7 +332,8 @@ export const SYSTEMS = [
     ],
   },
   {
-    key: "vitamins", name: "Vitamins & nutrition",
+    key: "vitamins", name: "Vitamins & nutrition", short: "Vitamins",
+    pinned: true, headline: ["vitamin_d", "vitamin_b12", "ferritin"],
     blurb: "Stores and absorption — where Crohn's quietly taxes you",
     keys: [
       "folate", "iron", "ferritin", "tibc", "iron_saturation",
@@ -339,7 +342,8 @@ export const SYSTEMS = [
     patterns: [/^vitamin_/],
   },
   {
-    key: "metabolic", name: "Metabolic & lipids",
+    key: "metabolic", name: "Metabolic & lipids", short: "Metabolic",
+    pinned: true, headline: ["glucose", "hba1c", "ldl"],
     blurb: "Glucose handling and cardiovascular lipids",
     keys: [
       "glucose", "hba1c", "insulin", "uric_acid",
