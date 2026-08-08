@@ -23,13 +23,16 @@ import { readJsonBody } from "./_food.js";
 // price of the readers, and run a handful of times a year per system.
 const MODEL = process.env.LAB_REPORT_MODEL || "claude-fable-5";
 
-// Depth vs. the clock. Vercel stops the function at 60s whatever the model is
-// still doing, and Fable 5's turns get long at high effort — "medium" lands
-// inside the window on a system of ~20 markers. Set LAB_REPORT_EFFORT=high if
-// your plan allows a longer maxDuration and you'd rather have the ceiling.
+// Depth vs. the clock. Fable 5 thinks for a while before it writes anything —
+// a one-marker system measured ~22s end to end, and a real one runs several
+// times that. "low" is the lever if reports start timing out.
 const EFFORT = process.env.LAB_REPORT_EFFORT || "medium";
 
-export const maxDuration = 60;
+// Longer than anything else in this app, because it has to be: at 60s a full
+// system was cut off mid-thought and returned a 504. Vercel caps this by plan
+// — if a deploy rejects the value, the plan's ceiling is lower than this and
+// the fallback is LAB_REPORT_EFFORT=low rather than a shorter report.
+export const maxDuration = 300;
 
 // Thinking is always on for Fable 5 and any explicit `thinking` config is a
 // 400 — depth is `effort` instead. Older tiers still take the parameter, so
