@@ -41,6 +41,16 @@ const MUST_DIFFER = [
   ["ALBUMIN", "GLOBULIN"],
   ["CREATININE", "BUN/CREATININE RATIO"],
   ["EGFR", "eGFR AFRICAN AMERICAN"],
+  // A free/total PSA panel prints all three on one report.
+  ["PSA, TOTAL", "PSA, FREE"],
+  ["PSA, TOTAL", "PSA, % FREE"],
+  // The one that needs "%" to survive normalization: without it these two
+  // become the same word set, and a ng/mL concentration shares a line with a
+  // percentage.
+  ["PSA, FREE", "PSA, % FREE"],
+  ["TESTOSTERONE, TOTAL, MS", "TESTOSTERONE,BIOAVAILABLE"],
+  ["TESTOSTERONE, FREE", "TESTOSTERONE,BIOAVAILABLE"],
+  ["TESTOSTERONE, TOTAL, MS", "TESTOSTERONE, FREE"],
 ];
 
 for (const [a, b] of MUST_DIFFER) {
@@ -96,6 +106,46 @@ check("an unrecognised test keeps a stable key of its own", () => {
   if (a.known) return `unexpectedly matched "${a.key}"`;
   if (a.key !== b.key) return `unstable key: "${a.key}" vs "${b.key}"`;
   return a.category === "Other" ? null : `category was "${a.category}"`;
+});
+
+// A urinalysis prints rows named entirely of words the matcher treats as
+// noise. They normalize to nothing, and collapsing them all onto one
+// "unknown" key would put pH, Protein and Blood on a single trend line.
+check("tests named only of noise words keep separate keys", () => {
+  const keys = ["Blood", "Serum", "Plasma"].map(n => resolveMarker(n).key);
+  if (new Set(keys).size !== keys.length) return `collapsed together: ${keys.join(", ")}`;
+  return keys.includes("unknown") ? `one fell through to "unknown": ${keys.join(", ")}` : null;
+});
+
+check("a genuinely empty name is still 'unknown'", () => {
+  const m = resolveMarker("");
+  return m.key === "unknown" ? null : `got "${m.key}"`;
+});
+
+// Vitamins get renamed between draws more than most: the panel prints
+// "VITAMIN B3" one time and "NICOTINIC ACID" the next.
+for (const [a, b] of [
+  ["VITAMIN B3", "NICOTINIC ACID"],
+  ["VITAMIN A (RETINOL)", "Retinol"],
+  ["VITAMIN B1 (THIAMINE), BLOOD, LC/MS/MS", "Thiamine"],
+  ["VITAMIN B2 (RIBOFLAVIN)", "Riboflavin"],
+  ["CHOL/HDLC RATIO", "Cholesterol/HDL Ratio"],
+]) {
+  check(`"${a}" and "${b}" share a trend`, () => {
+    const ka = resolveMarker(a).key, kb = resolveMarker(b).key;
+    return ka !== kb ? `"${ka}" vs "${kb}"` : null;
+  });
+}
+
+// B1 must not be pulled onto B12 by the digit-gluing in normalize().
+check("vitamin B1 and B12 are different markers", () => {
+  const a = resolveMarker("VITAMIN B1"), b = resolveMarker("VITAMIN B12");
+  return a.key === b.key ? `both "${a.key}"` : null;
+});
+
+check("Vitamin K is not potassium", () => {
+  const k = resolveMarker("VITAMIN K");
+  return k.key === "potassium" ? "matched potassium" : (k.known ? null : `fell through as "${k.key}"`);
 });
 
 console.log(failed ? `\n${failed} problem(s)` : "\nall good");

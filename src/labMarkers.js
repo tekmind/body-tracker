@@ -39,7 +39,7 @@ const MARKERS = [
   { key: "vldl", name: "VLDL cholesterol", unit: "mg/dL", category: "Lipids", higher: "bad",
     aliases: ["vldl", "vldl chol cal"] },
   { key: "chol_hdl_ratio", name: "Chol / HDL ratio", unit: "ratio", category: "Lipids", higher: "bad",
-    aliases: ["chol hdl ratio", "total chol hdl ratio", "cholesterol hdl ratio"] },
+    aliases: ["chol hdl ratio", "total chol hdl ratio", "cholesterol hdl ratio", "chol hdlc ratio"] },
   { key: "apob", name: "Apolipoprotein B", unit: "mg/dL", category: "Lipids", higher: "bad",
     aliases: ["apo b", "apob", "apolipoprotein b100"] },
   { key: "lpa", name: "Lipoprotein(a)", unit: "nmol/L", category: "Lipids", higher: "bad",
@@ -73,15 +73,27 @@ const MARKERS = [
     aliases: ["testosterone", "testosterone total", "total testosterone"] },
   { key: "testosterone_free", name: "Testosterone, free", unit: "pg/mL", category: "Hormones",
     aliases: ["free testosterone", "testosterone free"] },
+  { key: "testosterone_bioavailable", name: "Testosterone, bioavailable", unit: "ng/dL", category: "Hormones",
+    aliases: ["testosterone bioavailable", "bioavailable testosterone", "testosterone bio"] },
   { key: "shbg", name: "SHBG", unit: "nmol/L", category: "Hormones",
     aliases: ["sex hormone binding globulin"] },
   { key: "estradiol", name: "Estradiol", unit: "pg/mL", category: "Hormones", aliases: ["e2"] },
+  { key: "estrogen_total", name: "Estrogens, total", unit: "pg/mL", category: "Hormones",
+    aliases: ["estrogens total", "estrogen total", "total estrogens"] },
+  { key: "prolactin", name: "Prolactin", unit: "ng/mL", category: "Hormones" },
   { key: "dhea_s", name: "DHEA-S", unit: "ug/dL", category: "Hormones",
     aliases: ["dhea sulfate", "dheas", "dhea s"] },
   { key: "cortisol", name: "Cortisol", unit: "ug/dL", category: "Hormones",
     aliases: ["cortisol am", "cortisol morning"] },
   { key: "psa", name: "PSA", unit: "ng/mL", category: "Hormones", higher: "bad",
     aliases: ["prostate specific antigen", "psa total"] },
+  // A free/total PSA panel prints all three. Free is a concentration, % free
+  // is a ratio, and the percentage is the one that carries the meaning — they
+  // cannot share a line. "pct" is what normalize() turns "%" into.
+  { key: "psa_free", name: "PSA, free", unit: "ng/mL", category: "Hormones",
+    aliases: ["psa free", "free psa"] },
+  { key: "psa_free_pct", name: "PSA, % free", unit: "%", category: "Hormones", higher: "good",
+    aliases: ["psa pct free", "pct free psa", "psa free pct"] },
   { key: "igf_1", name: "IGF-1", unit: "ng/mL", category: "Hormones",
     aliases: ["igf 1", "insulin like growth factor"] },
   { key: "lh", name: "LH", unit: "mIU/mL", category: "Hormones", aliases: ["luteinizing hormone"] },
@@ -104,6 +116,24 @@ const MARKERS = [
     aliases: ["total iron binding capacity", "iron binding capacity"] },
   { key: "iron_saturation", name: "Iron saturation", unit: "%", category: "Vitamins & minerals",
     aliases: ["transferrin saturation", "iron sat", "iron saturation", "saturation", "percent saturation"] },
+  // The rest of the fat- and water-soluble panel. Labs print the vitamin and
+  // its chemical name interchangeably ("VITAMIN B3" one draw, "NICOTINIC ACID"
+  // the next), which is exactly the renaming that splits one marker into
+  // several one-point trends.
+  { key: "vitamin_a", name: "Vitamin A", unit: "mcg/dL", category: "Vitamins & minerals",
+    aliases: ["retinol", "vitamin a retinol"] },
+  { key: "vitamin_b1", name: "Vitamin B1", unit: "nmol/L", category: "Vitamins & minerals",
+    aliases: ["thiamine", "thiamin", "vitamin b1 thiamine"] },
+  { key: "vitamin_b2", name: "Vitamin B2", unit: "mcg/L", category: "Vitamins & minerals",
+    aliases: ["riboflavin", "vitamin b2 riboflavin"] },
+  { key: "vitamin_b3", name: "Vitamin B3", unit: "mcg/L", category: "Vitamins & minerals",
+    aliases: ["niacin", "nicotinic acid", "vitamin b3 niacin"] },
+  { key: "vitamin_b6", name: "Vitamin B6", unit: "mcg/L", category: "Vitamins & minerals",
+    aliases: ["pyridoxine", "pyridoxal phosphate", "vitamin b6 pyridoxine"] },
+  // Safe despite the "no one-letter aliases" rule above: potassium has no "k"
+  // alias, so "Vitamin K" cannot be pulled onto it.
+  { key: "vitamin_k", name: "Vitamin K", unit: "ng/mL", category: "Vitamins & minerals",
+    aliases: ["phylloquinone", "vitamin k1"] },
   { key: "magnesium", name: "Magnesium", unit: "mg/dL", category: "Vitamins & minerals",
     aliases: ["mag", "magnesium rbc"] },
   { key: "zinc", name: "Zinc", unit: "ug/dL", category: "Vitamins & minerals" },
@@ -224,6 +254,10 @@ function normalize(s) {
   const words = String(s || "")
     .toLowerCase()
     .replace(/[‐-―]/g, "-")       // typographic dashes
+    // "%" has to survive as a token. Stripped as punctuation, "PSA, % FREE"
+    // and "PSA, FREE" become the same word set — a percentage and a ng/mL
+    // concentration the matcher then cannot tell apart.
+    .replace(/%/g, " pct ")
     .replace(/[^a-z0-9\s]+/g, " ")
     .split(/\s+/)
     .filter(w => w && !NOISE.has(w));
@@ -245,7 +279,12 @@ function normalize(s) {
 /** "LDL-Cholesterol (calc)" -> "ldl_cholesterol" — the fallback key. */
 export function slugify(s) {
   const base = normalize(s).replace(/\s+/g, "_");
-  return base || "unknown";
+  if (base) return base;
+  // A name made entirely of noise words normalizes to nothing — a urinalysis
+  // prints a row called just "Blood". Falling through to a single "unknown"
+  // key would put every such test on one trend line, so keep the raw name.
+  const raw = String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+  return raw || "unknown";
 }
 
 // Built once: every spelling we know, pointing at its marker.
@@ -273,7 +312,9 @@ const BY_KEY = new Map(MARKERS.map(m => [m.key, m]));
  */
 export function resolveMarker(rawName) {
   const n = normalize(rawName);
-  if (!n) return { key: "unknown", name: String(rawName || "Unnamed"), category: "Other", known: false };
+  // Not "unknown": slugify keeps the raw name when a test is named entirely of
+  // noise words, so two such tests don't end up sharing one trend line.
+  if (!n) return { key: slugify(rawName), name: String(rawName || "Unnamed").trim() || "Unnamed", category: "Other", known: false };
 
   const exact = BY_PHRASE.get(n);
   if (exact) return { key: exact.key, name: exact.name, category: exact.category, known: true };

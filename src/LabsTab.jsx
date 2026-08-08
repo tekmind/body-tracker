@@ -534,7 +534,7 @@ export default function LabsTab() {
             </button>
             {hasPathology && (
               <button className={"toggle-btn" + (activeView === "pathology" ? " active" : "")} onClick={() => setView("pathology")}>
-                Pathology
+                Reports
               </button>
             )}
           </div>
@@ -595,7 +595,7 @@ export default function LabsTab() {
                         {r.report_name || "Pathology report"}
                         {r.lab_name && <span className="labs-panel-lab"> · {r.lab_name}</span>}
                       </span>
-                      <span className="labs-panel-counts">{r.specimen ? "biopsy" : "report"}</span>
+                      <span className="labs-panel-counts">{r.kind === "imaging" ? "imaging" : "pathology"}</span>
                     </button>
 
                     {open && (
@@ -605,15 +605,17 @@ export default function LabsTab() {
                             description is how you end up not reading it. */}
                         {r.diagnosis && (
                           <div className="labs-path-section labs-path-diagnosis">
-                            <div className="labs-path-label">Diagnosis</div>
+                            <div className="labs-path-label">{r.kind === "imaging" ? "Impression" : "Diagnosis"}</div>
                             <div className="labs-path-text">{r.diagnosis}</div>
                           </div>
                         )}
+                        {/* Same columns, but a radiologist and a pathologist
+                            don't call them the same things. */}
                         {[
-                          ["Specimen", r.specimen],
+                          [r.kind === "imaging" ? "Exam" : "Specimen", r.specimen],
                           ["Clinical history", r.clinical_history],
-                          ["Gross description", r.gross_description],
-                          ["Microscopic description", r.microscopic_description],
+                          [r.kind === "imaging" ? "Technique" : "Gross description", r.gross_description],
+                          [r.kind === "imaging" ? "Findings" : "Microscopic description", r.microscopic_description],
                           ["Comments", r.comments],
                         ].filter(([, v]) => v && String(v).trim()).map(([label, value]) => (
                           <div className="labs-path-section" key={label}>

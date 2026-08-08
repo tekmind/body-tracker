@@ -23,6 +23,26 @@ const REPORT = {
   microscopic_description: "",
   comments: "Electronically signed by Dr. A. Bovbel",
   raw_text: "…",
+  kind: "pathology",
+  source: "portal",
+  created_at: new Date().toISOString(),
+};
+
+// Same table, same columns — a radiologist just calls them different things.
+const IMAGING = {
+  id: "path-2",
+  date: "6/8/22",
+  report_name: "XR CHEST 2 VIEW",
+  specimen: "Two view chest examination",
+  accession: "DOR10481361",
+  lab_name: "CLINISANITAS DORAL",
+  diagnosis: "No acute cardiopulmonary pathology.",
+  clinical_history: "Pneumonia right lower lobe",
+  gross_description: "PA and lateral chest radiographs",
+  microscopic_description: "The lungs are clear and normally aerated.",
+  comments: "Electronically Signed By: Joshua Kellerman, MD",
+  raw_text: "…",
+  kind: "imaging",
   source: "portal",
   created_at: new Date().toISOString(),
 };
@@ -73,9 +93,9 @@ async function main() {
     page.on("console", m => { if (m.type() === "error") problems.push(`console: ${m.text()}`); });
     await openLabs(page, { pathology: [REPORT] });
 
-    const toggle = page.locator(".labs-view-toggle .toggle-btn", { hasText: "Pathology" });
+    const toggle = page.locator(".labs-view-toggle .toggle-btn", { hasText: "Reports" });
     await toggle.waitFor({ timeout: 5000 }).catch(() => {});
-    check("a Pathology tab appears when there is a report", await toggle.count() === 1);
+    check("a Reports tab appears when there is a report", await toggle.count() === 1);
 
     await toggle.click();
     const head = page.locator(".labs-panel-head", { hasText: "Gastrointestinal" });
@@ -107,14 +127,44 @@ async function main() {
     await page.close();
   }
 
+  // --- an imaging report in the same table ---------------------------------
+  {
+    const page = await browser.newPage({ viewport: { width: 390, height: 780 } });
+    page.on("pageerror", e => problems.push(`pageerror: ${e.message}`));
+    await openLabs(page, { pathology: [IMAGING, REPORT] });
+
+    await page.locator(".labs-view-toggle .toggle-btn", { hasText: "Reports" }).click();
+    check("both reports are listed", await page.locator(".labs-panel-head").count() === 2);
+
+    const head = page.locator(".labs-panel-head", { hasText: "XR CHEST 2 VIEW" });
+    check("the imaging study is labelled imaging", (await head.innerText()).includes("imaging"));
+    await head.click();
+    await page.waitForSelector(".labs-path-diagnosis", { timeout: 5000 });
+
+    const labels = (await page.locator(".labs-path-label").allInnerTexts()).map(s => s.trim().toLowerCase());
+    // A radiologist writes an impression, not a diagnosis, and findings, not
+    // a microscopic description. Same columns, different words.
+    check("imaging leads with Impression", labels[0] === "impression", labels.join(" / "));
+    check("imaging says Findings, not Microscopic description",
+      labels.includes("findings") && !labels.some(l => /microscopic/i.test(l)), labels.join(" / "));
+    check("imaging says Technique, not Gross description",
+      labels.includes("technique") && !labels.some(l => /gross/i.test(l)), labels.join(" / "));
+    check("imaging says Exam, not Specimen",
+      labels.includes("exam") && !labels.includes("specimen"), labels.join(" / "));
+
+    const body = await page.locator(".labs-panel-body").innerText();
+    check("the impression text is shown", body.includes("No acute cardiopulmonary pathology"));
+    await page.close();
+  }
+
   // --- with none, and with the table absent --------------------------------
   for (const [label, pathology] of [["there are no reports", []], ["the table does not exist yet", null]]) {
     const page = await browser.newPage({ viewport: { width: 390, height: 780 } });
     page.on("pageerror", e => problems.push(`pageerror: ${e.message}`));
     await openLabs(page, { pathology });
     await page.waitForSelector(".labs-view-toggle", { timeout: 5000 });
-    const count = await page.locator(".labs-view-toggle .toggle-btn", { hasText: "Pathology" }).count();
-    check(`no Pathology tab when ${label}`, count === 0);
+    const count = await page.locator(".labs-view-toggle .toggle-btn", { hasText: "Reports" }).count();
+    check(`no Reports tab when ${label}`, count === 0);
     // The rest of the tab still works — this is the state every existing
     // install is in until the new SQL is run.
     check(`reports still render when ${label}`, await page.locator(".labs-panel-head").count() >= 1);

@@ -11,7 +11,7 @@ const RESULT_COLUMNS =
   "id,panel_id,marker,name,category,value,value_text,unit,ref_low,ref_high,ref_text,flag,sort_order";
 const PATHOLOGY_COLUMNS =
   "id,date,report_name,specimen,accession,lab_name,diagnosis,clinical_history," +
-  "gross_description,microscopic_description,comments,raw_text,source,created_at";
+  "gross_description,microscopic_description,comments,raw_text,kind,source,created_at";
 
 function unwrap({ data, error }) {
   if (error) throw error;

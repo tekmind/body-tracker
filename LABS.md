@@ -15,7 +15,7 @@ It creates two tables and is safe to re-run:
 | --- | --- |
 | `lab_panels` | One row per report / blood draw — date, lab, which file it came from |
 | `lab_results` | One row per marker on a panel, with the value, unit, and the reference range **that report printed** |
-| `lab_pathology` | One row per biopsy / histology report — prose, not markers |
+| `lab_pathology` | One row per narrative report — biopsy, histology, or imaging. Prose, not markers |
 
 Until this runs, the Labs tab shows a banner telling you to run it.
 
@@ -92,8 +92,8 @@ before you save.
   out-of-range values in red. Tap any marker name for its trend.
 - **By marker** — one row per marker with its latest value and the move since
   the previous draw. Search it when you want one number.
-- **Pathology** — biopsy and histology reports, newest first. Only appears
-  when there is at least one.
+- **Reports** — biopsy, histology and imaging reports, newest first. Only
+  appears when there is at least one.
 - **Trend sheet** — every reading of one marker over time, with the reference
   range shaded behind the line. Out-of-range readings get a filled dot.
 
@@ -106,25 +106,40 @@ of the line.
 one, and is derived from the range where it didn't. A few markers know which
 direction is the good one — high HDL and high eGFR are green, not red.
 
-## Pathology reports
+## Narrative reports — pathology and imaging
 
 A biopsy report has no markers. It's a diagnosis, a description of what the
 specimen looked like, and what the pathologist saw down the microscope — there
 is no value, unit, or reference range to put on a trend line. Forcing one into
 `lab_results` would mean inventing a marker for prose, and it would sit in the
-marker list forever as a test that never has a number.
+marker list forever as a test that never has a number. An imaging report is the
+same shape: a narrative with the conclusion at the top.
 
-So they live in `lab_pathology` and get their own view. The diagnosis is
-rendered first and set apart, because it's the line you opened the report to
-read; the specimen, clinical history, gross and microscopic descriptions follow
-in labelled sections, and a section the report left empty is omitted rather
-than shown as a blank row. `raw_text` keeps the report verbatim whatever
-happens, so a heading the parser doesn't recognise costs formatting rather than
-content.
+So they live in `lab_pathology` and share one view. The conclusion is rendered
+first and set apart, because it's the line you opened the report to read; the
+rest follows in labelled sections, and a section the report left empty is
+omitted rather than shown as a blank row. `raw_text` keeps the report verbatim
+whatever happens, so a heading the parser doesn't recognise costs formatting
+rather than content.
+
+The columns are shared, but a radiologist and a pathologist don't call them the
+same things, so `kind` decides the labels:
+
+| Column | `kind = 'pathology'` | `kind = 'imaging'` |
+| --- | --- | --- |
+| `diagnosis` | Diagnosis | Impression |
+| `specimen` | Specimen | Exam |
+| `gross_description` | Gross description | Technique |
+| `microscopic_description` | Microscopic description | Findings |
 
 The tab is hidden until there's something in it, and the rest of the Labs tab
 works normally if `lab_pathology` hasn't been created yet — the fetch treats a
 missing table as "nothing to show" rather than an error.
+
+One thing to know when reading imaging from a portal: the PDF is sometimes only
+the cover sheet, with no radiologist's report inside it at all. Those are stored
+with whatever the provider's own note says and a comment saying so, rather than
+filed as though the report were there.
 
 ## Two measurements, one name
 
@@ -141,6 +156,16 @@ makes every reading of the other kind look catastrophically out of range.
 [`tests/labmarkers.spec.mjs`](tests/labmarkers.spec.mjs) pins each pair apart,
 and pins the reverse case too: a lab renaming the same test between draws must
 still land on one line.
+
+Two details in the matcher exist only because of this:
+
+- **`%` survives normalization as the token `pct`.** Stripped as punctuation,
+  `PSA, % FREE` and `PSA, FREE` become the same word set — a percentage and a
+  ng/mL concentration that nothing downstream could tell apart.
+- **A name made only of noise words keeps its raw text as the key.** A
+  urinalysis prints a row called just `Blood`, which normalizes to nothing;
+  falling through to a single `unknown` would put `Blood`, `Protein` and `pH`
+  on one line.
 
 ## Backups
 

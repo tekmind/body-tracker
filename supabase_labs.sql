@@ -90,9 +90,13 @@ create table if not exists lab_pathology (
   microscopic_description text,
   comments text,
   raw_text text not null,
+  kind text not null default 'pathology',  -- pathology | imaging
   source text not null default 'portal',   -- portal | pdf | image | manual
   created_at timestamptz not null default now()
 );
+
+-- Added after the table shipped; safe to re-run.
+alter table lab_pathology add column if not exists kind text not null default 'pathology';
 
 create index if not exists lab_pathology_date_idx on lab_pathology (date);
 
