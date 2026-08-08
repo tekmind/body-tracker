@@ -29,6 +29,9 @@ const RESULTS = [
   row("r3", "p3", "vitamin_d", "VITAMIN D,25-OH", 26, "ng/mL", "low", { ref_low: 30, ref_high: 100 }),
   row("r4", "p3", "testosterone_total", "TESTOSTERONE, TOTAL", 364, "ng/dL"),
   row("r5", "p3", "glucose", "GLUCOSE", 129, "mg/dL", "high", { ref_low: 65, ref_high: 99 }),
+  row("r6", "p3", "vitamin_b12", "VITAMIN B12", 525, "pg/mL"),
+  row("r7", "p2", "vitamin_b12", "VITAMIN B12", 269, "pg/mL"),
+  row("r8", "p3", "crp", "C-REACTIVE PROTEIN", null, "mg/L", null, { value_text: "<3.0" }),
 ];
 
 function json(route, body, status = 200) {
@@ -61,10 +64,10 @@ async function main() {
   await page.waitForSelector(".labs-syscards", { timeout: 8000 });
 
   const cards = page.locator(".labs-syscard");
-  check("all four pinned systems get a card", await cards.count() === 4, `${await cards.count()}`);
+  check("all five pinned systems get a card", await cards.count() === 5, `${await cards.count()}`);
 
   const text = (i) => cards.nth(i).innerText();
-  const all = await Promise.all([0, 1, 2, 3].map(i => text(i)));
+  const all = await Promise.all([0, 1, 2, 3, 4].map(i => text(i)));
   const find = (label) => all.find(t => t.includes(label)) || "";
 
   // Headlines: the number the owner checks first, not whatever sorts first.
@@ -73,6 +76,13 @@ async function main() {
   check("Vitamins card leads with vitamin D", /26\s*ng\/mL/.test(find("Vitamins")), find("Vitamins").replace(/\n/g, " | "));
   check("Hormones card leads with total testosterone", /364/.test(find("Hormones")), find("Hormones").replace(/\n/g, " | "));
   check("Metabolic card leads with glucose", /129/.test(find("Metabolic")), find("Metabolic").replace(/\n/g, " | "));
+
+  // Secondary headline markers ride under the hero number.
+  check("B12 rides on the Vitamins card", /525\s*pg\/mL/.test(find("Vitamins")), find("Vitamins").replace(/\n/g, " | "));
+  check("B12 shows its move since the last shot", /\+256/.test(find("Vitamins")), find("Vitamins").replace(/\n/g, " | "));
+
+  // Inflammation is its own card, led by CRP even though the value is text.
+  check("Inflammation card exists and leads with CRP", /<3\.0/.test(find("Inflammation")), find("Inflammation").replace(/\n/g, " | "));
 
   // Flag counts come from the same reckoning as the system view.
   check("Vitamins card counts its flagged marker", /1 flagged/.test(find("Vitamins")), find("Vitamins").replace(/\n/g, " | "));

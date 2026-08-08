@@ -216,22 +216,25 @@ export default function LabsTab() {
   }, [markerRows, pathology]);
 
   /**
-   * Stat cards for the pinned systems. The headline is the first of the
-   * system's declared headline markers that has data; if none do, the first
-   * flagged marker in the system, then simply its first marker — a card with
-   * a stand-in number beats a blank card, and a system with no data at all
-   * gets no card.
+   * Stat cards for the pinned systems. Of the system's declared headline
+   * markers, the first with data is the hero number and the next couple show
+   * as compact rows beneath it — B12 rides under vitamin D, free T under
+   * total. If none have data: the first flagged marker in the system, then
+   * simply its first marker — a card with a stand-in number beats a blank
+   * card, and a system with no data at all gets no card.
    */
   const pinnedStats = useMemo(() => {
     return SYSTEMS.filter(s => s.pinned).map(s => {
       const rows = markerRows.filter(r => systemsFor(r.marker).some(x => x.key === s.key));
       if (!rows.length) return null;
+      const headlined = (s.headline || []).map(k => rows.find(r => r.marker === k)).filter(Boolean);
       const row =
-        (s.headline || []).map(k => rows.find(r => r.marker === k)).find(Boolean) ||
+        headlined[0] ||
         rows.find(r => r.latest.flag && r.latest.flag !== "normal") ||
         rows[0];
+      const extras = headlined.slice(1, 3);
       const flagged = rows.filter(r => r.latest.flag && r.latest.flag !== "normal").length;
-      return { key: s.key, name: s.name, short: s.short, row, flagged };
+      return { key: s.key, name: s.name, short: s.short, row, extras, flagged };
     }).filter(Boolean);
   }, [markerRows]);
 
@@ -571,6 +574,16 @@ export default function LabsTab() {
                   <span className="lsc-delta"> · {s.row.delta > 0 ? "+" : ""}{fmtValue(s.row.delta)}</span>
                 )}
               </span>
+              {s.extras.map(x => (
+                <span className="lsc-extra" key={x.marker}>
+                  <span className="lsc-extra-name">{x.name}</span>
+                  <span className={"lsc-extra-value" + flagClass(x.latest.flag, x.marker)}>
+                    {x.latest.value != null ? fmtValue(x.latest.value) : (x.latest.value_text || "–")}
+                    {x.latest.unit ? ` ${x.latest.unit}` : ""}
+                    {x.delta != null && <span className="lsc-delta"> · {x.delta > 0 ? "+" : ""}{fmtValue(x.delta)}</span>}
+                  </span>
+                </span>
+              ))}
             </button>
           ))}
         </div>
@@ -1236,6 +1249,11 @@ export const LAB_STYLES = `
   .lsc-unit { font-size: 12px; font-weight: 600; color: var(--text-faint); letter-spacing: 0; }
   .lsc-sub { font-family: 'Inter', sans-serif; font-size: 11.8px; color: var(--text-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .lsc-delta { color: var(--text-dim); }
+  .lsc-extra { display: flex; justify-content: space-between; gap: 8px; padding-top: 2px; border-top: 1px dashed transparent; }
+  .lsc-extra-name { font-family: 'Inter', sans-serif; font-size: 11.6px; color: var(--text-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .lsc-extra-value { font-family: 'Inter', sans-serif; font-size: 11.6px; font-weight: 600; color: var(--text-dim); white-space: nowrap; }
+  .lsc-extra-value.lab-flag-off { color: #a5342a; }
+  .lsc-extra-value.lab-flag-ok { color: #2b6e1e; }
 
   /* Studies attached to a system card — a quiet strip under the markers. */
   .labs-sys-studies { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 10px; }

@@ -317,7 +317,8 @@ export const SYSTEMS = [
     studies: (s) => s.kind === "pathology",
   },
   {
-    key: "inflammation", name: "Inflammation",
+    key: "inflammation", name: "Inflammation", short: "Inflammation",
+    pinned: true, headline: ["crp", "esr", "calprotectin"],
     blurb: "Systemic and gut-specific inflammatory markers",
     keys: ["crp", "crp_hs", "esr", "calprotectin", "ferritin", "albumin", "platelets", "homocysteine"],
   },
