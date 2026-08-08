@@ -92,7 +92,7 @@ before you save.
   out-of-range values in red. Tap any marker name for its trend.
 - **By marker** — one row per marker with its latest value and the move since
   the previous draw. Search it when you want one number.
-- **Reports** — biopsy, histology and imaging reports, newest first. Only
+- **Studies** — biopsy, histology and imaging reports, newest first. Only
   appears when there is at least one.
 - **Trend sheet** — every reading of one marker over time, with the reference
   range shaded behind the line. Out-of-range readings get a filled dot.

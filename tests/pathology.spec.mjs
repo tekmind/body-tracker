@@ -93,9 +93,9 @@ async function main() {
     page.on("console", m => { if (m.type() === "error") problems.push(`console: ${m.text()}`); });
     await openLabs(page, { pathology: [REPORT] });
 
-    const toggle = page.locator(".labs-view-toggle .toggle-btn", { hasText: "Reports" });
+    const toggle = page.locator(".labs-view-toggle .toggle-btn", { hasText: "Studies" });
     await toggle.waitFor({ timeout: 5000 }).catch(() => {});
-    check("a Reports tab appears when there is a report", await toggle.count() === 1);
+    check("a Studies tab appears when there is a report", await toggle.count() === 1);
 
     await toggle.click();
     const head = page.locator(".labs-panel-head", { hasText: "Gastrointestinal" });
@@ -133,7 +133,7 @@ async function main() {
     page.on("pageerror", e => problems.push(`pageerror: ${e.message}`));
     await openLabs(page, { pathology: [IMAGING, REPORT] });
 
-    await page.locator(".labs-view-toggle .toggle-btn", { hasText: "Reports" }).click();
+    await page.locator(".labs-view-toggle .toggle-btn", { hasText: "Studies" }).click();
     check("both reports are listed", await page.locator(".labs-panel-head").count() === 2);
 
     const head = page.locator(".labs-panel-head", { hasText: "XR CHEST 2 VIEW" });
@@ -163,8 +163,8 @@ async function main() {
     page.on("pageerror", e => problems.push(`pageerror: ${e.message}`));
     await openLabs(page, { pathology });
     await page.waitForSelector(".labs-view-toggle", { timeout: 5000 });
-    const count = await page.locator(".labs-view-toggle .toggle-btn", { hasText: "Reports" }).count();
-    check(`no Reports tab when ${label}`, count === 0);
+    const count = await page.locator(".labs-view-toggle .toggle-btn", { hasText: "Studies" }).count();
+    check(`no Studies tab when ${label}`, count === 0);
     // The rest of the tab still works — this is the state every existing
     // install is in until the new SQL is run.
     check(`reports still render when ${label}`, await page.locator(".labs-panel-head").count() >= 1);

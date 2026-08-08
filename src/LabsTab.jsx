@@ -532,9 +532,12 @@ export default function LabsTab() {
             <button className={"toggle-btn" + (activeView === "markers" ? " active" : "")} onClick={() => setView("markers")}>
               By marker
             </button>
+            {/* "Studies", not "Reports": the summary tile above already counts
+                blood panels under that word, and two different meanings of it
+                on one screen reads as a bug. */}
             {hasPathology && (
               <button className={"toggle-btn" + (activeView === "pathology" ? " active" : "")} onClick={() => setView("pathology")}>
-                Reports
+                Studies
               </button>
             )}
           </div>
