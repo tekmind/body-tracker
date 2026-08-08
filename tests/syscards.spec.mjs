@@ -189,9 +189,19 @@ async function main() {
   // card read the raw row and so drew neither scale nor band for calprotectin
   // while the note claimed a shaded range.
   check("the app range drives the scale", await calpro.locator(".lzc-track").count() === 1);
-  check("its axis runs from zero to the bound",
-    (await calpro.locator(".lzc-ends").innerText()).replace(/\s+/g, " ").trim() === "0 50",
+  // The axis stretches to hold the reading: drawn only to the bound, 51 and
+  // 160 pin to the same end and the bar hides the only thing it exists to say.
+  check("its axis runs from zero past the bound to the reading",
+    (await calpro.locator(".lzc-ends").innerText()).replace(/\s+/g, " ").trim() === "0 50 160",
     (await calpro.locator(".lzc-ends").innerText()).replace(/\s+/g, " "));
+  check("and the bound it ran past is marked where normal ended",
+    await calpro.locator(".lzc-mark").count() === 1);
+  const markAt = await calpro.locator(".lzc-mark").getAttribute("style");
+  check("the mark sits at 50/160 of the bar, not at its end",
+    /left:\s*31\.25%/.test(markAt || ""), String(markAt));
+  const paint = await calpro.locator(".lzc-track").getAttribute("style");
+  check("the bar turns red at the bound rather than at the end",
+    /31\.25%/.test(paint || "") && /165\s*,\s*52\s*,\s*42/.test(paint || ""), String(paint).slice(0, 160));
   check("and no stretched sparkline under it", await calpro.locator("svg.lw-spark").count() === 0);
   check("the verdict now counts calprotectin",
     /calprotectin/i.test(await page.locator(".labs-zoom-verdict").innerText()));

@@ -11,7 +11,7 @@ import { parseDate, formatMDY, today as todayDate } from "./dateUtils.js";
 import {
   resolveMarker, markerDisplayName, markerInfo, flagFor, isFavorable,
   sortResults, fmtValue, fmtRange, fmtBounds, MARKER_CATEGORIES,
-  SYSTEMS, systemsFor, markerNote, effectiveRange, borderlineFor, gaugePosition,
+  SYSTEMS, systemsFor, markerNote, effectiveRange, borderlineFor, gaugeScale,
 } from "./labMarkers.js";
 import { prepareLabFile, ACCEPTED_FILE_TYPES } from "./labFile.js";
 import { HISTORY_KINDS, buildReportBrief, newPanelsSince, parseMarkdown } from "./labReport.js";
@@ -45,6 +45,36 @@ function attentionClass(row) {
   if (row.attention === "now") return " lab-flag-off";
   if (row.attention === "borderline") return " lab-flag-edge";
   return "";
+}
+
+/**
+ * Paint a scale's zones along its track.
+ *
+ * Two kinds of boundary, drawn differently because they mean different
+ * things. Drifting toward the end of the range is gradual, so `ok` and `edge`
+ * blend into each other — the closer you sit to the bound, the warmer the bar
+ * already is. Crossing the bound is not gradual, so an `off` boundary is a
+ * hard stop at exactly the value the lab set.
+ *
+ * Deliberately pale. Twenty of these render down a system's screen, and the
+ * verdict is the number and the dot — the bar is context, not an alarm.
+ */
+function gaugePaint(zones) {
+  if (!zones?.length) return undefined;
+  const C = { ok: "rgba(103,161,90,0.34)", edge: "rgba(192,122,31,0.36)", off: "rgba(165,52,42,0.34)" };
+  const pct = (x) => `${+(x * 100).toFixed(2)}%`;
+  const stops = [`${C[zones[0].level]} 0%`];
+  zones.forEach((z, i) => {
+    // A stop mid-zone so a zone with soft boundaries on both sides still
+    // reaches its own colour instead of being blended away entirely.
+    stops.push(`${C[z.level]} ${pct((z.from + z.to) / 2)}`);
+    const next = zones[i + 1];
+    if (next && (z.level === "off" || next.level === "off")) {
+      stops.push(`${C[z.level]} ${pct(z.to)}`, `${C[next.level]} ${pct(z.to)}`);
+    }
+  });
+  stops.push(`${C[zones[zones.length - 1].level]} 100%`);
+  return `linear-gradient(90deg, ${stops.join(", ")})`;
 }
 
 /** A parsed or hand-entered report, before anything is saved. */
@@ -648,13 +678,14 @@ export default function LabsTab() {
         {/* Where inside the range the value sits — the track is the range,
             the dot is you. Out-of-range clamps to the edge in red. */}
         {(() => {
-          const p = gaugePosition(row.latest.value, row.ref.lo, row.ref.hi);
-          if (p == null) return null;
+          const g = gaugeScale(row.marker, row.latest.value, row.ref.lo, row.ref.hi);
+          if (!g) return null;
           return (
-            <span className="lmr-gauge">
+            <span className="lmr-gauge" style={{ background: gaugePaint(g.zones) }}>
+              {g.marks.map(m => <span key={m.kind} className="lmr-gauge-mark" style={{ left: `${m.at * 100}%` }} />)}
               <span
                 className={"lmr-gauge-dot" + (row.attention === "now" ? " lmr-gauge-off" : row.attention === "borderline" ? " lmr-gauge-edge" : "")}
-                style={{ left: `${p * 100}%` }}
+                style={{ left: `${g.pos * 100}%` }}
               />
             </span>
           );
@@ -886,8 +917,7 @@ export default function LabsTab() {
           // range the app supplies (calprotectin) draws neither the scale nor
           // the shaded band, and the note claiming a shaded band is a lie.
           const lo = row.ref.lo, hi = row.ref.hi;
-          const p = gaugePosition(row.latest.value, lo, hi);
-          const pct = p == null ? null : p * 100;
+          const scale = gaugeScale(row.marker, row.latest.value, lo, hi);
           return (
             <div className="panel labs-zoom-card" key={row.marker}>
               <div className="lzc-head">
@@ -906,12 +936,35 @@ export default function LabsTab() {
                 </div>
               </div>
 
-              {pct != null ? (
+              {scale ? (
                 <div className="lzc-scale">
-                  <div className="lzc-track"><span className={"lzc-dot" + (row.attention === "now" ? " lzc-dot-off" : row.attention === "borderline" ? " lzc-dot-edge" : "")} style={{ left: `${pct}%` }} /></div>
-                  {/* A one-sided "< 50" is drawn from zero, so label the axis
-                      that way rather than showing a bound nobody printed. */}
-                  <div className="lzc-ends"><span>{Number.isFinite(lo) ? fmtValue(lo) : "0"}</span><span>{fmtValue(hi)}</span></div>
+                  <div className="lzc-track" style={{ background: gaugePaint(scale.zones) }}>
+                    {/* Where normal ended. Without it the colour change on an
+                        extended bar is unexplained. */}
+                    {scale.marks.map(m => (
+                      <span key={m.kind} className="lzc-mark" style={{ left: `${m.at * 100}%` }} />
+                    ))}
+                    <span
+                      className={"lzc-dot" + (row.attention === "now" ? " lzc-dot-off" : row.attention === "borderline" ? " lzc-dot-edge" : "")}
+                      style={{ left: `${scale.pos * 100}%` }}
+                    />
+                  </div>
+                  {/* When a bound label lands on top of an axis label, the
+                      bound wins: an extended axis ends at the reading, which
+                      is already in large type above, while the bound is the
+                      number you can't get anywhere else on this card. */}
+                  {(() => {
+                    const crowds = (edge) => scale.marks.some(m => Math.abs(m.at - edge) < 0.1);
+                    return (
+                      <div className="lzc-ends">
+                        <span>{crowds(0) ? "" : fmtValue(scale.min)}</span>
+                        {scale.marks.map(m => (
+                          <span key={m.kind} className="lzc-mark-label" style={{ left: `${m.at * 100}%` }}>{fmtValue(m.value)}</span>
+                        ))}
+                        <span>{crowds(1) ? "" : fmtValue(scale.max)}</span>
+                      </div>
+                    );
+                  })()}
                 </div>
               ) : row.range ? (
                 <div className="lzc-rangeonly">Reference: {row.range}</div>
@@ -1067,13 +1120,14 @@ export default function LabsTab() {
                   is the thing worth two seconds. The full trend is one tap
                   away on the system's own screen. */}
               {(() => {
-                const p = gaugePosition(s.row.latest.value, s.row.ref.lo, s.row.ref.hi);
-                if (p == null) return null;
+                const g = gaugeScale(s.row.marker, s.row.latest.value, s.row.ref.lo, s.row.ref.hi);
+                if (!g) return null;
                 return (
-                  <span className="lsc-gauge">
+                  <span className="lsc-gauge" style={{ background: gaugePaint(g.zones) }}>
+                    {g.marks.map(m => <span key={m.kind} className="lsc-gauge-mark" style={{ left: `${m.at * 100}%` }} />)}
                     <span
                       className={"lsc-gauge-dot" + (s.row.attention === "now" ? " lsc-gauge-off" : s.row.attention === "borderline" ? " lsc-gauge-edge" : "")}
-                      style={{ left: `${p * 100}%` }}
+                      style={{ left: `${g.pos * 100}%` }}
                     />
                   </span>
                 );
@@ -1971,6 +2025,7 @@ export const LAB_STYLES = `
   .lmr-right { flex-shrink: 0; display: flex; flex-direction: column; align-items: flex-end; gap: 1px; min-width: 88px; }
   .lmr-range { font-family: 'Inter', sans-serif; font-size: 11.2px; color: var(--text-faint); white-space: nowrap; }
   .lmr-gauge { position: relative; display: block; width: 68px; height: 4px; border-radius: 999px; background: rgba(103, 161, 90, 0.22); margin-top: 3px; }
+  .lmr-gauge-mark { position: absolute; top: -1px; bottom: -1px; width: 1.5px; margin-left: -0.75px; background: var(--panel); }
   .lmr-gauge-dot { position: absolute; top: 50%; width: 7px; height: 7px; margin-left: -3.5px; border-radius: 999px; background: #2b6e1e; transform: translateY(-50%); }
   .lmr-gauge-dot.lmr-gauge-off { background: #a5342a; }
   .lmr-gauge-dot.lmr-gauge-edge { background: #c07a1f; }
@@ -2013,7 +2068,11 @@ export const LAB_STYLES = `
   .lzc-track { position: relative; height: 6px; border-radius: 999px; background: rgba(103, 161, 90, 0.22); }
   .lzc-dot { position: absolute; top: 50%; width: 11px; height: 11px; margin-left: -5.5px; border-radius: 999px; background: #2b6e1e; border: 2px solid var(--panel); transform: translateY(-50%); }
   .lzc-dot.lzc-dot-off { background: #a5342a; }
-  .lzc-ends { display: flex; justify-content: space-between; font-family: 'Inter', sans-serif; font-size: 11px; color: var(--text-faint); margin-top: 3px; }
+  /* Absolute rather than flexed: a bound the axis ran past has to sit at its
+     own position on the bar, not be spaced evenly with the two ends. */
+  .lzc-ends { position: relative; display: flex; justify-content: space-between; font-family: 'Inter', sans-serif; font-size: 11px; color: var(--text-faint); margin-top: 3px; }
+  .lzc-mark { position: absolute; top: -2px; bottom: -2px; width: 2px; margin-left: -1px; border-radius: 1px; background: var(--panel); box-shadow: 0 0 0 0.5px rgba(20,22,27,0.22); }
+  .lzc-mark-label { position: absolute; top: 0; transform: translateX(-50%); font-variant-numeric: tabular-nums; color: var(--text-dim); font-weight: 600; }
   .lzc-rangeonly { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--text-faint); margin: 8px 0 4px; }
   .lzc-meta { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--text-faint); }
   .lzc-note { margin-top: 9px; padding-top: 9px; border-top: 1px solid var(--border); }
@@ -2084,6 +2143,7 @@ export const LAB_STYLES = `
 
   /* The hero card's position bar: the track is the range, the dot is you. */
   .lsc-gauge { position: relative; display: block; width: 100%; height: 5px; border-radius: 999px; background: rgba(103, 161, 90, 0.22); margin: 7px 0 3px; }
+  .lsc-gauge-mark { position: absolute; top: -1px; bottom: -1px; width: 1.5px; margin-left: -0.75px; background: var(--panel); }
   .lsc-gauge-dot { position: absolute; top: 50%; width: 9px; height: 9px; margin-left: -4.5px; border-radius: 999px; background: #2b6e1e; border: 2px solid var(--panel); transform: translateY(-50%); }
   .lsc-gauge-dot.lsc-gauge-off { background: #a5342a; }
   .lsc-gauge-dot.lsc-gauge-edge { background: #c07a1f; }

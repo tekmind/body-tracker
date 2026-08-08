@@ -15,7 +15,7 @@
 // No browser here — this is a pure module, and the whole point is that it can
 // be checked without one.
 
-import { resolveMarker, systemsFor, borderlineFor, effectiveRange, gaugePosition } from "../src/labMarkers.js";
+import { resolveMarker, systemsFor, borderlineFor, effectiveRange, gaugeScale } from "../src/labMarkers.js";
 
 let failed = 0;
 function check(name, fn) {
@@ -255,16 +255,118 @@ check("a marker with no app range stays rangeless", () => {
   return r.lo === null && r.hi === null && r.fromLab ? null : JSON.stringify(r);
 });
 
-// --- the position bars ----------------------------------------------------
-check("mid-range sits in the middle", () => gaugePosition(50, 0, 100) === 0.5 ? null : String(gaugePosition(50, 0, 100)));
-check("below range clamps to the floor", () => gaugePosition(10, 30, 100) === 0 ? null : String(gaugePosition(10, 30, 100)));
-check("above range clamps to the ceiling", () => gaugePosition(999, 30, 100) === 1 ? null : String(gaugePosition(999, 30, 100)));
-// "< 50" still has an axis: a concentration can't go below zero.
-check("a one-sided upper range draws from zero", () => gaugePosition(25, null, 50) === 0.5 ? null : String(gaugePosition(25, null, 50)));
-check("calprotectin's 160 pins to the top of a < 50 bar", () => gaugePosition(160, null, 50) === 1 ? null : String(gaugePosition(160, null, 50)));
-// A one-sided LOWER range has no ceiling to scale against — no invented bar.
-check("a one-sided lower range gets no bar", () => gaugePosition(80, 40, null) === null ? null : String(gaugePosition(80, 40, null)));
-check("a text result gets no bar", () => gaugePosition(null, 0, 100) === null ? null : "drew a bar for a non-number");
+// --- the position bar's own axis ------------------------------------------
+//
+// Drawn only to the range, every out-of-range reading pins to the same end of
+// the bar. A calprotectin of 51 and one of 160 drew an identical picture, and
+// how far past the bound you are is the only thing that bar existed to say.
+
+const near = (a, b, tol = 0.001) => Math.abs(a - b) < tol;
+const levelAt = (g, x) => (g.zones.find(z => x >= z.from && x <= z.to) || {}).level;
+
+check("a reading past the bound stretches the axis to reach it", () => {
+  const g = gaugeScale("calprotectin", 160, null, 50);
+  if (g.min !== 0) return `min ${g.min}`;
+  if (g.max !== 160) return `max ${g.max} — the bar still stops at the bound`;
+  return near(g.pos, 1) ? null : `pos ${g.pos}`;
+});
+
+check("51 and 160 no longer draw the same bar", () => {
+  const a = gaugeScale("calprotectin", 51, null, 50);
+  const b = gaugeScale("calprotectin", 160, null, 50);
+  if (a.max === b.max) return "both axes still end in the same place";
+  // Where normal ended is what separates them: nearly the whole bar vs a third.
+  if (!(a.marks[0].at > 0.9)) return `barely-over mark at ${a.marks[0].at}`;
+  if (!(b.marks[0].at < 0.4)) return `far-over mark at ${b.marks[0].at}`;
+  return null;
+});
+
+check("the bound the axis ran past is marked at its own position", () => {
+  const g = gaugeScale("calprotectin", 160, null, 50);
+  if (g.marks.length !== 1) return `${g.marks.length} marks`;
+  if (g.marks[0].value !== 50) return `marked ${g.marks[0].value}`;
+  return near(g.marks[0].at, 50 / 160) ? null : `at ${g.marks[0].at}`;
+});
+
+check("past the bound is red, and it turns red exactly at the bound", () => {
+  const g = gaugeScale("calprotectin", 160, null, 50);
+  if (levelAt(g, 0.4) !== "off") return `beyond the bound reads ${levelAt(g, 0.4)}`;
+  const off = g.zones.find(z => z.level === "off");
+  return near(off.from, 50 / 160) ? null : `the red starts at ${off.from}, not the bound`;
+});
+
+check("approaching the bound is amber before it, not at it", () => {
+  const g = gaugeScale("calprotectin", 160, null, 50);
+  if (levelAt(g, 0.05) !== "ok") return `the low end reads ${levelAt(g, 0.05)}`;
+  // The app's borderline window is the outer fifth: 40–50 of a 0–50 range.
+  return levelAt(g, 45 / 160) === "edge" ? null : `45 reads ${levelAt(g, 45 / 160)}`;
+});
+
+check("an in-range reading leaves the axis as the range, with nothing to mark", () => {
+  const g = gaugeScale("ferritin", 200, 30, 400);
+  if (g.min !== 30 || g.max !== 400) return `axis ${g.min}–${g.max}`;
+  if (g.marks.length) return "marked a bound that is already the end of the bar";
+  return g.extended ? "claimed to be extended" : null;
+});
+
+check("a reading under the range stretches the axis downward", () => {
+  const g = gaugeScale("vitamin_d", 26, 30, 100);
+  if (g.min !== 26 || g.max !== 100) return `axis ${g.min}–${g.max}`;
+  if (!near(g.pos, 0)) return `pos ${g.pos}`;
+  if (g.marks[0]?.value !== 30) return "the low bound wasn't marked";
+  return levelAt(g, 0.01) === "off" ? null : `below the range reads ${levelAt(g, 0.01)}`;
+});
+
+check("zero on a one-sided range is an axis, not a bound to mark", () => {
+  const g = gaugeScale("calprotectin", 160, null, 50);
+  if (g.marks.some(m => m.value === 0)) return "marked zero as if the lab had set it";
+  return null;
+});
+
+// Direction: the same rule borderlineFor and isFavorable already follow, so a
+// bar can't call a marker amber where the badge above it says nothing.
+check("nearing the good end of a higher-is-better marker isn't amber", () => {
+  const g = gaugeScale("egfr", 100, 60, 120);
+  return levelAt(g, 0.95) === "ok" ? null : `the top reads ${levelAt(g, 0.95)}`;
+});
+
+check("passing the good end isn't red either", () => {
+  const g = gaugeScale("egfr", 150, 60, 120);
+  return levelAt(g, 0.95) === "ok" ? null : `above range reads ${levelAt(g, 0.95)}`;
+});
+
+check("the low end of a lower-is-better marker isn't amber", () => {
+  const g = gaugeScale("ldl", 80, 50, 130);
+  return levelAt(g, 0.02) === "ok" ? null : `the bottom reads ${levelAt(g, 0.02)}`;
+});
+
+check("a marker with no declared direction is amber at both edges", () => {
+  const g = gaugeScale("some_unknown_marker", 50, 0, 100);
+  if (levelAt(g, 0.02) !== "edge") return `bottom reads ${levelAt(g, 0.02)}`;
+  return levelAt(g, 0.98) === "edge" ? null : `top reads ${levelAt(g, 0.98)}`;
+});
+
+check("the zones tile the whole bar with no gaps or overlaps", () => {
+  for (const g of [
+    gaugeScale("calprotectin", 160, null, 50),
+    gaugeScale("vitamin_d", 26, 30, 100),
+    gaugeScale("ferritin", 200, 30, 400),
+    gaugeScale("egfr", 150, 60, 120),
+  ]) {
+    if (!near(g.zones[0].from, 0)) return `starts at ${g.zones[0].from}`;
+    if (!near(g.zones[g.zones.length - 1].to, 1)) return `ends at ${g.zones[g.zones.length - 1].to}`;
+    for (let i = 1; i < g.zones.length; i++) {
+      if (!near(g.zones[i].from, g.zones[i - 1].to)) return `gap at zone ${i}`;
+      if (g.zones[i].level === g.zones[i - 1].level) return "two adjacent zones share a level";
+    }
+  }
+  return null;
+});
+
+check("a marker with no usable range still gets no bar", () => {
+  if (gaugeScale("folate", 80, 40, null) !== null) return "drew a bar with no ceiling to scale against";
+  return gaugeScale("calprotectin", null, null, 50) === null ? null : "drew a bar for a non-number";
+});
 
 console.log(failed ? `\n${failed} problem(s)` : "\nall good");
 process.exit(failed ? 1 : 0);
