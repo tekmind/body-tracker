@@ -31,6 +31,35 @@ const SUPPORTS_EFFORT = new Set([
 const IMAGE_MEDIA = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 const PDF_MEDIA = "application/pdf";
 
+// Quest prints how a number was derived next to the unit — "mg/dL (calc)",
+// or a bare "(calc)" where there is no unit at all. It's a note about the
+// method, not a unit, and left in place it shows up on every chart axis and
+// every row as though "(calc)" were the thing being measured.
+const CALC_NOTE = /^\(?\s*(calc|calc\.|calculated)\s*\)?$/i;
+
+export function cleanUnit(raw) {
+  let u = String(raw || "").trim();
+  for (let i = 0; i < 3; i++) {
+    const m = u.match(/^(.*?)\s*\(([^()]*)\)$/);
+    if (!m || !CALC_NOTE.test(m[2])) break;
+    u = m[1].trim();
+  }
+  return CALC_NOTE.test(u) ? "" : u;
+}
+
+/**
+ * A reference range that is only a parenthesised unit — "(mg/dL (calc))",
+ * "(ng/mL)" — is not a range. The app prints ref_text verbatim, so left alone
+ * it renders as this marker's reference range, which the report never gave.
+ * Qualitative ranges ("NEGATIVE", "NON-REACTIVE") are real and stay.
+ */
+export function cleanRefText(raw) {
+  const t = String(raw || "").trim();
+  if (!t) return "";
+  if (/^\(.*\)$/.test(t) && !/\d/.test(t)) return "";
+  return t;
+}
+
 // A number the report may simply not print — ranges are missing on plenty of
 // calculated values, and a result can be qualitative ("Negative").
 const nullableNumber = (description) => ({
@@ -183,10 +212,10 @@ export default async function handler(req, res) {
           name: String(r.name).trim(),
           value: Number.isFinite(r.value) ? r.value : null,
           value_text: r.value_text || "",
-          unit: r.unit || "",
+          unit: cleanUnit(r.unit),
           ref_low: Number.isFinite(r.ref_low) ? r.ref_low : null,
           ref_high: Number.isFinite(r.ref_high) ? r.ref_high : null,
-          ref_text: r.ref_text || "",
+          ref_text: cleanRefText(r.ref_text),
           // "none" is the model saying the report printed no flag; the app
           // derives its own from the range, so it must not become a value.
           flag: r.flag && r.flag !== "none" ? r.flag : null,

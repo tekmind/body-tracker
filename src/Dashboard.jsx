@@ -2440,9 +2440,13 @@ export default function Dashboard() {
       setServerBackupBusy(false);
     }
   }
+  /** The in-app blobs, as the JSON a Restore expects back. */
+  function backupPayload() {
+    return JSON.stringify({ entries, goals, daily: dailyEntries, habits: habitLog, habitTargets, alerts }, null, 2);
+  }
   function openExport() {
     setBackupMsg("");
-    setBackupText(JSON.stringify({ entries, goals, daily: dailyEntries, habits: habitLog, habitTargets, alerts }, null, 2));
+    setBackupText(backupPayload());
     setBackupMode("export");
   }
   function openImport() {
@@ -2450,7 +2454,9 @@ export default function Dashboard() {
     setBackupText("");
     setBackupMode("import");
   }
-  async function handleDownloadBackup() {
+  // Takes the text so it can run straight off the header button, without
+  // having to open Export first just to fill the textarea.
+  async function handleDownloadBackup(text = backupText) {
     const today = new Date();
     const stamp = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
     const filename = `health-tracker-backup-${stamp}.json`;
@@ -2465,14 +2471,14 @@ export default function Dashboard() {
           types: [{ description: "JSON backup", accept: { "application/json": [".json"] } }],
         });
         const writable = await handle.createWritable();
-        await writable.write(backupText);
+        await writable.write(text);
         await writable.close();
         return;
       } catch (e) {
         if (e.name === "AbortError") return; // user cancelled the picker
       }
     }
-    const blob = new Blob([backupText], { type: "application/json" });
+    const blob = new Blob([text], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -2834,6 +2840,16 @@ export default function Dashboard() {
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 <button className="btn-ghost" onClick={handleDedupe}>Dedupe</button>
                 <button className="btn-ghost" onClick={openExport}>Export</button>
+                {/* Same file Export's "Download file" produces — this just
+                    skips opening the box first. Named against "Download all"
+                    below, which is the whole server snapshot, not these blobs. */}
+                <button
+                  className="btn-ghost"
+                  onClick={() => handleDownloadBackup(backupPayload())}
+                  title="Download the in-app blobs (weekly log, goals, daily log, habits) as a file"
+                >
+                  <Download size={13} /> Download export
+                </button>
                 <button className="btn-ghost" onClick={openImport}>Import</button>
                 <button className="btn-ghost" onClick={runServerBackup} disabled={serverBackupBusy}>
                   {serverBackupBusy ? <Loader2 size={13} className="spin" /> : <RefreshCw size={13} />} Back up now
@@ -2858,7 +2874,7 @@ export default function Dashboard() {
                 <textarea className="backup-ta" readOnly value={backupText} onFocus={(e) => e.target.select()} />
                 <div className="form-actions">
                   <button className="btn-ghost" onClick={() => setBackupMode(null)}><X size={13} /> Close</button>
-                  <button className="btn-primary" onClick={handleDownloadBackup}><Download size={13} /> Download file</button>
+                  <button className="btn-primary" onClick={() => handleDownloadBackup()}><Download size={13} /> Download file</button>
                 </div>
               </div>
             )}
