@@ -171,6 +171,51 @@ check("the history reaches the brief when there is one", () => {
   return t.includes("Ileocecal resection") ? null : "the surgery never reached the report";
 });
 
+// --- fasting, where it decides the meaning ---------------------------------
+//
+// A glucose of 129 is an abnormal fasting result or an unremarkable post-meal
+// one, and nothing else in the row says which. A report that simply omits
+// fasting reads it as "doesn\u0027t matter" rather than "not known" — which is
+// how a metabolic report came to reason about a glucose without ever flagging
+// that nobody had recorded whether he had eaten.
+
+const glucose = (over = {}) => ({
+  marker: "glucose", name: "Glucose", unit: "mg/dL", attention: "now", edge: null,
+  fastingMatters: true, ref: { lo: 65, hi: 99, text: "65-99", fromLab: true }, ...over,
+});
+
+check("an unrecorded fasting status is stated, not left silent", () => {
+  const t = buildReportBrief({
+    system, today: "8/8/26", rows: [glucose()],
+    readings: { glucose: [{ date: "5/7/26", value: 129 }] },
+  });
+  if (!/fasting: MATTERS/.test(t)) return "the brief never says fasting matters here";
+  if (!/NOT recorded/.test(t)) return "an unknown fasting status read as no comment";
+  return /do not assume either way/.test(t) ? null : "nothing told it not to guess";
+});
+
+check("a marker where fasting is irrelevant isn't cluttered with it", () => {
+  const t = brief();
+  return /fasting:/.test(t) ? "fasting noise on a marker it does not affect" : null;
+});
+
+check("fully recorded fasting says so instead of warning", () => {
+  const t = buildReportBrief({
+    system, today: "8/8/26", rows: [glucose()],
+    readings: { glucose: [{ date: "5/7/26", value: 129, fasted: "yes" }, { date: "8/3/26", value: 101, fasted: "no" }] },
+  });
+  if (/NOT recorded/.test(t)) return "warned about a status that is fully recorded";
+  return /recorded on every reading/.test(t) ? null : "didn't confirm the status is known";
+});
+
+check("a partly recorded marker says how much is missing", () => {
+  const t = buildReportBrief({
+    system, today: "8/8/26", rows: [glucose()],
+    readings: { glucose: [{ date: "5/7/26", value: 129 }, { date: "8/3/26", value: 101, fasted: "no" }] },
+  });
+  return /only 1 of 2 readings/.test(t) ? null : "didn't say how many readings carry it";
+});
+
 // --- how the blood was taken -----------------------------------------------
 //
 // The same number means different things depending on when it was drawn, and

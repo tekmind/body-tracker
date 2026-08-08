@@ -11,7 +11,7 @@ import { parseDate, formatMDY, today as todayDate } from "./dateUtils.js";
 import {
   resolveMarker, markerDisplayName, markerInfo, flagFor, isFavorable,
   sortResults, fmtValue, fmtRange, fmtBounds, MARKER_CATEGORIES,
-  SYSTEMS, systemsFor, groupFor, markerNote, effectiveRange, borderlineFor, gaugeScale,
+  SYSTEMS, systemsFor, groupFor, markerNote, effectiveRange, borderlineFor, gaugeScale, fastingMatters,
 } from "./labMarkers.js";
 import { prepareLabFile, ACCEPTED_FILE_TYPES } from "./labFile.js";
 import { HISTORY_KINDS, buildReportBrief, newPanelsSince, parseMarkdown, drawContext } from "./labReport.js";
@@ -600,11 +600,12 @@ export default function LabsTab() {
           flag: r.flag,
           refText: r.ref_text,
           context: ctxOf.get(r.panel_id) || "",
+          fasted: (panels.find(p => p.id === r.panel_id) || {}).fasted || null,
         }));
     }
     return buildReportBrief({
       system: card,
-      rows: card.rows.map(r => ({ ...r, unit: r.latest.unit || "" })),
+      rows: card.rows.map(r => ({ ...r, unit: r.latest.unit || "", fastingMatters: fastingMatters(r.marker) })),
       readings,
       studies: card.studies,
       history: history || [],

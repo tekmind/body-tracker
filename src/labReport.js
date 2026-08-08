@@ -110,6 +110,18 @@ function markerBlock(row, readings) {
     head.push("  reference: none printed");
   }
 
+  // Fasting decides what some numbers mean, and an unrecorded status has to
+  // read as unknown rather than as irrelevant. A glucose of 129 is an
+  // abnormal fasting result or an unremarkable post-meal one.
+  if (row.fastingMatters) {
+    const known = pts.filter(p => p.fasted === "yes" || p.fasted === "no").length;
+    head.push(
+      known === pts.length && pts.length
+        ? "  fasting: matters for this marker, and is recorded on every reading below"
+        : `  fasting: MATTERS for this marker${known ? `, but is recorded on only ${known} of ${pts.length} readings` : ", and was NOT recorded for these readings"}. Where a reading does not say, it is unknown — do not assume either way, and say so if it limits what you can conclude.`
+    );
+  }
+
   if (!pts.length) return head.join("\n");
 
   head.push("  readings, oldest first:");

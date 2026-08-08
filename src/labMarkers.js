@@ -813,6 +813,27 @@ export function borderlineFor(markerKey, value, refLow, refHigh) {
  * the badge above it. Direction is honoured: nearing the good end of a
  * higher-is-better marker is not amber, and passing it is not red.
  */
+/**
+ * Markers where fasting decides what the number means.
+ *
+ * A glucose of 129 is an abnormal fasting result or an unremarkable
+ * post-meal one, and nothing else in the row tells you which. Triglycerides
+ * swing hardest of the lipids; LDL is usually calculated from them, so it
+ * moves with them. Iron rises after an iron-containing meal and has a strong
+ * daily rhythm besides.
+ *
+ * This exists so a report says "fasting status was not recorded" instead of
+ * going quiet — silence reads as "doesn't matter", which for these is wrong.
+ */
+const FASTING_SENSITIVE = new Set([
+  "glucose", "insulin", "triglycerides", "ldl", "vldl", "non_hdl",
+  "cholesterol_total", "hdl", "chol_hdl_ratio", "iron", "iron_saturation",
+]);
+
+export function fastingMatters(markerKey) {
+  return FASTING_SENSITIVE.has(markerKey);
+}
+
 export function gaugeScale(markerKey, value, refLow, refHigh) {
   if (!Number.isFinite(value)) return null;
   const lo = Number.isFinite(refLow) ? refLow : null;
