@@ -107,6 +107,29 @@ export function splitReport(markdown, fallbackTitle) {
   };
 }
 
+/**
+ * The sentence inside an SDK error, rather than the wire format around it.
+ *
+ * A failed call arrives as `400 {"type":"error","error":{...}}` — the useful
+ * part ("Your credit balance is too low…") is buried in a JSON blob that ends
+ * up on screen verbatim. Everything here is best-effort: an unrecognised
+ * shape falls back to the raw message rather than losing it.
+ */
+export function apiMessage(e) {
+  const direct = e?.error?.error?.message || e?.error?.message;
+  if (typeof direct === "string" && direct) return direct;
+  const raw = String(e?.message || "");
+  const at = raw.indexOf("{");
+  if (at >= 0) {
+    try {
+      const parsed = JSON.parse(raw.slice(at));
+      const m = parsed?.error?.message || parsed?.message;
+      if (m) return m;
+    } catch { /* not JSON after all */ }
+  }
+  return raw || "unknown error";
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Use POST." });
   if (!process.env.ANTHROPIC_API_KEY) {
@@ -173,6 +196,6 @@ export default async function handler(req, res) {
     });
   } catch (e) {
     const status = e?.status && e.status >= 400 && e.status < 600 ? e.status : 502;
-    return res.status(status).json({ error: `Couldn't write that report: ${e?.message || "unknown error"}` });
+    return res.status(status).json({ error: `Couldn't write that report: ${apiMessage(e)}` });
   }
 }

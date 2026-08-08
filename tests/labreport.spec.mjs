@@ -14,7 +14,7 @@
 // No browser — these are pure modules, which is the point.
 
 import { buildReportBrief, historyBlock, newPanelsSince, parseMarkdown, parseInline, drawContext } from "../src/labReport.js";
-import { splitReport } from "../api/lab-report.js";
+import { splitReport, apiMessage } from "../api/lab-report.js";
 
 let failed = 0;
 function check(name, fn) {
@@ -314,6 +314,32 @@ check("a runaway opening paragraph is cut for the list, not for the report", () 
 check("an empty response doesn't produce a report with a blank title", () => {
   const r = splitReport("", "Hormones report");
   return r.title === "Hormones report" ? null : `got "${r.title}"`;
+});
+
+// --- what a failure says ---------------------------------------------------
+//
+// The first real failure reached the screen as
+//   "Couldn\u0027t write that report: Couldn\u0027t write that report: 400 {"type":"error",...}"
+// — prefixed twice, with the one useful sentence buried in a JSON blob.
+
+check("the sentence is pulled out of the wire format", () => {
+  const e = new Error(`400 {"type":"error","error":{"type":"invalid_request_error","message":"Your credit balance is too low to access the Anthropic API."},"request_id":"req_x"}`);
+  const m = apiMessage(e);
+  if (/[{}]|request_id|invalid_request_error/.test(m)) return `still raw: ${m}`;
+  return m.startsWith("Your credit balance is too low") ? null : m;
+});
+
+check("a structured SDK error is read directly", () => {
+  return apiMessage({ error: { error: { message: "Overloaded" } } }) === "Overloaded" ? null : "missed the nested message";
+});
+
+check("a plain error keeps its own words rather than being swallowed", () => {
+  return apiMessage(new Error("socket hang up")) === "socket hang up" ? null : "lost a non-API failure";
+});
+
+check("an error with nothing in it still says something", () => {
+  const m = apiMessage({});
+  return m && m !== "undefined" ? null : `got "${m}"`;
 });
 
 // --- rendering it ----------------------------------------------------------

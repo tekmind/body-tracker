@@ -661,10 +661,13 @@ export default function LabsTab() {
       setReports(rs => [saved, ...(rs || [])]);
       setOpenReport(saved.id);
     } catch (e) {
+      // The endpoint already writes a full sentence, so prefixing it again
+      // produced "Couldn't write that report: Couldn't write that report: …".
+      const msg = String(e.message || "");
       setErr(
-        /relation .* does not exist|schema cache|could not find the table/i.test(e.message || "")
+        /relation .* does not exist|schema cache|could not find the table/i.test(msg)
           ? "Reports need a table that isn't there yet — re-run supabase_labs.sql in the Supabase SQL editor, then reload."
-          : `Couldn't write that report: ${e.message}`
+          : /^Couldn't|^That report took/.test(msg) ? msg : `Couldn't write that report: ${msg}`
       );
     } finally {
       setWriting(false);
