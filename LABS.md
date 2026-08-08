@@ -90,19 +90,27 @@ before you save.
 
 - **By report** — each draw, collapsible, results grouped by category with
   out-of-range values in red. Tap any marker name for its trend.
-- **By marker** — one row per marker with its latest value and the move since
-  the previous draw. Search it when you want one number.
+- **By marker** — one row per marker with its latest value, the range the lab
+  printed, a gauge showing where inside that range the value sits, and the
+  move since the previous draw. Grouped by priority rather than category:
+  **Needs attention** (unfavourably out of range now), **Previously flagged**
+  (was out of range at some point, is not now), then **In range** — so the
+  glance stops at the top. A favourable excursion (high HDL, high eGFR) is
+  not "attention"; `isFavorable` decides. Search it when you want one number.
 - **Pinned system cards** — under the summary tiles, one stat card per pinned
   system (Crohn's / IBD, Inflammation, Hormones, Vitamins, Metabolic). The
   first `headline` marker with data is the hero number — calprotectin, CRP,
   total testosterone, vitamin D, glucose — and the next couple ride beneath it
   as compact rows (B12 under vitamin D, free T under total). Tapping a card
-  opens that system expanded. Which systems are pinned and what they lead
-  with is data on the `SYSTEMS` entries (`pinned`, `headline`), not layout
-  code.
+  opens that system expanded. Each card draws a sparkline of its hero's
+  readings with the lab's in-range band shaded behind them, so a number
+  sitting outside its range reads at a glance without parsing digits. Which
+  systems are pinned and what they lead with is data on the `SYSTEMS` entries
+  (`pinned`, `headline`), not layout code.
 - **By system** — the same markers regrouped by body system (Crohn's / IBD,
   Inflammation, Hormones, …) with each system's flagged count and its
-  narrative studies. A marker appears in every system it informs.
+  narrative studies. A marker appears in every system it informs. Inside a
+  system, flagged markers sort to the top.
 - **Studies** — biopsy, histology and imaging reports, newest first. Only
   appears when there is at least one.
 - **Trend sheet** — every reading of one marker over time, with the reference

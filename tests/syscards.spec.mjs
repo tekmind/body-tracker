@@ -92,6 +92,31 @@ async function main() {
   const dCard = cards.nth(all.findIndex(t => t.includes("Vitamins")));
   check("a low vitamin D reads as out of range", await dCard.locator(".lsc-value.lab-flag-off").count() === 1);
 
+  // The hero's range prints on the card — a number without its range is only
+  // half a reading.
+  check("the Vitamins card prints vitamin D's range", /range 30 – 100/.test(find("Vitamins")), find("Vitamins").replace(/\n/g, " | "));
+
+  // Trend lines: every card with numeric history draws one, and a marker
+  // with reference bounds shades its in-range band.
+  const crohnCard = cards.nth(all.findIndex(t => t.includes("Crohn")));
+  check("the Crohn's card draws a sparkline", await crohnCard.locator("svg.lw-spark polyline").count() === 1);
+  check("the vitamin D sparkline shades its range band",
+    await cards.nth(all.findIndex(t => t.includes("Vitamins"))).locator("svg.lw-spark rect.lw-band").count() === 1);
+  check("the flagged hero's latest dot reads as out of range",
+    await cards.nth(all.findIndex(t => t.includes("Vitamins"))).locator("svg.lw-spark .lw-dot-off").count() === 1);
+
+  // The 80/20 grouping in By marker: what needs eyes sits at the top.
+  await page.locator(".labs-view-toggle .toggle-btn", { hasText: "By marker" }).click();
+  await page.waitForSelector(".labs-prio-head", { timeout: 5000 });
+  const heads = (await page.locator(".labs-prio-head").allInnerTexts()).map(t => t.trim().split("\n")[0]);
+  check("Needs attention leads the marker list", /needs attention/i.test(heads[0] || ""), heads.join(" / "));
+  const firstSection = page.locator(".labs-prio").first();
+  const firstNames = await firstSection.locator(".lmr-name").allInnerTexts();
+  check("the flagged markers live in the top section",
+    firstNames.some(n => /vitamin d/i.test(n)) && firstNames.some(n => /glucose/i.test(n)), firstNames.join(", "));
+  check("marker rows print their range under the value",
+    await firstSection.locator(".lmr-range", { hasText: "30 – 100" }).count() === 1);
+
   // Tap-through: the card is a shortcut to its expanded system.
   await cards.nth(all.findIndex(t => t.includes("Crohn"))).click();
   await page.waitForSelector(".labs-panel-head", { timeout: 5000 });

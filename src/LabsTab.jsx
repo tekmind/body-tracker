@@ -182,6 +182,12 @@ export default function LabsTab() {
       if (!latest) continue;
       const prev = dated.find(r => r.value != null && r !== latest && r.at < latest.at);
       const delta = latest.value != null && prev?.value != null ? latest.value - prev.value : null;
+      // The 80/20 read: is this a number that needs eyes on it? "now" is an
+      // unfavourable flag on the latest reading; "past" is a marker that has
+      // been flagged before but recovered — worth a glance, not an alarm.
+      // A favourable excursion (high HDL, high eGFR) is neither.
+      const unfavourable = (r) => r.flag && r.flag !== "normal" && !isFavorable(marker, r.flag);
+      const attention = unfavourable(latest) ? "now" : list.some(unfavourable) ? "past" : "ok";
       rows.push({
         marker,
         name: markerDisplayName(marker, latest.name),
@@ -191,6 +197,8 @@ export default function LabsTab() {
         delta,
         count: list.length,
         at: latest.at,
+        attention,
+        range: fmtRange(latest.ref_low, latest.ref_high, latest.ref_text),
       });
     }
     const rank = (c) => {
@@ -234,9 +242,11 @@ export default function LabsTab() {
         rows[0];
       const extras = headlined.slice(1, 3);
       const flagged = rows.filter(r => r.latest.flag && r.latest.flag !== "normal").length;
-      return { key: s.key, name: s.name, short: s.short, row, extras, flagged };
+      // The hero's numeric readings, oldest first — the card's trend line.
+      const pts = seriesFor(row.marker).map(p => ({ v: p.value }));
+      return { key: s.key, name: s.name, short: s.short, row, extras, flagged, pts };
     }).filter(Boolean);
-  }, [markerRows]);
+  }, [markerRows, seriesFor]);
 
   const filteredMarkers = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -451,6 +461,44 @@ export default function LabsTab() {
 
   // --- render --------------------------------------------------------------
 
+  /**
+   * One marker row, shared by the By marker and By system views. The
+   * reference range sits directly under the value — a number without its
+   * range is only half a reading.
+   */
+  const markerRowBtn = (row) => (
+    <button key={row.marker} className="labs-marker-row" onClick={() => setTrendKey(row.marker)}>
+      <span className="lmr-main">
+        <span className="lmr-name">{row.name}</span>
+        <span className="lmr-meta">
+          {row.category} · {row.count} reading{row.count === 1 ? "" : "s"} · latest {row.latest.value != null ? "" : "(text) "}
+          {panels.find(p => p.id === row.latest.panel_id)?.date || ""}
+        </span>
+      </span>
+      <span className="lmr-right">
+        <span className={"lmr-value" + flagClass(row.latest.flag, row.marker)}>
+          {row.latest.value != null ? fmtValue(row.latest.value) : (row.latest.value_text || "–")}
+          <span className="lmr-unit"> {row.latest.unit || ""}</span>
+        </span>
+        {row.range && <span className="lmr-range">{row.range}</span>}
+        {/* Where inside the range the value sits — the track is the lab's
+            range, the dot is you. Out-of-range clamps to the edge in red. */}
+        {Number.isFinite(row.latest.ref_low) && Number.isFinite(row.latest.ref_high) && row.latest.value != null && (
+          <span className="lmr-gauge">
+            <span
+              className={"lmr-gauge-dot" + (row.attention === "now" ? " lmr-gauge-off" : "")}
+              style={{ left: `${Math.min(1, Math.max(0, (row.latest.value - row.latest.ref_low) / ((row.latest.ref_high - row.latest.ref_low) || 1))) * 100}%` }}
+            />
+          </span>
+        )}
+      </span>
+      <span className={"lmr-delta" + (row.delta == null ? " lmr-delta-none" : "")}>
+        {row.delta == null ? "–" : `${row.delta > 0 ? "+" : ""}${fmtValue(row.delta)}`}
+      </span>
+      <TrendingUp size={13} className="lmr-chev" />
+    </button>
+  );
+
   // Newest first, same rule as the report list.
   const orderedPathology = useMemo(() => {
     return [...(pathology || [])].sort((a, b) => {
@@ -567,7 +615,11 @@ export default function LabsTab() {
               <span className={"lsc-value" + flagClass(s.row.latest.flag, s.row.marker)}>
                 {s.row.latest.value != null ? fmtValue(s.row.latest.value) : (s.row.latest.value_text || "–")}
                 <span className="lsc-unit"> {s.row.latest.unit || ""}</span>
+                {s.row.range && <span className="lsc-range">range {s.row.range}</span>}
               </span>
+              {s.pts.length > 0 && (
+                <Spark pts={s.pts} lo={s.row.latest.ref_low} hi={s.row.latest.ref_high} attention={s.row.attention} />
+              )}
               <span className="lsc-sub">
                 {s.row.name}
                 {s.row.delta != null && (
@@ -687,26 +739,12 @@ export default function LabsTab() {
 
                     {open && (
                       <div className="labs-panel-body">
+                        {/* Flagged first: the point of opening a system is
+                            finding out what's wrong in it. */}
                         <div className="labs-marker-list">
-                          {s.rows.map(row => (
-                            <button key={row.marker} className="labs-marker-row" onClick={() => setTrendKey(row.marker)}>
-                              <span className="lmr-main">
-                                <span className="lmr-name">{row.name}</span>
-                                <span className="lmr-meta">
-                                  {row.count} reading{row.count === 1 ? "" : "s"} · latest {row.latest.value != null ? "" : "(text) "}
-                                  {panels.find(p => p.id === row.latest.panel_id)?.date || ""}
-                                </span>
-                              </span>
-                              <span className={"lmr-value" + flagClass(row.latest.flag, row.marker)}>
-                                {row.latest.value != null ? fmtValue(row.latest.value) : (row.latest.value_text || "–")}
-                                <span className="lmr-unit"> {row.latest.unit || ""}</span>
-                              </span>
-                              <span className={"lmr-delta" + (row.delta == null ? " lmr-delta-none" : "")}>
-                                {row.delta == null ? "–" : `${row.delta > 0 ? "+" : ""}${fmtValue(row.delta)}`}
-                              </span>
-                              <TrendingUp size={13} className="lmr-chev" />
-                            </button>
-                          ))}
+                          {[...s.rows]
+                            .sort((a, b) => ({ now: 0, past: 1, ok: 2 }[a.attention] - { now: 0, past: 1, ok: 2 }[b.attention]))
+                            .map(markerRowBtn)}
                         </div>
 
                         {s.studies.length > 0 && (
@@ -789,25 +827,22 @@ export default function LabsTab() {
                 <div className="labs-empty-row">No marker matches that.</div>
               ) : (
                 <div className="labs-marker-list">
-                  {filteredMarkers.map(row => (
-                    <button key={row.marker} className="labs-marker-row" onClick={() => setTrendKey(row.marker)}>
-                      <span className="lmr-main">
-                        <span className="lmr-name">{row.name}</span>
-                        <span className="lmr-meta">
-                          {row.category} · {row.count} reading{row.count === 1 ? "" : "s"} · latest {row.latest.value != null ? "" : "(text) "}
-                          {panels.find(p => p.id === row.latest.panel_id)?.date || ""}
-                        </span>
-                      </span>
-                      <span className={"lmr-value" + flagClass(row.latest.flag, row.marker)}>
-                        {row.latest.value != null ? fmtValue(row.latest.value) : (row.latest.value_text || "–")}
-                        <span className="lmr-unit"> {row.latest.unit || ""}</span>
-                      </span>
-                      <span className={"lmr-delta" + (row.delta == null ? " lmr-delta-none" : "")}>
-                        {row.delta == null ? "–" : `${row.delta > 0 ? "+" : ""}${fmtValue(row.delta)}`}
-                      </span>
-                      <TrendingUp size={13} className="lmr-chev" />
-                    </button>
-                  ))}
+                  {/* The 80/20 read: what's wrong now, what has been wrong
+                      before, then everything that's fine — so the glance
+                      stops at the top. */}
+                  {[["now", "Needs attention"], ["past", "Previously flagged"], ["ok", "In range"]].map(([k, label]) => {
+                    const rows = filteredMarkers.filter(r => r.attention === k);
+                    if (!rows.length) return null;
+                    return (
+                      <div className="labs-prio" key={k}>
+                        <div className={"labs-prio-head labs-prio-" + k}>
+                          {label}
+                          <span className="labs-prio-count">{rows.length}</span>
+                        </div>
+                        {rows.map(markerRowBtn)}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -1168,6 +1203,34 @@ function TrendDot(props) {
 
 // ---------------------------------------------------------------------------
 
+/**
+ * Tiny inline trend for the hero cards: the lab's in-range band shaded, the
+ * readings as a line, the latest reading as a dot — red when it sits outside
+ * the range. Raw SVG rather than Recharts: five of these render at once, and
+ * there is nothing here worth an animation.
+ */
+function Spark({ pts, lo, hi, attention }) {
+  const W = 120, H = 34, P = 3;
+  const vals = pts.map(p => p.v);
+  const bounds = [lo, hi].filter(v => Number.isFinite(v));
+  const min = Math.min(...vals, ...bounds);
+  const max = Math.max(...vals, ...bounds);
+  const span = max - min || 1;
+  const x = (i) => (pts.length === 1 ? W - P : P + (i * (W - 2 * P)) / (pts.length - 1));
+  const y = (v) => H - P - ((v - min) / span) * (H - 2 * P);
+  const bandTop = Number.isFinite(hi) ? y(hi) : P;
+  const bandBot = Number.isFinite(lo) ? y(lo) : H - P;
+  return (
+    <svg className="lw-spark" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" aria-hidden="true">
+      {bounds.length > 0 && (
+        <rect className="lw-band" x={P} y={Math.min(bandTop, bandBot)} width={W - 2 * P} height={Math.max(Math.abs(bandBot - bandTop), 2)} />
+      )}
+      {pts.length > 1 && <polyline className="lw-line" points={pts.map((p, i) => `${x(i)},${y(p.v)}`).join(" ")} />}
+      <circle className={"lw-dot" + (attention === "now" ? " lw-dot-off" : "")} cx={x(pts.length - 1)} cy={y(vals[vals.length - 1])} r="2.6" />
+    </svg>
+  );
+}
+
 export const LAB_STYLES = `
   .labs-view { display: block; }
 
@@ -1294,7 +1357,28 @@ export const LAB_STYLES = `
   .lmr-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
   .lmr-name { font-size: 14.2px; font-weight: 500; }
   .lmr-meta { font-family: 'Inter', sans-serif; font-size: 12.2px; color: var(--text-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lmr-right { flex-shrink: 0; display: flex; flex-direction: column; align-items: flex-end; gap: 1px; min-width: 88px; }
+  .lmr-range { font-family: 'Inter', sans-serif; font-size: 11.2px; color: var(--text-faint); white-space: nowrap; }
+  .lmr-gauge { position: relative; display: block; width: 68px; height: 4px; border-radius: 999px; background: rgba(103, 161, 90, 0.22); margin-top: 3px; }
+  .lmr-gauge-dot { position: absolute; top: 50%; width: 7px; height: 7px; margin-left: -3.5px; border-radius: 999px; background: #2b6e1e; transform: translateY(-50%); }
+  .lmr-gauge-dot.lmr-gauge-off { background: #a5342a; }
   .lmr-value { flex-shrink: 0; min-width: 88px; text-align: right; font-family: 'Inter', sans-serif; letter-spacing: -0.02em; font-size: 17px; font-weight: 700; }
+  .lmr-right .lmr-value { min-width: 0; }
+
+  /* Priority sections in the marker list — the glance stops at the top. */
+  .labs-prio-head { display: flex; align-items: center; gap: 8px; font-family: 'Inter', sans-serif; font-size: 11.5px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-faint); padding: 12px 4px 5px; border-bottom: 1px solid var(--border); }
+  .labs-prio-now .labs-prio-head, .labs-prio-head.labs-prio-now { color: #a5342a; }
+  .labs-prio-head.labs-prio-past { color: #8a6d1a; }
+  .labs-prio-count { font-weight: 600; background: var(--panel-2); border-radius: 999px; padding: 1px 8px; color: var(--text-dim); }
+
+  .lsc-range { display: block; font-family: 'Inter', sans-serif; font-size: 10.8px; font-weight: 500; letter-spacing: 0; color: var(--text-faint); margin-top: 1px; }
+
+  /* The hero card's trend line: range band shaded, latest reading dotted. */
+  .lw-spark { width: 100%; height: 28px; margin: 3px 0 1px; }
+  .lw-band { fill: rgba(103, 161, 90, 0.16); }
+  .lw-line { fill: none; stroke: #70747c; stroke-width: 1.6; vector-effect: non-scaling-stroke; }
+  .lw-dot { fill: #2b6e1e; }
+  .lw-dot.lw-dot-off { fill: #a5342a; }
   .lmr-value.lab-flag-off { color: #a5342a; }
   .lmr-value.lab-flag-ok { color: #2b6e1e; }
   .lmr-unit { font-family: 'Inter', sans-serif; font-size: 12px; font-weight: 500; color: var(--text-faint); letter-spacing: 0; }
