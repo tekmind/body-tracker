@@ -11,6 +11,26 @@ work through the queue.
   - **Workouts need a new table**; nothing in the schema holds a session. Strength Trainer sessions do come through `/workout` (type, duration, strain, kilojoules, HR zones) — but the sets, reps and weights logged inside Strength Trainer are *not* exposed by the API. That's an open feature request on WHOOP's forum, so unlike steps it could change.
   - **Not steps** — the API has never exposed those and shows no sign of doing so (see SYNC.md).
 
+- **Draw context on a panel — time of day, fasted, where it sits against the
+  infusion.** The same number means different things depending on when it was
+  taken, and right now none of that is recorded per draw. An infliximab level
+  is only interpretable as a trough; morning and afternoon testosterone aren't
+  comparable; a lipid panel drawn fed isn't the same test as one drawn fasted.
+  Not every draw is a trough either — GI-ordered panels are timed to the
+  infusion, the Sanitas ones aren't.
+  - Columns on `lab_panels`: `drawn_at` (time of day), `fasted`
+    (yes/no/unknown), `infusion_relation` (trough / after / not timed to it /
+    unknown). All nullable — an imported report usually won't say, and a
+    guessed value is worse than a blank.
+  - Set in the import review sheet, and editable on a panel afterwards, since
+    most of these get remembered later rather than known at import.
+  - Then feed it into `buildReportBrief` per reading, so a report can say "this
+    one was a trough" from the data instead of from a blanket claim in the
+    medical history. That blanket claim is exactly how the first Crohn's report
+    came to describe every draw as a trough.
+  - Note `lab_panels.note` already holds this as free prose for the 8/3/26
+    draw, but the brief never sees panel notes — so today it reaches nothing.
+
 - **Symptom logging, to correlate with the food log.** Owner wants to work out
   which foods still trigger the gas and bloating: symptoms usually start about
   two hours after the first meal at noon, and get worse with total intake
