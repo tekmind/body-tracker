@@ -11,6 +11,16 @@ work through the queue.
   - **Workouts need a new table**; nothing in the schema holds a session. Strength Trainer sessions do come through `/workout` (type, duration, strain, kilojoules, HR zones) — but the sets, reps and weights logged inside Strength Trainer are *not* exposed by the API. That's an open feature request on WHOOP's forum, so unlike steps it could change.
   - **Not steps** — the API has never exposed those and shows no sign of doing so (see SYNC.md).
 
+- **Symptom logging, to correlate with the food log.** Owner wants to work out
+  which foods still trigger the gas and bloating: symptoms usually start about
+  two hours after the first meal at noon, and get worse with total intake
+  (3,000 kcal is much worse than 2,100), so the trigger could be a food, a
+  quantity, or the timing against the nightly cholestyramine. Half of this
+  already exists — `food_log` has what was eaten and when. What's missing is
+  the other half: somewhere to note "bloated, 2pm, moderate". Worth thinking
+  about what the smallest useful version is (a severity tap on the Food tab?)
+  before building a whole symptom tracker.
+
 - **No way to add a study through the app.** `lab_pathology` holds biopsy and
   imaging reports and the Studies tab displays them, but "Add a report" only
   reaches `/api/lab-parse`, which looks for markers and returns `found: false`
