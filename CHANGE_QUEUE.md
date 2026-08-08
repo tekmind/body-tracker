@@ -13,6 +13,23 @@ work through the queue.
   - **Workouts need a new table**; nothing in the schema holds a session. Strength Trainer sessions do come through `/workout` (type, duration, strain, kilojoules, HR zones) — but the sets, reps and weights logged inside Strength Trainer are *not* exposed by the API. That's an open feature request on WHOOP's forum, so unlike steps it could change.
   - **Not steps** — the API has never exposed those and shows no sign of doing so (see SYNC.md).
 
+- **No way to add a study through the app.** `lab_pathology` holds biopsy and
+  imaging reports and the Studies tab displays them, but "Add a report" only
+  reaches `/api/lab-parse`, which looks for markers and returns `found: false`
+  on a narrative. The four studies in there now were inserted by a script.
+  Needs a narrative-reading endpoint plus its own review sheet — worth weighing
+  against how rarely one of these arrives.
+- **Urinalysis components have no markers.** A dipstick panel brings pH,
+  Protein, Blood, Ketone, Nitrite, Urobilinogen and Specific Gravity, and all
+  seven land in "Other" with slug keys. They chart fine against their future
+  selves; they just have no display name or category. Only worth doing if
+  urinalyses become regular.
+- **`psa_free_pct` stored its unit as `"% (calc)"`.** The reader returns the
+  unit with the lab's `(calc)` note attached, and only the Sanitas path strips
+  that (`splitRangeUnit` in the import script, which isn't repo code). One row
+  today. If more arrive, the stripping belongs in `api/lab-parse.js` so it
+  applies to anything added through the UI too.
+
 ## Done
 
 <!-- Completed items move here with the date, or just get deleted — your call. -->
